@@ -1,0 +1,6 @@
+[submodule "coro-http"]
+	path = contrib/coro-http
+	url = https://github.com/lemourin/coro-http.git
+[submodule "contrib/json"]
+	path = contrib/json
+	url = https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent
