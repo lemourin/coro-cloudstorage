@@ -64,13 +64,11 @@ class GoogleDrive {
     if (page_token) {
       params.emplace_back("pageToken", *page_token);
     }
-    json data = co_await util::FetchJson(
-        http,
-        http::Request<>{
-            .url = GetEndpoint("/files") + "?" + http::FormDataToString(params),
-            .headers = {{"Authorization",
-                         "Bearer " + std::string(access_token)}}},
-        std::move(stop_token));
+    auto request = http::Request<>{
+        .url = GetEndpoint("/files") + "?" + http::FormDataToString(params),
+        .headers = {{"Authorization", "Bearer " + std::string(access_token)}}};
+    json data = co_await util::FetchJson(http, std::move(request),
+                                         std::move(stop_token));
     std::vector<Item> result;
     for (const json& item : data["files"]) {
       result.emplace_back(std::move(ToItem(item)));
@@ -86,31 +84,28 @@ class GoogleDrive {
   [[nodiscard]] Task<GeneralData> GetGeneralData(
       HttpClient& http, std::string_view access_token,
       stdx::stop_token stop_token) const {
-    json json = co_await util::FetchJson(
-        http,
-        http::Request<>{.url = GetEndpoint("/about?fields=user,storageQuota"),
-                        .headers = {{"Authorization",
-                                     "Bearer " + std::string(access_token)}}},
-        std::move(stop_token));
+    auto request = http::Request<>{
+        .url = GetEndpoint("/about?fields=user,storageQuota"),
+        .headers = {{"Authorization", "Bearer " + std::string(access_token)}}};
+    json json = co_await util::FetchJson(http, std::move(request),
+                                         std::move(stop_token));
     co_return GeneralData{.username = json["user"]["emailAddress"]};
   }
 
   template <http::HttpClient HttpClient>
   Task<Token> ExchangeAuthorizationCode(HttpClient& http, std::string_view code,
                                         stdx::stop_token stop_token) const {
-    json json = co_await util::FetchJson(
-        http,
-        http::Request<std::string>{
-            .url = "https://accounts.google.com/o/oauth2/token",
-            .method = "POST",
-            .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
-            .body =
-                http::FormDataToString({{"grant_type", "authorization_code"},
+    auto request = http::Request<std::string>{
+        .url = "https://accounts.google.com/o/oauth2/token",
+        .method = "POST",
+        .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
+        .body = http::FormDataToString({{"grant_type", "authorization_code"},
                                         {"client_secret", data_.client_secret},
                                         {"client_id", data_.client_id},
                                         {"redirect_uri", data_.redirect_uri},
-                                        {"code", code}})},
-        std::move(stop_token));
+                                        {"code", code}})};
+    json json = co_await util::FetchJson(http, std::move(request),
+                                         std::move(stop_token));
     co_return Token{.access_token = json["access_token"],
                     .refresh_token = json["refresh_token"]};
   }
@@ -119,18 +114,16 @@ class GoogleDrive {
   Task<Token> RefreshAccessToken(HttpClient& http,
                                  std::string_view refresh_token,
                                  stdx::stop_token stop_token) const {
-    json json = co_await util::FetchJson(
-        http,
-        http::Request<std::string>{
-            .url = "https://accounts.google.com/o/oauth2/token",
-            .method = "POST",
-            .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
-            .body =
-                http::FormDataToString({{"refresh_token", refresh_token},
+    auto request = http::Request<std::string>{
+        .url = "https://accounts.google.com/o/oauth2/token",
+        .method = "POST",
+        .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
+        .body = http::FormDataToString({{"refresh_token", refresh_token},
                                         {"client_id", data_.client_id},
                                         {"client_secret", data_.client_secret},
-                                        {"grant_type", "refresh_token"}})},
-        std::move(stop_token));
+                                        {"grant_type", "refresh_token"}})};
+    json json = co_await util::FetchJson(http, std::move(request),
+                                         std::move(stop_token));
 
     co_return Token{.access_token = json["access_token"],
                     .refresh_token = std::string(refresh_token)};
