@@ -54,19 +54,19 @@ class GoogleDrive {
   explicit GoogleDrive(AuthData data) : data_(std::move(data)) {}
 
   template <http::HttpClient HttpClient>
-  [[nodiscard]] Task<PageData> ListDirectoryPage(
-      HttpClient& http, std::string_view access_token,
-      const Directory& directory, std::optional<std::string_view> page_token,
-      stdx::stop_token stop_token) const {
+  Task<PageData> ListDirectoryPage(HttpClient& http, std::string access_token,
+                                   const Directory& directory,
+                                   std::optional<std::string> page_token,
+                                   stdx::stop_token stop_token) const {
     std::vector<std::pair<std::string, std::string>> params = {
         {"fields",
-         R"(files(id,name,thumbnailLink,trashed,mimeType,iconLink,parents,size,modifiedTime),kind,nextPageToken)"}};
+         "files(" + std::string(kFileProperties) + "),kind,nextPageToken"}};
     if (page_token) {
-      params.emplace_back("pageToken", *page_token);
+      params.emplace_back("pageToken", std::move(*page_token));
     }
     auto request = http::Request<>{
         .url = GetEndpoint("/files") + "?" + http::FormDataToString(params),
-        .headers = {{"Authorization", "Bearer " + std::string(access_token)}}};
+        .headers = {{"Authorization", "Bearer " + std::move(access_token)}}};
     json data = co_await util::FetchJson(http, std::move(request),
                                          std::move(stop_token));
     std::vector<Item> result;
@@ -81,19 +81,30 @@ class GoogleDrive {
   }
 
   template <http::HttpClient HttpClient>
-  [[nodiscard]] Task<GeneralData> GetGeneralData(
-      HttpClient& http, std::string_view access_token,
-      stdx::stop_token stop_token) const {
+  Task<GeneralData> GetGeneralData(HttpClient& http, std::string access_token,
+                                   stdx::stop_token stop_token) const {
     auto request = http::Request<>{
         .url = GetEndpoint("/about?fields=user,storageQuota"),
-        .headers = {{"Authorization", "Bearer " + std::string(access_token)}}};
+        .headers = {{"Authorization", "Bearer " + std::move(access_token)}}};
     json json = co_await util::FetchJson(http, std::move(request),
                                          std::move(stop_token));
     co_return GeneralData{.username = json["user"]["emailAddress"]};
   }
 
   template <http::HttpClient HttpClient>
-  Task<Token> ExchangeAuthorizationCode(HttpClient& http, std::string_view code,
+  Task<Item> GetItem(HttpClient& http, std::string access_token, std::string id,
+                     stdx::stop_token stop_token) const {
+    auto request = http::Request<>{
+        .url = GetEndpoint("/drive/v3/files/" + std::move(id)) + "?" +
+               http::FormDataToString({{"fields", kFileProperties}}),
+        .headers = {{"Authorization", "Bearer " + std::move(access_token)}}};
+    json json = co_await util::FetchJson(http, std::move(request),
+                                         std::move(stop_token));
+    co_return ToItem(json);
+  }
+
+  template <http::HttpClient HttpClient>
+  Task<Token> ExchangeAuthorizationCode(HttpClient& http, std::string code,
                                         stdx::stop_token stop_token) const {
     auto request = http::Request<std::string>{
         .url = "https://accounts.google.com/o/oauth2/token",
@@ -103,7 +114,7 @@ class GoogleDrive {
                                         {"client_secret", data_.client_secret},
                                         {"client_id", data_.client_id},
                                         {"redirect_uri", data_.redirect_uri},
-                                        {"code", code}})};
+                                        {"code", std::move(code)}})};
     json json = co_await util::FetchJson(http, std::move(request),
                                          std::move(stop_token));
     co_return Token{.access_token = json["access_token"],
@@ -111,8 +122,7 @@ class GoogleDrive {
   }
 
   template <http::HttpClient HttpClient>
-  Task<Token> RefreshAccessToken(HttpClient& http,
-                                 std::string_view refresh_token,
+  Task<Token> RefreshAccessToken(HttpClient& http, std::string refresh_token,
                                  stdx::stop_token stop_token) const {
     auto request = http::Request<std::string>{
         .url = "https://accounts.google.com/o/oauth2/token",
@@ -126,7 +136,7 @@ class GoogleDrive {
                                          std::move(stop_token));
 
     co_return Token{.access_token = json["access_token"],
-                    .refresh_token = std::string(refresh_token)};
+                    .refresh_token = std::move(refresh_token)};
   }
 
   [[nodiscard]] static std::string GetAuthorizationUrl(const AuthData& data) {
@@ -144,6 +154,9 @@ class GoogleDrive {
  private:
   static constexpr std::string_view kEndpoint =
       "https://www.googleapis.com/drive/v3";
+  static constexpr std::string_view kFileProperties =
+      "id,name,thumbnailLink,trashed,mimeType,iconLink,parents,size,"
+      "modifiedTime";
 
   static std::string GetEndpoint(std::string_view path) {
     return std::string(kEndpoint) + std::string(path);

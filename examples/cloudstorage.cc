@@ -76,8 +76,9 @@ class HttpHandler {
 
   Task<> ProcessCode(std::string_view code,
                      coro::stdx::stop_token stop_token) const {
-    token_ = co_await GoogleDrive(GetGoogleDriveAuthData())
-                 .ExchangeAuthorizationCode(http_, code, stop_token);
+    token_ =
+        co_await GoogleDrive(GetGoogleDriveAuthData())
+            .ExchangeAuthorizationCode(http_, std::string(code), stop_token);
     quit_.resume();
   }
 
