@@ -41,7 +41,8 @@ class CloudStorageException : public std::exception {
   std::string message_;
 };
 
-template <CloudProviderImpl Impl, http::HttpClient HttpClient>
+template <CloudProviderImpl Impl, http::HttpClient HttpClient,
+          typename OnAuthTokenUpdated>
 class CloudProvider {
  public:
   using AuthToken = typename Impl::AuthToken;
@@ -51,11 +52,13 @@ class CloudProvider {
   using Item = typename Impl::Item;
   using PageData = typename Impl::PageData;
 
-  CloudProvider(HttpClient& http, AuthToken auth_token, AuthData auth_data)
+  CloudProvider(HttpClient& http, AuthToken auth_token, AuthData auth_data,
+                OnAuthTokenUpdated on_auth_token_updated)
       : http_(http),
         shared_data_(std::make_shared<SharedData>(
             SharedData{.auth_token = std::move(auth_token)})),
-        auth_data_(std::move(auth_data)) {}
+        auth_data_(std::move(auth_data)),
+        on_auth_token_updated_(std::move(on_auth_token_updated)) {}
 
   ~CloudProvider() { stop_source_.request_stop(); }
 
@@ -66,7 +69,7 @@ class CloudProvider {
 
   auto GetGeneralData(stdx::stop_token stop_token = stdx::stop_token()) {
     return RefreshAuthTokenIfNeeded(
-        [=] {
+        [this, stop_token] {
           return Impl::GetGeneralData(
               http_, shared_data_->auth_token.access_token, stop_token);
         },
@@ -76,7 +79,7 @@ class CloudProvider {
   auto GetItem(std::string id,
                stdx::stop_token stop_token = stdx::stop_token()) {
     return RefreshAuthTokenIfNeeded(
-        [=] {
+        [this, id, stop_token] {
           return Impl::GetItem(http_, shared_data_->auth_token, id, stop_token);
         },
         stop_token);
@@ -91,10 +94,10 @@ class CloudProvider {
   auto GetFileContent(File file, http::Range range = http::Range{},
                       stdx::stop_token stop_token = stdx::stop_token()) {
     return RefreshAuthTokenIfNeeded(
-        [=] {
+        [this, file, range, stop_token] {
           return Impl::GetFileContent(http_,
                                       shared_data_->auth_token.access_token,
-                                      std::move(file), range, stop_token);
+                                      file, range, stop_token);
         },
         stop_token);
   }
@@ -114,7 +117,7 @@ class CloudProvider {
                          std::optional<std::string> page_token = std::nullopt,
                          stdx::stop_token stop_token = stdx::stop_token()) {
     return RefreshAuthTokenIfNeeded(
-        [=] {
+        [this, directory, page_token, stop_token] {
           return Impl::ListDirectoryPage(http_,
                                          shared_data_->auth_token.access_token,
                                          directory, page_token, stop_token);
@@ -222,9 +225,12 @@ class CloudProvider {
       shared_data_->pending_auth_token_refresh = true;
       [this]() -> Task<> {
         auto shared_data = shared_data_;
-        shared_data->auth_token =
-            co_await RefreshAccessToken(stop_source_.get_token());
+        auto stop_token = stop_source_.get_token();
+        shared_data->auth_token = co_await RefreshAccessToken(stop_token);
         shared_data->pending_auth_token_refresh = false;
+        if (!stop_token.stop_requested()) {
+          on_auth_token_updated_(shared_data->auth_token);
+        }
         while (!shared_data->semaphore.empty()) {
           (*shared_data->semaphore.begin())->resume();
         }
@@ -246,14 +252,18 @@ class CloudProvider {
   std::shared_ptr<SharedData> shared_data_;
   AuthData auth_data_;
   stdx::stop_source stop_source_;
+  OnAuthTokenUpdated on_auth_token_updated_;
 };
 
-template <CloudProviderImpl Impl, http::HttpClient HttpClient>
-CloudProvider<Impl, HttpClient> MakeCloudProvider(
+template <CloudProviderImpl Impl, http::HttpClient HttpClient,
+          typename OnAuthTokenUpdated>
+CloudProvider<Impl, HttpClient, OnAuthTokenUpdated> MakeCloudProvider(
     HttpClient& http, typename Impl::AuthToken auth_token,
-    typename Impl::AuthData auth_data) {
-  return CloudProvider<Impl, HttpClient>(http, std::move(auth_token),
-                                         std::move(auth_data));
+    typename Impl::AuthData auth_data,
+    OnAuthTokenUpdated on_auth_token_updated) {
+  return CloudProvider<Impl, HttpClient, OnAuthTokenUpdated>(
+      http, std::move(auth_token), std::move(auth_data),
+      std::move(on_auth_token_updated));
 }
 
 }  // namespace coro::cloudstorage
