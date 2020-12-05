@@ -3,8 +3,10 @@
 
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
-
-#include <iostream>
+#include <coro/semaphore.h>
+#include <coro/stdx/stop_callback.h>
+#include <coro/stdx/stop_source.h>
+#include <coro/util/make_pointer.h>
 
 namespace coro::cloudstorage {
 
@@ -51,18 +53,33 @@ class CloudProvider {
 
   CloudProvider(HttpClient& http, AuthToken auth_token, AuthData auth_data)
       : http_(http),
-        auth_token_(std::move(auth_token)),
+        shared_data_(std::make_shared<SharedData>(
+            SharedData{.auth_token = std::move(auth_token)})),
         auth_data_(std::move(auth_data)) {}
 
+  ~CloudProvider() { stop_source_.request_stop(); }
+
+  CloudProvider(const CloudProvider&) = delete;
+  CloudProvider(CloudProvider&&) = delete;
+  CloudProvider& operator=(const CloudProvider&) = delete;
+  CloudProvider& operator=(CloudProvider&&) = delete;
+
   auto GetGeneralData(stdx::stop_token stop_token = stdx::stop_token()) {
-    return Impl::GetGeneralData(http_, auth_token_.access_token,
-                                std::move(stop_token));
+    return RefreshAuthTokenIfNeeded(
+        [=] {
+          return Impl::GetGeneralData(
+              http_, shared_data_->auth_token.access_token, stop_token);
+        },
+        stop_token);
   }
 
   auto GetItem(std::string id,
                stdx::stop_token stop_token = stdx::stop_token()) {
-    return Impl::GetItem(http_, std::move(auth_token_), std::move(id),
-                         std::move(stop_token));
+    return RefreshAuthTokenIfNeeded(
+        [=] {
+          return Impl::GetItem(http_, shared_data_->auth_token, id, stop_token);
+        },
+        stop_token);
   }
 
   Task<Item> GetItemByPath(std::string path,
@@ -73,38 +90,46 @@ class CloudProvider {
 
   auto GetFileContent(File file, http::Range range = http::Range{},
                       stdx::stop_token stop_token = stdx::stop_token()) {
-    return Impl::GetFileContent(http_, auth_token_.access_token,
-                                std::move(file), range, std::move(stop_token));
+    return RefreshAuthTokenIfNeeded(
+        [=] {
+          return Impl::GetFileContent(http_,
+                                      shared_data_->auth_token.access_token,
+                                      std::move(file), range, stop_token);
+        },
+        stop_token);
   }
 
   Generator<PageData> ListDirectory(
       Directory directory, stdx::stop_token stop_token = stdx::stop_token()) {
     std::optional<std::string> current_page_token;
     do {
-      auto page_data = co_await Impl::ListDirectoryPage(
-          http_, auth_token_.access_token, directory,
-          std::move(current_page_token), stop_token);
+      auto page_data = co_await ListDirectoryPage(
+          directory, std::move(current_page_token), stop_token);
       co_yield page_data;
       current_page_token = page_data.next_page_token;
     } while (current_page_token);
   }
 
-  auto ListDirectoryPage(
-      HttpClient& http, std::string access_token, Directory directory,
-      std::optional<std::string_view> page_token = std::nullopt,
-      stdx::stop_token stop_token = stdx::stop_token()) {
-    return Impl::ListDirectoryPage(http, std::move(access_token),
-                                   std::move(directory), page_token,
-                                   std::move(stop_token));
+  auto ListDirectoryPage(Directory directory,
+                         std::optional<std::string> page_token = std::nullopt,
+                         stdx::stop_token stop_token = stdx::stop_token()) {
+    return RefreshAuthTokenIfNeeded(
+        [=] {
+          return Impl::ListDirectoryPage(http_,
+                                         shared_data_->auth_token.access_token,
+                                         directory, page_token, stop_token);
+        },
+        stop_token);
   }
 
   auto RefreshAccessToken(
       stdx::stop_token stop_token = stdx::stop_token()) const {
-    return Impl::RefreshAccessToken(http_, auth_data_, auth_token_.access_token,
+    return Impl::RefreshAccessToken(http_, auth_data_,
+                                    shared_data_->auth_token.refresh_token,
                                     std::move(stop_token));
   }
 
-  const AuthToken& GetAuthToken() const { return auth_token_; }
+  const AuthToken& GetAuthToken() const { return shared_data_->auth_token; }
 
  private:
   Task<Item> GetItemByPath(Directory current_directory, std::string path,
@@ -143,9 +168,84 @@ class CloudProvider {
     throw CloudStorageException(CloudStorageException::Type::kNotFound);
   }
 
+  template <typename Operation>
+  requires requires(Operation op) {
+    op().begin();
+  }
+  auto RefreshAuthTokenIfNeeded(Operation operation,
+                                stdx::stop_token stop_token)
+      -> decltype(operation()) {
+    bool success = false;
+    try {
+      auto generator = operation();
+      auto begin = co_await generator.begin();
+      success = true;
+      auto end = generator.end();
+      auto it = begin;
+      while (it != end) {
+        co_yield* it;
+        co_await ++it;
+      }
+    } catch (const http::HttpException& exception) {
+      if (exception.status() != 401 || success) {
+        throw;
+      }
+    }
+    co_await RefreshAuthToken(std::move(stop_token));
+    FOR_CO_AWAIT(auto chunk, operation(), { co_yield chunk; });
+  }
+
+  template <typename Operation>
+  auto RefreshAuthTokenIfNeeded(Operation operation,
+                                stdx::stop_token stop_token)
+      -> decltype(operation()) {
+    try {
+      co_return co_await operation();
+    } catch (const http::HttpException& exception) {
+      if (exception.status() != 401) {
+        throw;
+      }
+    }
+    co_await RefreshAuthToken(std::move(stop_token));
+    co_return co_await operation();
+  }
+
+  Task<> RefreshAuthToken(stdx::stop_token stop_token) {
+    Semaphore semaphore;
+    shared_data_->semaphore.insert(&semaphore);
+    auto scope_guard = util::MakePointer(
+        &semaphore, [shared_data = shared_data_](Semaphore* semaphore) {
+          shared_data->semaphore.erase(semaphore);
+        });
+    stdx::stop_callback stop_callback(stop_token, [&] { semaphore.resume(); });
+    if (!shared_data_->pending_auth_token_refresh) {
+      shared_data_->pending_auth_token_refresh = true;
+      [this]() -> Task<> {
+        auto shared_data = shared_data_;
+        shared_data->auth_token =
+            co_await RefreshAccessToken(stop_source_.get_token());
+        shared_data->pending_auth_token_refresh = false;
+        while (!shared_data->semaphore.empty()) {
+          (*shared_data->semaphore.begin())->resume();
+        }
+      }();
+    }
+    co_await semaphore;
+    if (stop_token.stop_requested()) {
+      throw http::HttpException(http::HttpException::kAborted);
+    }
+  }
+
+  struct SharedData {
+    bool pending_auth_token_refresh = false;
+    std::unordered_set<Semaphore*> semaphore;
+    AuthToken auth_token;
+  };
+
   HttpClient& http_;
-  AuthToken auth_token_;
+  std::shared_ptr<SharedData> shared_data_;
   AuthData auth_data_;
+  stdx::stop_source stop_source_;
 };
 
 template <CloudProviderImpl Impl, http::HttpClient HttpClient>
