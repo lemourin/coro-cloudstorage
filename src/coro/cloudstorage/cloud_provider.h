@@ -9,10 +9,10 @@
 namespace coro::cloudstorage {
 
 template <typename T>
-concept CloudProviderImpl = requires(const T i, http::HttpStub& http,
-                                     std::string string,
+concept CloudProviderImpl = requires(http::HttpStub& http, std::string code,
+                                     typename T::AuthData auth_data,
                                      stdx::stop_token stop_token) {
-  { i.ExchangeAuthorizationCode(http, string, stop_token) }
+  { T::ExchangeAuthorizationCode(http, auth_data, code, stop_token) }
   ->Awaitable;
 };
 
@@ -40,46 +40,45 @@ class CloudStorageException : public std::exception {
 };
 
 template <CloudProviderImpl Impl, http::HttpClient HttpClient>
-class CloudProvider : public Impl {
+class CloudProvider {
  public:
   using AuthToken = typename Impl::AuthToken;
+  using AuthData = typename Impl::AuthData;
   using Directory = typename Impl::Directory;
   using File = typename Impl::File;
   using Item = typename Impl::Item;
   using PageData = typename Impl::PageData;
 
-  template <typename... Args>
-  CloudProvider(AuthToken auth_token, HttpClient& http, Args&&... args)
-      : Impl(std::forward<Args>(args)...),
+  CloudProvider(HttpClient& http, AuthToken auth_token, AuthData auth_data)
+      : http_(http),
         auth_token_(std::move(auth_token)),
-        http_(http) {}
+        auth_data_(std::move(auth_data)) {}
 
-  auto GetGeneralData(stdx::stop_token stop_token = stdx::stop_token()) const {
+  auto GetGeneralData(stdx::stop_token stop_token = stdx::stop_token()) {
     return Impl::GetGeneralData(http_, auth_token_.access_token,
                                 std::move(stop_token));
   }
 
   auto GetItem(std::string id,
-               stdx::stop_token stop_token = stdx::stop_token()) const {
+               stdx::stop_token stop_token = stdx::stop_token()) {
     return Impl::GetItem(http_, std::move(auth_token_), std::move(id),
                          std::move(stop_token));
   }
 
-  Task<Item> GetItemByPath(std::string path, stdx::stop_token stop_token =
-                                                 stdx::stop_token()) const {
+  Task<Item> GetItemByPath(std::string path,
+                           stdx::stop_token stop_token = stdx::stop_token()) {
     co_return co_await GetItemByPath(co_await Impl::GetRoot(), std::move(path),
                                      std::move(stop_token));
   }
 
   auto GetFileContent(File file, http::Range range = http::Range{},
-                      stdx::stop_token stop_token = stdx::stop_token()) const {
+                      stdx::stop_token stop_token = stdx::stop_token()) {
     return Impl::GetFileContent(http_, auth_token_.access_token,
                                 std::move(file), range, std::move(stop_token));
   }
 
   Generator<PageData> ListDirectory(
-      Directory directory,
-      stdx::stop_token stop_token = stdx::stop_token()) const {
+      Directory directory, stdx::stop_token stop_token = stdx::stop_token()) {
     std::optional<std::string> current_page_token;
     do {
       auto page_data = co_await Impl::ListDirectoryPage(
@@ -93,7 +92,7 @@ class CloudProvider : public Impl {
   auto ListDirectoryPage(
       HttpClient& http, std::string access_token, Directory directory,
       std::optional<std::string_view> page_token = std::nullopt,
-      stdx::stop_token stop_token = stdx::stop_token()) const {
+      stdx::stop_token stop_token = stdx::stop_token()) {
     return Impl::ListDirectoryPage(http, std::move(access_token),
                                    std::move(directory), page_token,
                                    std::move(stop_token));
@@ -101,13 +100,15 @@ class CloudProvider : public Impl {
 
   auto RefreshAccessToken(
       stdx::stop_token stop_token = stdx::stop_token()) const {
-    return Impl::RefreshAccessToken(http_, auth_token_.access_token,
+    return Impl::RefreshAccessToken(http_, auth_data_, auth_token_.access_token,
                                     std::move(stop_token));
   }
 
+  const AuthToken& GetAuthToken() const { return auth_token_; }
+
  private:
   Task<Item> GetItemByPath(Directory current_directory, std::string path,
-                           stdx::stop_token stop_token) const {
+                           stdx::stop_token stop_token) {
     if (path.empty() || path == "/") {
       co_return current_directory;
     }
@@ -142,15 +143,17 @@ class CloudProvider : public Impl {
     throw CloudStorageException(CloudStorageException::Type::kNotFound);
   }
 
-  mutable AuthToken auth_token_;
   HttpClient& http_;
+  AuthToken auth_token_;
+  AuthData auth_data_;
 };
 
-template <CloudProviderImpl Impl, http::HttpClient HttpClient, typename... Args>
+template <CloudProviderImpl Impl, http::HttpClient HttpClient>
 CloudProvider<Impl, HttpClient> MakeCloudProvider(
-    typename Impl::AuthToken auth_token, HttpClient& http, Args&&... args) {
-  return CloudProvider<Impl, HttpClient>(std::move(auth_token), http,
-                                         std::forward<Args>(args)...);
+    HttpClient& http, typename Impl::AuthToken auth_token,
+    typename Impl::AuthData auth_data) {
+  return CloudProvider<Impl, HttpClient>(http, std::move(auth_token),
+                                         std::move(auth_data));
 }
 
 }  // namespace coro::cloudstorage

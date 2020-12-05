@@ -73,9 +73,9 @@ struct AuthHandler {
 
   Task<> ProcessCode(std::string_view code,
                      coro::stdx::stop_token stop_token) const {
-    token = co_await GoogleDrive(GetGoogleDriveAuthData())
-                .ExchangeAuthorizationCode(http, std::string(code),
-                                           std::move(stop_token));
+    token = co_await GoogleDrive::ExchangeAuthorizationCode(
+        http, GetGoogleDriveAuthData(), std::string(code),
+        std::move(stop_token));
     quit.resume();
   }
 
@@ -85,15 +85,13 @@ struct AuthHandler {
   GoogleDrive::AuthToken& token;
 };
 
-template <coro::http::HttpClient HttpClient>
+template <typename CloudProvider>
 struct ProxyHandler {
   using ProviderImpl = GoogleDrive;
 
   Task<Response<>> operator()(const coro::http::Request<>& request,
                               coro::stdx::stop_token stop_token) const {
     std::cerr << "[" << request.method << "] " << request.url << "\n";
-    auto provider = coro::cloudstorage::MakeCloudProvider<ProviderImpl>(
-        auth_token, http, GetGoogleDriveAuthData());
     std::string path = DecodeUri(ParseUri(request.url).path.value_or(""));
     auto it = request.headers.find("Range");
     coro::http::Range range = {};
@@ -132,11 +130,14 @@ struct ProxyHandler {
     quit.resume();
   }
 
-  event_base* event_loop;
-  HttpClient& http;
-  GoogleDrive::AuthToken& auth_token;
+  CloudProvider& provider;
   Semaphore& quit;
 };
+
+template <typename CloudProvider>
+auto MakeProxyHandler(CloudProvider& cloud_provider, Semaphore& semaphore) {
+  return ProxyHandler<CloudProvider>{cloud_provider, semaphore};
+}
 
 template <coro::http::HttpClient HttpClient>
 Task<GoogleDrive::AuthToken> GetAuthToken(event_base* event_loop,
@@ -146,9 +147,9 @@ Task<GoogleDrive::AuthToken> GetAuthToken(event_base* event_loop,
     if (token_file) {
       nlohmann::json json;
       token_file >> json;
-      co_return co_await GoogleDrive(GetGoogleDriveAuthData())
-          .RefreshAccessToken(http, std::string(json["refresh_token"]),
-                              coro::stdx::stop_token());
+      co_return co_await GoogleDrive::RefreshAccessToken(
+          http, GetGoogleDriveAuthData(), std::string(json["refresh_token"]),
+          coro::stdx::stop_token());
     }
   }
   Semaphore quit_semaphore;
@@ -176,10 +177,11 @@ Task<> CoMain(event_base* event_loop) noexcept {
     CurlHttp http(event_loop);
     auto auth_token = co_await GetAuthToken(event_loop, http);
     std::cerr << "ACCESS TOKEN: " << auth_token.access_token << "\n";
+    auto provider = coro::cloudstorage::MakeCloudProvider<GoogleDrive>(
+        http, auth_token, GetGoogleDriveAuthData());
     Semaphore quit;
-    HttpServer http_server(
-        event_loop, {.address = "0.0.0.0", .port = 12345},
-        ProxyHandler<CurlHttp>{event_loop, http, auth_token, quit});
+    HttpServer http_server(event_loop, {.address = "0.0.0.0", .port = 12345},
+                           MakeProxyHandler(provider, quit));
     co_await quit;
   } catch (const coro::http::HttpException& exception) {
     if (exception.status() == 401) {
