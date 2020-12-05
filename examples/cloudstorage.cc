@@ -133,15 +133,28 @@ Task<> CoMain(event_base* event_loop) noexcept {
     std::cerr << "GENERAL DATA: " << general_data.username << "\n";
 
     FOR_CO_AWAIT(
-        const GoogleDrive::PageData& page_data,
-        provider.ListDirectory(http, access_token, GoogleDrive::Directory{}), {
-          for (const auto& item : page_data.items) {
-            std::visit([](auto d) { std::cerr << d.name << "\n"; }, item);
+        const auto& page,
+        provider.ListDirectory(http, access_token, provider.GetRoot()), {
+          for (const auto& item : page.items) {
+            std::visit([](auto i) { std::cerr << i.name << "\n"; }, item);
           }
         });
+
+    auto item = co_await provider.GetItem(http, access_token,
+                                          "0B6EoXZNf-QgTNjhLZW11cG51Tlk");
+    std::cerr << std::get<GoogleDrive::File>(item).id << "\n";
+
+    FOR_CO_AWAIT(const std::string& chunk,
+                 provider.GetFileContent(http, access_token,
+                                         std::get<GoogleDrive::File>(item)),
+                 { std::cerr << "CHUNK " << chunk; });
+
+  } catch (const coro::http::HttpException& exception) {
+    if (exception.status() == 401) {
+      std::remove(std::string(kTokenFile).c_str());
+    }
   } catch (const std::exception& exception) {
     std::cerr << "EXCEPTION: " << exception.what();
-    std::remove(std::string(kTokenFile).c_str());
   }
 }
 

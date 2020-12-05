@@ -53,12 +53,15 @@ class GoogleDrive {
 
   explicit GoogleDrive(AuthData data) : data_(std::move(data)) {}
 
+  Directory GetRoot() const { return Directory{"root"}; }
+
   template <http::HttpClient HttpClient>
   Task<PageData> ListDirectoryPage(HttpClient& http, std::string access_token,
                                    const Directory& directory,
                                    std::optional<std::string> page_token,
                                    stdx::stop_token stop_token) const {
     std::vector<std::pair<std::string, std::string>> params = {
+        {"q", "'" + directory.id + "' in parents"},
         {"fields",
          "files(" + std::string(kFileProperties) + "),kind,nextPageToken"}};
     if (page_token) {
@@ -95,12 +98,31 @@ class GoogleDrive {
   Task<Item> GetItem(HttpClient& http, std::string access_token, std::string id,
                      stdx::stop_token stop_token) const {
     auto request = http::Request<>{
-        .url = GetEndpoint("/drive/v3/files/" + std::move(id)) + "?" +
+        .url = GetEndpoint("/files/" + std::move(id)) + "?" +
                http::FormDataToString({{"fields", kFileProperties}}),
         .headers = {{"Authorization", "Bearer " + std::move(access_token)}}};
     json json = co_await util::FetchJson(http, std::move(request),
                                          std::move(stop_token));
     co_return ToItem(json);
+  }
+
+  template <http::HttpClient HttpClient>
+  Generator<std::string> GetFileContent(HttpClient& http,
+                                        std::string access_token,
+                                        const File& file, const Range& range,
+                                        stdx::stop_token stop_token) const {
+    std::stringstream range_header;
+    range_header << "bytes=" << range.start << "-";
+    if (range.end) {
+      range_header << *range.end;
+    }
+    auto request = http::Request<>{
+        .url = GetEndpoint("/files/" + file.id) + "?alt=media",
+        .headers = {{"Authorization", "Bearer " + std::move(access_token)},
+                    {"Range", std::move(range_header).str()}}};
+    auto response =
+        co_await http.Fetch(std::move(request), std::move(stop_token));
+    FOR_CO_AWAIT(std::string body, response.body, { co_yield body; });
   }
 
   template <http::HttpClient HttpClient>

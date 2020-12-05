@@ -13,6 +13,11 @@ concept CloudProviderImpl = requires(const T i, http::HttpStub& http,
   ->Awaitable;
 };
 
+struct Range {
+  int64_t start;
+  std::optional<int64_t> end;
+};
+
 template <CloudProviderImpl Impl>
 class CloudProvider : public Impl {
  public:
@@ -20,8 +25,24 @@ class CloudProvider : public Impl {
 
   template <http::HttpClient HttpClient>
   auto GetGeneralData(HttpClient& http, std::string access_token,
-                      stdx::stop_token stop_token = stdx::stop_token()) {
+                      stdx::stop_token stop_token = stdx::stop_token()) const {
     return Impl::GetGeneralData(http, std::move(access_token),
+                                std::move(stop_token));
+  }
+
+  template <http::HttpClient HttpClient>
+  auto GetItem(HttpClient& http, std::string access_token, std::string id,
+               stdx::stop_token stop_token = stdx::stop_token()) const {
+    return Impl::GetItem(http, std::move(access_token), std::move(id),
+                         std::move(stop_token));
+  }
+
+  template <http::HttpClient HttpClient>
+  auto GetFileContent(HttpClient& http, std::string access_token,
+                      const typename Impl::File& file,
+                      const Range& range = Range{},
+                      stdx::stop_token stop_token = stdx::stop_token()) const {
+    return Impl::GetFileContent(http, std::move(access_token), file, range,
                                 std::move(stop_token));
   }
 
@@ -29,7 +50,7 @@ class CloudProvider : public Impl {
   Generator<typename Impl::PageData> ListDirectory(
       HttpClient& http, std::string access_token,
       const typename Impl::Directory& directory,
-      stdx::stop_token stop_token = stdx::stop_token()) {
+      stdx::stop_token stop_token = stdx::stop_token()) const {
     std::optional<std::string> current_page_token;
     do {
       auto page_data = co_await Impl::ListDirectoryPage(
