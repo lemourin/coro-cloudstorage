@@ -74,31 +74,33 @@ struct AuthHandler {
   Task<> ProcessCode(std::string_view code,
                      coro::stdx::stop_token stop_token) const {
     token = co_await GoogleDrive(GetGoogleDriveAuthData())
-                .ExchangeAuthorizationCode(http, std::string(code), stop_token);
+                .ExchangeAuthorizationCode(http, std::string(code),
+                                           std::move(stop_token));
     quit.resume();
   }
 
   event_base* event_loop;
   HttpClient& http;
   Semaphore& quit;
-  GoogleDrive::Token& token;
+  GoogleDrive::AuthToken& token;
 };
 
 template <coro::http::HttpClient HttpClient>
 struct ProxyHandler {
+  using ProviderImpl = GoogleDrive;
+
   Task<Response<>> operator()(const coro::http::Request<>& request,
                               coro::stdx::stop_token stop_token) const {
-    using ProviderImpl = GoogleDrive;
     std::cerr << "[" << request.method << "] " << request.url << "\n";
-    CloudProvider<ProviderImpl> provider(GetGoogleDriveAuthData());
+    auto provider = coro::cloudstorage::MakeCloudProvider<ProviderImpl>(
+        auth_token, http, GetGoogleDriveAuthData());
     std::string path = DecodeUri(ParseUri(request.url).path.value_or(""));
     auto it = request.headers.find("Range");
     coro::http::Range range = {};
     if (it != std::end(request.headers)) {
       range = ParseRange(it->second);
     }
-    auto item =
-        co_await provider.GetItemByPath(http, access_token, path, stop_token);
+    auto item = co_await provider.GetItemByPath(path, stop_token);
     const auto& file = std::get<ProviderImpl::File>(item);
     std::unordered_multimap<std::string, std::string> headers = {
         {"Content-Type", GetMimeType(GetExtension(std::move(path)))},
@@ -122,8 +124,7 @@ struct ProxyHandler {
     co_return Response<>{
         .status = it == std::end(request.headers) || !file.size ? 200 : 206,
         .headers = std::move(headers),
-        .body = provider.GetFileContent(http, access_token, file, range,
-                                        stop_token)};
+        .body = provider.GetFileContent(file, range, stop_token)};
   }
 
   void OnQuit() const {
@@ -133,25 +134,25 @@ struct ProxyHandler {
 
   event_base* event_loop;
   HttpClient& http;
-  std::string access_token;
+  GoogleDrive::AuthToken& auth_token;
   Semaphore& quit;
 };
 
 template <coro::http::HttpClient HttpClient>
-Task<std::string> GetAccessToken(event_base* event_loop, HttpClient& http) {
+Task<GoogleDrive::AuthToken> GetAuthToken(event_base* event_loop,
+                                          HttpClient& http) {
   {
     std::ifstream token_file{std::string(kTokenFile)};
     if (token_file) {
       nlohmann::json json;
       token_file >> json;
-      auto token =
-          co_await CloudProvider<GoogleDrive>(GetGoogleDriveAuthData())
-              .RefreshAccessToken(http, std::string(json["refresh_token"]));
-      co_return token.access_token;
+      co_return co_await GoogleDrive(GetGoogleDriveAuthData())
+          .RefreshAccessToken(http, std::string(json["refresh_token"]),
+                              coro::stdx::stop_token());
     }
   }
   Semaphore quit_semaphore;
-  GoogleDrive::Token token;
+  GoogleDrive::AuthToken token;
   HttpServer http_server(
       event_loop, {.address = "0.0.0.0", .port = 12345},
       AuthHandler<HttpClient>{event_loop, http, quit_semaphore, token});
@@ -167,18 +168,18 @@ Task<std::string> GetAccessToken(event_base* event_loop, HttpClient& http) {
   json["refresh_token"] = token.refresh_token;
   token_file << json;
 
-  co_return token.access_token;
+  co_return token;
 }
 
 Task<> CoMain(event_base* event_loop) noexcept {
   try {
     CurlHttp http(event_loop);
-    std::string access_token = co_await GetAccessToken(event_loop, http);
-    std::cerr << "ACCESS TOKEN: " << access_token << "\n";
+    auto auth_token = co_await GetAuthToken(event_loop, http);
+    std::cerr << "ACCESS TOKEN: " << auth_token.access_token << "\n";
     Semaphore quit;
     HttpServer http_server(
         event_loop, {.address = "0.0.0.0", .port = 12345},
-        ProxyHandler<CurlHttp>{event_loop, http, access_token, quit});
+        ProxyHandler<CurlHttp>{event_loop, http, auth_token, quit});
     co_await quit;
   } catch (const coro::http::HttpException& exception) {
     if (exception.status() == 401) {

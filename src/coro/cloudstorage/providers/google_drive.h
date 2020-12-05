@@ -25,7 +25,7 @@ class GoogleDrive {
     std::string username;
   };
 
-  struct Token {
+  struct AuthToken {
     std::string access_token;
     std::string refresh_token;
   };
@@ -128,8 +128,8 @@ class GoogleDrive {
   }
 
   template <http::HttpClient HttpClient>
-  Task<Token> ExchangeAuthorizationCode(HttpClient& http, std::string code,
-                                        stdx::stop_token stop_token) const {
+  Task<AuthToken> ExchangeAuthorizationCode(HttpClient& http, std::string code,
+                                            stdx::stop_token stop_token) const {
     auto request = http::Request<std::string>{
         .url = "https://accounts.google.com/o/oauth2/token",
         .method = "POST",
@@ -141,13 +141,14 @@ class GoogleDrive {
                                         {"code", std::move(code)}})};
     json json = co_await util::FetchJson(http, std::move(request),
                                          std::move(stop_token));
-    co_return Token{.access_token = json["access_token"],
-                    .refresh_token = json["refresh_token"]};
+    co_return AuthToken{.access_token = json["access_token"],
+                        .refresh_token = json["refresh_token"]};
   }
 
   template <http::HttpClient HttpClient>
-  Task<Token> RefreshAccessToken(HttpClient& http, std::string refresh_token,
-                                 stdx::stop_token stop_token) const {
+  Task<AuthToken> RefreshAccessToken(HttpClient& http,
+                                     std::string refresh_token,
+                                     stdx::stop_token stop_token) const {
     auto request = http::Request<std::string>{
         .url = "https://accounts.google.com/o/oauth2/token",
         .method = "POST",
@@ -159,11 +160,11 @@ class GoogleDrive {
     json json = co_await util::FetchJson(http, std::move(request),
                                          std::move(stop_token));
 
-    co_return Token{.access_token = json["access_token"],
-                    .refresh_token = std::move(refresh_token)};
+    co_return AuthToken{.access_token = json["access_token"],
+                        .refresh_token = std::move(refresh_token)};
   }
 
-  [[nodiscard]] static std::string GetAuthorizationUrl(const AuthData& data) {
+  static std::string GetAuthorizationUrl(const AuthData& data) {
     return "https://accounts.google.com/o/oauth2/auth?" +
            http::FormDataToString(
                {{"response_type", "code"},
