@@ -132,16 +132,7 @@ Task<> CoMain(event_base* event_loop) noexcept {
     auto general_data = co_await provider.GetGeneralData(http, access_token);
     std::cerr << "GENERAL DATA: " << general_data.username << "\n";
 
-    FOR_CO_AWAIT(
-        const auto& page,
-        provider.ListDirectory(http, access_token, provider.GetRoot()), {
-          for (const auto& item : page.items) {
-            std::visit([](auto i) { std::cerr << i.name << "\n"; }, item);
-          }
-        });
-
-    auto item = co_await provider.GetItem(http, access_token,
-                                          "0B6EoXZNf-QgTNjhLZW11cG51Tlk");
+    auto item = co_await provider.GetItemByPath(http, access_token, "/konto");
     std::cerr << std::get<GoogleDrive::File>(item).id << "\n";
 
     FOR_CO_AWAIT(const std::string& chunk,

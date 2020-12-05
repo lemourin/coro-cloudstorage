@@ -3,6 +3,8 @@
 
 #include <coro/http/http.h>
 
+#include <iostream>
+
 namespace coro::cloudstorage {
 
 template <typename T>
@@ -11,6 +13,29 @@ concept CloudProviderImpl = requires(const T i, http::HttpStub& http,
                                      stdx::stop_token stop_token) {
   { i.ExchangeAuthorizationCode(http, string, stop_token) }
   ->Awaitable;
+};
+
+class CloudStorageException : public std::exception {
+ public:
+  enum class Type { kNotFound };
+
+  explicit CloudStorageException(Type type)
+      : type_(type),
+        message_(std::string("CloudStorageException: ") + TypeToString(type)) {}
+
+  Type type() const { return type_; }
+  const char* what() const noexcept final { return message_.c_str(); }
+
+  static const char* TypeToString(Type type) {
+    switch (type) {
+      case Type::kNotFound:
+        return "NotFound";
+    }
+  }
+
+ private:
+  Type type_;
+  std::string message_;
 };
 
 struct Range {
@@ -35,6 +60,15 @@ class CloudProvider : public Impl {
                stdx::stop_token stop_token = stdx::stop_token()) const {
     return Impl::GetItem(http, std::move(access_token), std::move(id),
                          std::move(stop_token));
+  }
+
+  template <http::HttpClient HttpClient>
+  Task<typename Impl::Item> GetItemByPath(
+      HttpClient& http, std::string access_token, std::string path,
+      stdx::stop_token stop_token = stdx::stop_token()) const {
+    co_return co_await GetItemByPath(http, std::move(access_token),
+                                     co_await Impl::GetRoot(), std::move(path),
+                                     std::move(stop_token));
   }
 
   template <http::HttpClient HttpClient>
@@ -88,6 +122,45 @@ class CloudProvider : public Impl {
   }
 
  private:
+  template <http::HttpClient HttpClient>
+  Task<typename Impl::Item> GetItemByPath(
+      HttpClient& http, std::string access_token,
+      const typename Impl::Directory& current_directory, std::string path,
+      stdx::stop_token stop_token = stdx::stop_token()) const {
+    if (path.empty() || path == "/") {
+      co_return current_directory;
+    }
+    auto delimiter_index = path.find_first_of('/', 1);
+    std::string path_component(path.begin() + 1,
+                               delimiter_index == std::string::npos
+                                   ? path.end()
+                                   : path.begin() + delimiter_index);
+    std::string rest_component(delimiter_index == std::string::npos
+                                   ? path.end()
+                                   : path.begin() + delimiter_index,
+                               path.end());
+    FOR_CO_AWAIT(
+        const auto& page,
+        ListDirectory(http, access_token, current_directory, stop_token), {
+          for (const auto& item : page.items) {
+            if (std::holds_alternative<typename Impl::Directory>(item)) {
+              const auto& directory = std::get<typename Impl::Directory>(item);
+              if (directory.name == path_component) {
+                co_return co_await GetItemByPath(http, access_token, directory,
+                                                 rest_component);
+              }
+            } else if (rest_component.empty() &&
+                       std::holds_alternative<typename Impl::File>(item)) {
+              const auto& file = std::get<typename Impl::File>(item);
+              if (file.name == path_component) {
+                co_return file;
+              }
+            }
+          }
+        });
+
+    throw CloudStorageException(CloudStorageException::Type::kNotFound);
+  }
 };
 
 }  // namespace coro::cloudstorage

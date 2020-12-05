@@ -53,7 +53,7 @@ class GoogleDrive {
 
   explicit GoogleDrive(AuthData data) : data_(std::move(data)) {}
 
-  Directory GetRoot() const { return Directory{"root"}; }
+  Task<Directory> GetRoot() const { co_return Directory{"root"}; }
 
   template <http::HttpClient HttpClient>
   Task<PageData> ListDirectoryPage(HttpClient& http, std::string access_token,
