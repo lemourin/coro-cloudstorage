@@ -45,7 +45,7 @@ GoogleDrive::AuthData GetGoogleDriveAuthData() {
           .redirect_uri = std::string(kRedirectUri) + "/google"};
 }
 
-template <coro::http::HttpClient HttpClient>
+template <typename CloudProvider, coro::http::HttpClient HttpClient>
 struct AuthHandler {
   Task<Response<>> operator()(const coro::http::Request<>& request,
                               coro::stdx::stop_token stop_token) const {
@@ -82,8 +82,16 @@ struct AuthHandler {
   event_base* event_loop;
   HttpClient& http;
   Semaphore& quit;
-  GoogleDrive::AuthToken& token;
+  typename CloudProvider::AuthToken& token;
 };
+
+template <typename CloudProvider, coro::http::HttpClient HttpClient>
+auto MakeAuthHandler(event_base* event_loop, HttpClient& http,
+                     Semaphore& semaphore,
+                     typename CloudProvider::AuthToken& token) {
+  return AuthHandler<CloudProvider, HttpClient>{event_loop, http, semaphore,
+                                                token};
+}
 
 template <typename CloudProvider>
 struct ProxyHandler {
@@ -139,24 +147,24 @@ auto MakeProxyHandler(CloudProvider& cloud_provider, Semaphore& semaphore) {
   return ProxyHandler<CloudProvider>{cloud_provider, semaphore};
 }
 
-template <coro::http::HttpClient HttpClient>
-Task<GoogleDrive::AuthToken> GetAuthToken(event_base* event_loop,
-                                          HttpClient& http) {
+template <typename CloudProvider, coro::http::HttpClient HttpClient>
+Task<typename CloudProvider::AuthToken> GetAuthToken(event_base* event_loop,
+                                                     HttpClient& http) {
+  using AuthToken = typename CloudProvider::AuthToken;
   {
     std::ifstream token_file{std::string(kTokenFile)};
     if (token_file) {
       nlohmann::json json;
       token_file >> json;
-      co_return co_await GoogleDrive::RefreshAccessToken(
-          http, GetGoogleDriveAuthData(), std::string(json["refresh_token"]),
-          coro::stdx::stop_token());
+      co_return AuthToken{.access_token = json["access_token"],
+                          .refresh_token = json["refresh_token"]};
     }
   }
   Semaphore quit_semaphore;
-  GoogleDrive::AuthToken token;
+  AuthToken token;
   HttpServer http_server(
       event_loop, {.address = "0.0.0.0", .port = 12345},
-      AuthHandler<HttpClient>{event_loop, http, quit_semaphore, token});
+      MakeAuthHandler<CloudProvider>(event_loop, http, quit_semaphore, token));
   std::cerr << "AUTHORIZATION URL: "
             << GoogleDrive::GetAuthorizationUrl(GetGoogleDriveAuthData())
             << "\n";
@@ -174,8 +182,10 @@ Task<GoogleDrive::AuthToken> GetAuthToken(event_base* event_loop,
 
 Task<> CoMain(event_base* event_loop) noexcept {
   try {
+    using ProviderImpl = GoogleDrive;
+
     CurlHttp http(event_loop);
-    auto auth_token = co_await GetAuthToken(event_loop, http);
+    auto auth_token = co_await GetAuthToken<ProviderImpl>(event_loop, http);
     std::cerr << "ACCESS TOKEN: " << auth_token.access_token << "\n";
     auto provider = coro::cloudstorage::MakeCloudProvider<GoogleDrive>(
         http, auth_token, GetGoogleDriveAuthData());

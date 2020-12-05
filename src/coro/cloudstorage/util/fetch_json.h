@@ -14,6 +14,9 @@ static Task<nlohmann::json> FetchJson(http::HttpClient auto& http,
   http::ResponseLike auto response = co_await http.Fetch(
       std::forward<RequestType>(request), std::move(stop_token));
   std::string body = co_await http::GetBody(std::move(response.body));
+  if (response.status / 100 != 2) {
+    throw coro::http::HttpException(response.status, std::move(body));
+  }
   co_return nlohmann::json::parse(std::move(body));
 }
 
