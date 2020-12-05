@@ -37,12 +37,14 @@ class GoogleDrive {
     std::string state;
   };
 
-  struct File {
+  struct Directory {
     std::string id;
     std::string name;
   };
 
-  struct Directory : File {};
+  struct File : Directory {
+    std::optional<int64_t> size;
+  };
 
   using Item = std::variant<File, Directory>;
 
@@ -57,7 +59,7 @@ class GoogleDrive {
 
   template <http::HttpClient HttpClient>
   Task<PageData> ListDirectoryPage(HttpClient& http, std::string access_token,
-                                   const Directory& directory,
+                                   Directory directory,
                                    std::optional<std::string> page_token,
                                    stdx::stop_token stop_token) const {
     std::vector<std::pair<std::string, std::string>> params = {
@@ -108,8 +110,8 @@ class GoogleDrive {
 
   template <http::HttpClient HttpClient>
   Generator<std::string> GetFileContent(HttpClient& http,
-                                        std::string access_token,
-                                        const File& file, const Range& range,
+                                        std::string access_token, File file,
+                                        http::Range range,
                                         stdx::stop_token stop_token) const {
     std::stringstream range_header;
     range_header << "bytes=" << range.start << "-";
@@ -194,9 +196,14 @@ class GoogleDrive {
 
   template <typename T>
   static T ToItemImpl(const json& json) {
-    T result;
+    T result = {};
     result.id = json["id"];
     result.name = json["name"];
+    if constexpr (std::is_same_v<T, File>) {
+      if (json.contains("size")) {
+        result.size = std::stoll(std::string(json["size"]));
+      }
+    }
     return result;
   }
 

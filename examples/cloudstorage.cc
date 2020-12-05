@@ -21,8 +21,12 @@ using ::coro::Wait;
 using ::coro::cloudstorage::CloudProvider;
 using ::coro::cloudstorage::GoogleDrive;
 using ::coro::http::CurlHttp;
+using ::coro::http::DecodeUri;
+using ::coro::http::GetExtension;
+using ::coro::http::GetMimeType;
 using ::coro::http::HttpServer;
 using ::coro::http::ParseQuery;
+using ::coro::http::ParseRange;
 using ::coro::http::ParseUri;
 using ::coro::http::Request;
 using ::coro::http::Response;
@@ -42,14 +46,7 @@ GoogleDrive::AuthData GetGoogleDriveAuthData() {
 }
 
 template <coro::http::HttpClient HttpClient>
-class HttpHandler {
- public:
-  HttpHandler(event_base* event_loop, HttpClient& http, Semaphore& quit,
-              GoogleDrive::Token& token)
-      : event_loop_(event_loop), http_(http), quit_(quit), token_(token) {}
-
-  void OnQuit() const { quit_.resume(); }
-
+struct AuthHandler {
   Task<Response<>> operator()(const coro::http::Request<>& request,
                               coro::stdx::stop_token stop_token) const {
     auto query = ParseQuery(ParseUri(request.url).query.value_or(""));
@@ -61,12 +58,12 @@ class HttpHandler {
                          .body = GenerateBody(std::move(stop_token))};
   }
 
- private:
-  [[nodiscard]] Generator<std::string> GenerateBody(
-      coro::stdx::stop_token stop_token) const {
+  void OnQuit() const { quit.resume(); }
+
+  Generator<std::string> GenerateBody(coro::stdx::stop_token stop_token) const {
     try {
       for (int i = 0; i < 5; i++) {
-        co_await Wait(event_loop_, 1000, stop_token);
+        co_await Wait(event_loop, 1000, stop_token);
         co_yield "DUPA\n";
       }
     } catch (const InterruptedException&) {
@@ -76,19 +73,69 @@ class HttpHandler {
 
   Task<> ProcessCode(std::string_view code,
                      coro::stdx::stop_token stop_token) const {
-    token_ =
-        co_await GoogleDrive(GetGoogleDriveAuthData())
-            .ExchangeAuthorizationCode(http_, std::string(code), stop_token);
-    quit_.resume();
+    token = co_await GoogleDrive(GetGoogleDriveAuthData())
+                .ExchangeAuthorizationCode(http, std::string(code), stop_token);
+    quit.resume();
   }
 
-  event_base* event_loop_;
-  HttpClient& http_;
-  Semaphore& quit_;
-  GoogleDrive::Token& token_;
+  event_base* event_loop;
+  HttpClient& http;
+  Semaphore& quit;
+  GoogleDrive::Token& token;
 };
 
-static_assert(coro::http::Handler<HttpHandler<CurlHttp>>);
+template <coro::http::HttpClient HttpClient>
+struct ProxyHandler {
+  Task<Response<>> operator()(const coro::http::Request<>& request,
+                              coro::stdx::stop_token stop_token) const {
+    using ProviderImpl = GoogleDrive;
+    std::cerr << "[" << request.method << "] " << request.url << "\n";
+    CloudProvider<ProviderImpl> provider(GetGoogleDriveAuthData());
+    std::string path = DecodeUri(ParseUri(request.url).path.value_or(""));
+    auto it = request.headers.find("Range");
+    coro::http::Range range = {};
+    if (it != std::end(request.headers)) {
+      range = ParseRange(it->second);
+    }
+    auto item =
+        co_await provider.GetItemByPath(http, access_token, path, stop_token);
+    const auto& file = std::get<ProviderImpl::File>(item);
+    std::unordered_multimap<std::string, std::string> headers = {
+        {"Content-Type", GetMimeType(GetExtension(std::move(path)))},
+        {"Content-Disposition", "inline; filename=\"" + file.name + "\""},
+        {"Access-Control-Allow-Origin", "*"},
+        {"Access-Control-Allow-Headers", "*"}};
+    if (file.size) {
+      if (!range.end) {
+        range.end = *file.size - 1;
+      }
+      headers.insert({"Accept-Ranges", "bytes"});
+      headers.insert(
+          {"Content-Length", std::to_string(*range.end - range.start + 1)});
+      if (it != std::end(request.headers)) {
+        std::stringstream range_str;
+        range_str << "bytes " << range.start << "-" << *range.end << "/"
+                  << *file.size;
+        headers.insert({"Content-Range", std::move(range_str).str()});
+      }
+    }
+    co_return Response<>{
+        .status = it == std::end(request.headers) || !file.size ? 200 : 206,
+        .headers = std::move(headers),
+        .body = provider.GetFileContent(http, access_token, file, range,
+                                        stop_token)};
+  }
+
+  void OnQuit() const {
+    std::cerr << "QUITTING\n";
+    quit.resume();
+  }
+
+  event_base* event_loop;
+  HttpClient& http;
+  std::string access_token;
+  Semaphore& quit;
+};
 
 template <coro::http::HttpClient HttpClient>
 Task<std::string> GetAccessToken(event_base* event_loop, HttpClient& http) {
@@ -105,8 +152,9 @@ Task<std::string> GetAccessToken(event_base* event_loop, HttpClient& http) {
   }
   Semaphore quit_semaphore;
   GoogleDrive::Token token;
-  HttpServer http_server(event_loop, {.address = "0.0.0.0", .port = 12345},
-                         HttpHandler{event_loop, http, quit_semaphore, token});
+  HttpServer http_server(
+      event_loop, {.address = "0.0.0.0", .port = 12345},
+      AuthHandler<HttpClient>{event_loop, http, quit_semaphore, token});
   std::cerr << "AUTHORIZATION URL: "
             << GoogleDrive::GetAuthorizationUrl(GetGoogleDriveAuthData())
             << "\n";
@@ -127,19 +175,11 @@ Task<> CoMain(event_base* event_loop) noexcept {
     CurlHttp http(event_loop);
     std::string access_token = co_await GetAccessToken(event_loop, http);
     std::cerr << "ACCESS TOKEN: " << access_token << "\n";
-
-    CloudProvider<GoogleDrive> provider(GetGoogleDriveAuthData());
-    auto general_data = co_await provider.GetGeneralData(http, access_token);
-    std::cerr << "GENERAL DATA: " << general_data.username << "\n";
-
-    auto item = co_await provider.GetItemByPath(http, access_token, "/konto");
-    std::cerr << std::get<GoogleDrive::File>(item).id << "\n";
-
-    FOR_CO_AWAIT(const std::string& chunk,
-                 provider.GetFileContent(http, access_token,
-                                         std::get<GoogleDrive::File>(item)),
-                 { std::cerr << "CHUNK " << chunk; });
-
+    Semaphore quit;
+    HttpServer http_server(
+        event_loop, {.address = "0.0.0.0", .port = 12345},
+        ProxyHandler<CurlHttp>{event_loop, http, access_token, quit});
+    co_await quit;
   } catch (const coro::http::HttpException& exception) {
     if (exception.status() == 401) {
       std::remove(std::string(kTokenFile).c_str());

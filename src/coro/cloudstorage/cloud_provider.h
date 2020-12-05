@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_CLOUD_PROVIDER_H
 
 #include <coro/http/http.h>
+#include <coro/http/http_parse.h>
 
 #include <iostream>
 
@@ -38,15 +39,13 @@ class CloudStorageException : public std::exception {
   std::string message_;
 };
 
-struct Range {
-  int64_t start;
-  std::optional<int64_t> end;
-};
-
 template <CloudProviderImpl Impl>
 class CloudProvider : public Impl {
  public:
   using Impl::Impl;
+  using Directory = typename Impl::Directory;
+  using File = typename Impl::File;
+  using Item = typename Impl::Item;
 
   template <http::HttpClient HttpClient>
   auto GetGeneralData(HttpClient& http, std::string access_token,
@@ -63,7 +62,7 @@ class CloudProvider : public Impl {
   }
 
   template <http::HttpClient HttpClient>
-  Task<typename Impl::Item> GetItemByPath(
+  Task<Item> GetItemByPath(
       HttpClient& http, std::string access_token, std::string path,
       stdx::stop_token stop_token = stdx::stop_token()) const {
     co_return co_await GetItemByPath(http, std::move(access_token),
@@ -72,18 +71,16 @@ class CloudProvider : public Impl {
   }
 
   template <http::HttpClient HttpClient>
-  auto GetFileContent(HttpClient& http, std::string access_token,
-                      const typename Impl::File& file,
-                      const Range& range = Range{},
+  auto GetFileContent(HttpClient& http, std::string access_token, File file,
+                      http::Range range = http::Range{},
                       stdx::stop_token stop_token = stdx::stop_token()) const {
-    return Impl::GetFileContent(http, std::move(access_token), file, range,
-                                std::move(stop_token));
+    return Impl::GetFileContent(http, std::move(access_token), std::move(file),
+                                range, std::move(stop_token));
   }
 
   template <http::HttpClient HttpClient>
   Generator<typename Impl::PageData> ListDirectory(
-      HttpClient& http, std::string access_token,
-      const typename Impl::Directory& directory,
+      HttpClient& http, std::string access_token, Directory directory,
       stdx::stop_token stop_token = stdx::stop_token()) const {
     std::optional<std::string> current_page_token;
     do {
@@ -97,12 +94,12 @@ class CloudProvider : public Impl {
 
   template <http::HttpClient HttpClient>
   auto ListDirectoryPage(
-      HttpClient& http, std::string access_token,
-      const typename Impl::Directory& directory,
+      HttpClient& http, std::string access_token, Directory directory,
       std::optional<std::string_view> page_token = std::nullopt,
       stdx::stop_token stop_token = stdx::stop_token()) const {
-    return Impl::ListDirectoryPage(http, std::move(access_token), directory,
-                                   page_token, std::move(stop_token));
+    return Impl::ListDirectoryPage(http, std::move(access_token),
+                                   std::move(directory), page_token,
+                                   std::move(stop_token));
   }
 
   template <http::HttpClient HttpClient>
@@ -123,9 +120,9 @@ class CloudProvider : public Impl {
 
  private:
   template <http::HttpClient HttpClient>
-  Task<typename Impl::Item> GetItemByPath(
-      HttpClient& http, std::string access_token,
-      const typename Impl::Directory& current_directory, std::string path,
+  Task<Item> GetItemByPath(
+      HttpClient& http, std::string access_token, Directory current_directory,
+      std::string path,
       stdx::stop_token stop_token = stdx::stop_token()) const {
     if (path.empty() || path == "/") {
       co_return current_directory;
@@ -143,15 +140,15 @@ class CloudProvider : public Impl {
         const auto& page,
         ListDirectory(http, access_token, current_directory, stop_token), {
           for (const auto& item : page.items) {
-            if (std::holds_alternative<typename Impl::Directory>(item)) {
-              const auto& directory = std::get<typename Impl::Directory>(item);
+            if (std::holds_alternative<Directory>(item)) {
+              const auto& directory = std::get<Directory>(item);
               if (directory.name == path_component) {
                 co_return co_await GetItemByPath(http, access_token, directory,
                                                  rest_component);
               }
             } else if (rest_component.empty() &&
-                       std::holds_alternative<typename Impl::File>(item)) {
-              const auto& file = std::get<typename Impl::File>(item);
+                       std::holds_alternative<File>(item)) {
+              const auto& file = std::get<File>(item);
               if (file.name == path_component) {
                 co_return file;
               }
