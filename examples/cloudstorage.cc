@@ -4,6 +4,7 @@
 #include <coro/http/curl_http.h>
 #include <coro/http/http_parse.h>
 #include <coro/http/http_server.h>
+#include <coro/promise.h>
 #include <coro/stdx/coroutine.h>
 #include <coro/util/make_pointer.h>
 #include <coro/wait_task.h>
@@ -15,6 +16,7 @@
 
 using ::coro::Generator;
 using ::coro::InterruptedException;
+using ::coro::Promise;
 using ::coro::Semaphore;
 using ::coro::Task;
 using ::coro::Wait;
@@ -94,8 +96,26 @@ auto MakeAuthHandler(event_base* event_loop, HttpClient& http,
 }
 
 template <typename CloudProvider>
-struct ProxyHandler {
-  using ProviderImpl = GoogleDrive;
+class ProxyHandler {
+ public:
+  using File = typename CloudProvider::File;
+  using Item = typename CloudProvider::Item;
+
+  ProxyHandler(CloudProvider& provider, Semaphore& quit)
+      : provider_(provider), quit_(quit) {}
+  ProxyHandler(ProxyHandler&& handler)
+      : provider_(handler.provider_),
+        quit_(handler.quit_),
+        shared_data_(std::move(handler.shared_data_)) {}
+
+  ProxyHandler(const ProxyHandler&) = delete;
+  ProxyHandler& operator=(const ProxyHandler&) = delete;
+
+  ~ProxyHandler() {
+    if (shared_data_) {
+      shared_data_->stop_source.request_stop();
+    }
+  }
 
   Task<Response<>> operator()(const coro::http::Request<>& request,
                               coro::stdx::stop_token stop_token) const {
@@ -106,8 +126,8 @@ struct ProxyHandler {
     if (it != std::end(request.headers)) {
       range = ParseRange(it->second);
     }
-    auto item = co_await provider.GetItemByPath(path, stop_token);
-    const auto& file = std::get<ProviderImpl::File>(item);
+    auto item = co_await GetItem(path, stop_token);
+    auto file = std::get<File>(item);
     std::unordered_multimap<std::string, std::string> headers = {
         {"Content-Type", GetMimeType(GetExtension(std::move(path)))},
         {"Content-Disposition", "inline; filename=\"" + file.name + "\""},
@@ -130,21 +150,42 @@ struct ProxyHandler {
     co_return Response<>{
         .status = it == std::end(request.headers) || !file.size ? 200 : 206,
         .headers = std::move(headers),
-        .body = provider.GetFileContent(file, range, stop_token)};
+        .body = provider_.GetFileContent(file, range, stop_token)};
   }
 
   void OnQuit() const {
     std::cerr << "QUITTING\n";
-    quit.resume();
+    quit_.resume();
   }
 
-  CloudProvider& provider;
-  Semaphore& quit;
+  Task<Item> GetItem(std::string path,
+                     coro::stdx::stop_token stop_token) const {
+    auto it = shared_data_->tasks.find(path);
+    if (it == std::end(shared_data_->tasks)) {
+      auto promise = Promise<Item>(
+          [path, stop_token = shared_data_->stop_source.get_token(),
+           this]() -> Task<Item> {
+            co_return co_await provider_.GetItemByPath(path, stop_token);
+          });
+      it = shared_data_->tasks.insert({path, std::move(promise)}).first;
+    }
+    co_return co_await it->second.Get(stop_token);
+  }
+
+ private:
+  CloudProvider& provider_;
+  Semaphore& quit_;
+  struct SharedData {
+    std::unordered_map<std::string, Item> cache;
+    std::unordered_map<std::string, Promise<Item>> tasks;
+    coro::stdx::stop_source stop_source;
+  };
+  std::shared_ptr<SharedData> shared_data_ = std::make_shared<SharedData>();
 };
 
 template <typename CloudProvider>
 auto MakeProxyHandler(CloudProvider& cloud_provider, Semaphore& semaphore) {
-  return ProxyHandler<CloudProvider>{cloud_provider, semaphore};
+  return ProxyHandler<CloudProvider>(cloud_provider, semaphore);
 }
 
 template <typename AuthToken>
