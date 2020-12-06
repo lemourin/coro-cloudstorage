@@ -176,7 +176,6 @@ class ProxyHandler {
   CloudProvider& provider_;
   Semaphore& quit_;
   struct SharedData {
-    std::unordered_map<std::string, Item> cache;
     std::unordered_map<std::string, Promise<Item>> tasks;
     coro::stdx::stop_source stop_source;
   };

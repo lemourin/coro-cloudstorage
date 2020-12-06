@@ -3,6 +3,7 @@
 
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
+#include <coro/promise.h>
 #include <coro/semaphore.h>
 #include <coro/stdx/stop_callback.h>
 #include <coro/stdx/stop_source.h>
@@ -55,8 +56,7 @@ class CloudProvider {
   CloudProvider(HttpClient& http, AuthToken auth_token, AuthData auth_data,
                 OnAuthTokenUpdated on_auth_token_updated)
       : http_(http),
-        shared_data_(std::make_shared<SharedData>(
-            SharedData{.auth_token = std::move(auth_token)})),
+        auth_token_(std::move(auth_token)),
         auth_data_(std::move(auth_data)),
         on_auth_token_updated_(std::move(on_auth_token_updated)) {}
 
@@ -70,8 +70,8 @@ class CloudProvider {
   auto GetGeneralData(stdx::stop_token stop_token = stdx::stop_token()) {
     return RefreshAuthTokenIfNeeded(
         [this, stop_token] {
-          return Impl::GetGeneralData(
-              http_, shared_data_->auth_token.access_token, stop_token);
+          return Impl::GetGeneralData(http_, auth_token_.access_token,
+                                      stop_token);
         },
         stop_token);
   }
@@ -80,7 +80,7 @@ class CloudProvider {
                stdx::stop_token stop_token = stdx::stop_token()) {
     return RefreshAuthTokenIfNeeded(
         [this, id, stop_token] {
-          return Impl::GetItem(http_, shared_data_->auth_token, id, stop_token);
+          return Impl::GetItem(http_, auth_token_, id, stop_token);
         },
         stop_token);
   }
@@ -95,9 +95,8 @@ class CloudProvider {
                       stdx::stop_token stop_token = stdx::stop_token()) {
     return RefreshAuthTokenIfNeeded(
         [this, file, range, stop_token] {
-          return Impl::GetFileContent(http_,
-                                      shared_data_->auth_token.access_token,
-                                      file, range, stop_token);
+          return Impl::GetFileContent(http_, auth_token_.access_token, file,
+                                      range, stop_token);
         },
         stop_token);
   }
@@ -118,8 +117,7 @@ class CloudProvider {
                          stdx::stop_token stop_token = stdx::stop_token()) {
     return RefreshAuthTokenIfNeeded(
         [this, directory, page_token, stop_token] {
-          return Impl::ListDirectoryPage(http_,
-                                         shared_data_->auth_token.access_token,
+          return Impl::ListDirectoryPage(http_, auth_token_.access_token,
                                          directory, page_token, stop_token);
         },
         stop_token);
@@ -127,12 +125,11 @@ class CloudProvider {
 
   auto RefreshAccessToken(
       stdx::stop_token stop_token = stdx::stop_token()) const {
-    return Impl::RefreshAccessToken(http_, auth_data_,
-                                    shared_data_->auth_token.refresh_token,
-                                    std::move(stop_token));
+    return Impl::RefreshAccessToken(
+        http_, auth_data_, auth_token_.refresh_token, std::move(stop_token));
   }
 
-  const AuthToken& GetAuthToken() const { return shared_data_->auth_token; }
+  const AuthToken& GetAuthToken() const { return auth_token_; }
 
  private:
   Task<Item> GetItemByPath(Directory current_directory, std::string path,
@@ -189,6 +186,7 @@ class CloudProvider {
         co_yield* it;
         co_await ++it;
       }
+      co_return;
     } catch (const http::HttpException& exception) {
       if (exception.status() != 401 || success) {
         throw;
@@ -214,44 +212,26 @@ class CloudProvider {
   }
 
   Task<> RefreshAuthToken(stdx::stop_token stop_token) {
-    Semaphore semaphore;
-    shared_data_->semaphore.insert(&semaphore);
-    auto scope_guard = util::MakePointer(
-        &semaphore, [shared_data = shared_data_](Semaphore* semaphore) {
-          shared_data->semaphore.erase(semaphore);
-        });
-    stdx::stop_callback stop_callback(stop_token, [&] { semaphore.resume(); });
-    if (!shared_data_->pending_auth_token_refresh) {
-      shared_data_->pending_auth_token_refresh = true;
-      [this]() -> Task<> {
-        auto shared_data = shared_data_;
+    if (!current_auth_refresh_) {
+      current_auth_refresh_ = Promise<AuthToken>([this]() -> Task<AuthToken> {
         auto stop_token = stop_source_.get_token();
-        shared_data->auth_token = co_await RefreshAccessToken(stop_token);
-        shared_data->pending_auth_token_refresh = false;
+        auto auth_token = co_await RefreshAccessToken(stop_token);
         if (!stop_token.stop_requested()) {
-          on_auth_token_updated_(shared_data->auth_token);
+          current_auth_refresh_ = std::nullopt;
+          auth_token_ = auth_token;
+          on_auth_token_updated_(auth_token_);
         }
-        while (!shared_data->semaphore.empty()) {
-          (*shared_data->semaphore.begin())->resume();
-        }
-      }();
+        co_return auth_token;
+      });
     }
-    co_await semaphore;
-    if (stop_token.stop_requested()) {
-      throw http::HttpException(http::HttpException::kAborted);
-    }
+    co_await current_auth_refresh_->Get(stop_token);
   }
 
-  struct SharedData {
-    bool pending_auth_token_refresh = false;
-    std::unordered_set<Semaphore*> semaphore;
-    AuthToken auth_token;
-  };
-
   HttpClient& http_;
-  std::shared_ptr<SharedData> shared_data_;
   AuthData auth_data_;
   stdx::stop_source stop_source_;
+  std::optional<Promise<AuthToken>> current_auth_refresh_;
+  AuthToken auth_token_;
   OnAuthTokenUpdated on_auth_token_updated_;
 };
 
