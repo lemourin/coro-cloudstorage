@@ -215,11 +215,12 @@ class CloudProvider {
     if (!current_auth_refresh_) {
       current_auth_refresh_ = Promise<AuthToken>([this]() -> Task<AuthToken> {
         auto stop_token = stop_source_.get_token();
+        auto d = this;
         auto auth_token = co_await RefreshAccessToken(stop_token);
         if (!stop_token.stop_requested()) {
-          current_auth_refresh_ = std::nullopt;
-          auth_token_ = auth_token;
-          on_auth_token_updated_(auth_token_);
+          d->current_auth_refresh_ = std::nullopt;
+          d->auth_token_ = auth_token;
+          d->on_auth_token_updated_(d->auth_token_);
         }
         co_return auth_token;
       });
