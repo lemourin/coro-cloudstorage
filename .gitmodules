@@ -4,3 +4,18 @@
 [submodule "contrib/json"]
 	path = contrib/json
 	url = https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent
+[submodule "contrib/megasdk"]
+	path = contrib/megasdk
+	url = https://github.com/meganz/sdk
+[submodule "contrib/cryptopp"]
+	path = contrib/cryptopp
+	url = https://github.com/weidai11/cryptopp
+[submodule "contrib/libsodium"]
+	path = contrib/libsodium
+	url = https://github.com/jedisct1/libsodium
+[submodule "contrib/zlib"]
+	path = contrib/zlib
+	url = https://github.com/zlib-ng/zlib-ng
+[submodule "sqlite"]
+	path = contrib/sqlite
+	url = https://github.com/azadkuh/sqlite-amalgamation

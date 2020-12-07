@@ -1,0 +1,74 @@
+From d46c6745427d3f4b453e930fd466fd90607cfc9a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pawe=C5=82=20Wegner?= <pawel.wegner95@gmail.com>
+Date: Tue, 8 Dec 2020 21:44:57 +0100
+Subject: [PATCH] mega: fix build.
+
+---
+ contrib/cmake/CMakeLists.txt | 4 ++--
+ include/mega/posix/megafs.h  | 1 +
+ src/megaapi_impl.cpp         | 2 +-
+ src/win32/net.cpp            | 1 +
+ 4 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/contrib/cmake/CMakeLists.txt b/contrib/cmake/CMakeLists.txt
+index 4fb13976b..1ad5c5961 100644
+--- a/contrib/cmake/CMakeLists.txt
++++ b/contrib/cmake/CMakeLists.txt
+@@ -517,7 +517,7 @@ ELSE(WIN32)
+ 
+ ENDIF(WIN32)
+ 
+-configure_file ("${MegaDir}/contrib/cmake/config.h.in" "${MegaDir}/include/mega/config.h" )
++configure_file ("${MegaDir}/contrib/cmake/config.h.in" "${CMAKE_BINARY_DIR}/include/mega/config.h" )
+ add_definitions( -DHAVE_CONFIG_H) #otherwise, it won't be included in Windows build!
+ 
+ SET(Mega_CryptoFiles ${MegaDir}/src/crypto/cryptopp.cpp ${MegaDir}/src/crypto/sodium.cpp)
+@@ -535,7 +535,7 @@ add_library(Mega STATIC
+             ${MegaDir}/include/mega/thread/posixthread.h
+             ${MegaDir}/include/mega/thread/libuvthread.h
+             ${MegaDir}/include/mega/command.h
+-            ${MegaDir}/include/mega/config.h
++            ${CMAKE_BINARY_DIR}/include/mega/config.h
+             ${MegaDir}/include/mega/thread.h
+             ${MegaDir}/include/mega/json.h
+             ${MegaDir}/include/mega/base64.h
+diff --git a/include/mega/posix/megafs.h b/include/mega/posix/megafs.h
+index f212e27d0..b0f02011b 100644
+--- a/include/mega/posix/megafs.h
++++ b/include/mega/posix/megafs.h
+@@ -32,6 +32,7 @@
+ #include <sys/mount.h>
+ #else
+ #include <sys/vfs.h>
++#include <dirent.h>
+ #endif
+ 
+ #ifdef HAVE_AIO_RT
+diff --git a/src/megaapi_impl.cpp b/src/megaapi_impl.cpp
+index 63c137ea3..59d8cbbaf 100644
+--- a/src/megaapi_impl.cpp
++++ b/src/megaapi_impl.cpp
+@@ -20672,7 +20672,7 @@ void MegaApiImpl::sendPendingRequests()
+                 if (servers.size())
+                 {
+                     LOG_debug << "Using DNS servers " << servers;
+-                    httpio->setdnsservers(servers.c_str());
++                    // httpio->setdnsservers(servers.c_str());
+                 }
+ #endif
+             }
+diff --git a/src/win32/net.cpp b/src/win32/net.cpp
+index 9014dc1e8..4c71df7ee 100644
+--- a/src/win32/net.cpp
++++ b/src/win32/net.cpp
+@@ -24,6 +24,7 @@
+ 
+ #include "meganet.h"
+ #include <winhttp.h>
++#include <wincrypt.h>
+ 
+ namespace mega {
+ 
+-- 
+2.25.1
+

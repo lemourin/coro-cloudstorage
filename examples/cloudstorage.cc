@@ -1,5 +1,6 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/providers/google_drive.h>
+#include <coro/cloudstorage/providers/mega.h>
 #include <coro/generator.h>
 #include <coro/http/curl_http.h>
 #include <coro/http/http_parse.h>
