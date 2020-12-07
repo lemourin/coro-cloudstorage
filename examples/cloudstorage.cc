@@ -119,13 +119,15 @@ class ProxyHandler {
 
   Task<Response<>> operator()(const coro::http::Request<>& request,
                               coro::stdx::stop_token stop_token) const {
-    std::cerr << "[" << request.method << "] " << request.url << "\n";
+    std::cerr << "[" << request.method << "] " << request.url << " ";
     std::string path = DecodeUri(ParseUri(request.url).path.value_or(""));
     auto it = request.headers.find("Range");
     coro::http::Range range = {};
     if (it != std::end(request.headers)) {
       range = ParseRange(it->second);
+      std::cerr << it->second;
     }
+    std::cerr << "\n";
     auto item = co_await GetItem(path, stop_token);
     auto file = std::get<File>(item);
     std::unordered_multimap<std::string, std::string> headers = {
