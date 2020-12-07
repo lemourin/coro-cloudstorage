@@ -188,12 +188,17 @@ class ProxyHandler {
       coro::stdx::stop_token stop_token) const {
     co_yield "<!DOCTYPE html>"
         "<html><head><meta charset='UTF-8'></head><body><table>";
+    if (!path.empty() && path.back() != '/') {
+      path += '/';
+    }
     FOR_CO_AWAIT(
         const auto& page, provider_.ListDirectory(directory, stop_token), {
           for (const auto& item : page.items) {
             auto name = std::visit([](auto item) { return item.name; }, item);
-            co_yield "<tr><td><a href='" + path + "/" + name + "'>" + name +
-                "</a></td></tr>";
+            std::string type =
+                std::holds_alternative<Directory>(item) ? "DIR" : "FILE";
+            co_yield "<tr><td>[" + type + "]</td><td><a href='" + path + name +
+                "'>" + name + "</a></td></tr>";
           }
         });
     co_yield "</table></body></html>";
