@@ -197,8 +197,8 @@ class ProxyHandler {
             auto name = std::visit([](auto item) { return item.name; }, item);
             std::string type =
                 std::holds_alternative<Directory>(item) ? "DIR" : "FILE";
-            co_yield "<tr><td>[" + type + "]</td><td><a href='" + path + name +
-                "'>" + name + "</a></td></tr>";
+            co_yield "<tr><td>[" + type + "]</td><td><a href='" + path +
+                coro::http::EncodeUri(name) + "'>" + name + "</a></td></tr>";
           }
         });
     co_yield "</table></body></html>";
