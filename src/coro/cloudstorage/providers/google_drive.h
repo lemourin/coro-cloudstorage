@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_GOOGLE_DRIVE_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/cloudstorage/util/auth_manager.h>
 #include <coro/cloudstorage/util/fetch_json.h>
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
@@ -17,23 +18,83 @@
 
 namespace coro::cloudstorage {
 
+template <typename Auth>
+struct GoogleDriveImpl;
+
 struct GoogleDrive {
   using json = nlohmann::json;
 
+  struct Auth {
+    struct AuthToken {
+      std::string access_token;
+      std::string refresh_token;
+    };
+
+    struct AuthData {
+      std::string client_id;
+      std::string client_secret;
+      std::string redirect_uri;
+      std::string state;
+    };
+
+    template <http::HttpClient Http>
+    static Task<AuthToken> RefreshAccessToken(Http& http, AuthData auth_data,
+                                              std::string refresh_token,
+                                              stdx::stop_token stop_token) {
+      auto request = http::Request<std::string>{
+          .url = "https://accounts.google.com/o/oauth2/token",
+          .method = "POST",
+          .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
+          .body = http::FormDataToString(
+              {{"refresh_token", refresh_token},
+               {"client_id", auth_data.client_id},
+               {"client_secret", auth_data.client_secret},
+               {"grant_type", "refresh_token"}})};
+      json json = co_await util::FetchJson(http, std::move(request),
+                                           std::move(stop_token));
+
+      co_return AuthToken{.access_token = json["access_token"],
+                          .refresh_token = std::move(refresh_token)};
+    }
+
+    static std::string GetAuthorizationUrl(const AuthData& data) {
+      return "https://accounts.google.com/o/oauth2/auth?" +
+             http::FormDataToString(
+                 {{"response_type", "code"},
+                  {"client_id", data.client_id},
+                  {"redirect_uri", data.redirect_uri},
+                  {"scope", "https://www.googleapis.com/auth/drive"},
+                  {"access_type", "offline"},
+                  {"prompt", "consent"},
+                  {"state", data.state}});
+    }
+
+    template <http::HttpClient Http>
+    static Task<AuthToken> ExchangeAuthorizationCode(
+        Http& http, AuthData auth_data, std::string code,
+        stdx::stop_token stop_token) {
+      auto request = http::Request<std::string>{
+          .url = "https://accounts.google.com/o/oauth2/token",
+          .method = "POST",
+          .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
+          .body = http::FormDataToString(
+              {{"grant_type", "authorization_code"},
+               {"client_secret", auth_data.client_secret},
+               {"client_id", auth_data.client_id},
+               {"redirect_uri", auth_data.redirect_uri},
+               {"code", std::move(code)}})};
+      json json = co_await util::FetchJson(http, std::move(request),
+                                           std::move(stop_token));
+      co_return AuthToken{.access_token = json["access_token"],
+                          .refresh_token = json["refresh_token"]};
+    }
+  };
+
+  template <typename AuthManager>
+  using Impl = GoogleDriveImpl<AuthManager>;
+
   struct GeneralData {
     std::string username;
-  };
-
-  struct AuthToken {
-    std::string access_token;
-    std::string refresh_token;
-  };
-
-  struct AuthData {
-    std::string client_id;
-    std::string client_secret;
-    std::string redirect_uri;
-    std::string state;
   };
 
   struct Directory {
@@ -52,15 +113,24 @@ struct GoogleDrive {
     std::vector<Item> items;
     std::optional<std::string> next_page_token;
   };
+};
 
-  static Task<Directory> GetRoot() { co_return Directory{"root"}; }
+template <typename AuthManager>
+struct GoogleDriveImpl : GoogleDrive {
+  using Request = http::Request<std::string>;
 
-  template <http::HttpClient HttpClient>
-  static Task<PageData> ListDirectoryPage(HttpClient& http,
-                                          std::string access_token,
-                                          Directory directory,
-                                          std::optional<std::string> page_token,
-                                          stdx::stop_token stop_token) {
+  explicit GoogleDriveImpl(AuthManager auth_manager)
+      : auth_manager_(std::move(auth_manager)) {}
+
+  static Task<Directory> GetRoot(stdx::stop_token) {
+    Directory d;
+    d.id = "root";
+    co_return d;
+  }
+
+  Task<PageData> ListDirectoryPage(Directory directory,
+                                   std::optional<std::string> page_token,
+                                   stdx::stop_token stop_token) {
     std::vector<std::pair<std::string, std::string>> params = {
         {"q", "'" + directory.id + "' in parents"},
         {"fields",
@@ -68,11 +138,10 @@ struct GoogleDrive {
     if (page_token) {
       params.emplace_back("pageToken", std::move(*page_token));
     }
-    auto request = http::Request<>{
-        .url = GetEndpoint("/files") + "?" + http::FormDataToString(params),
-        .headers = {{"Authorization", "Bearer " + std::move(access_token)}}};
-    json data = co_await util::FetchJson(http, std::move(request),
-                                         std::move(stop_token));
+    auto request = Request{.url = GetEndpoint("/files") + "?" +
+                                  http::FormDataToString(params)};
+    json data = co_await auth_manager_.FetchJson(std::move(request),
+                                                 std::move(stop_token));
     std::vector<Item> result;
     for (const json& item : data["files"]) {
       result.emplace_back(std::move(ToItem(item)));
@@ -84,100 +153,36 @@ struct GoogleDrive {
                                : std::nullopt};
   }
 
-  template <http::HttpClient HttpClient>
-  static Task<GeneralData> GetGeneralData(HttpClient& http,
-                                          std::string access_token,
-                                          stdx::stop_token stop_token) {
-    auto request = http::Request<>{
-        .url = GetEndpoint("/about?fields=user,storageQuota"),
-        .headers = {{"Authorization", "Bearer " + std::move(access_token)}}};
-    json json = co_await util::FetchJson(http, std::move(request),
-                                         std::move(stop_token));
+  Task<GeneralData> GetGeneralData(stdx::stop_token stop_token) {
+    auto request =
+        Request{.url = GetEndpoint("/about?fields=user,storageQuota")};
+    json json = co_await auth_manager_.FetchJson(std::move(request),
+                                                 std::move(stop_token));
     co_return GeneralData{.username = json["user"]["emailAddress"]};
   }
 
-  template <http::HttpClient HttpClient>
-  static Task<Item> GetItem(HttpClient& http, std::string access_token,
-                            std::string id, stdx::stop_token stop_token) {
-    auto request = http::Request<>{
-        .url = GetEndpoint("/files/" + std::move(id)) + "?" +
-               http::FormDataToString({{"fields", kFileProperties}}),
-        .headers = {{"Authorization", "Bearer " + std::move(access_token)}}};
-    json json = co_await util::FetchJson(http, std::move(request),
-                                         std::move(stop_token));
+  Task<Item> GetItem(std::string id, stdx::stop_token stop_token) {
+    auto request =
+        Request{.url = GetEndpoint("/files/" + std::move(id)) + "?" +
+                       http::FormDataToString({{"fields", kFileProperties}})};
+    json json = co_await auth_manager_.FetchJson(std::move(request),
+                                                 std::move(stop_token));
     co_return ToItem(json);
   }
 
-  template <http::HttpClient HttpClient>
-  static Generator<std::string> GetFileContent(HttpClient& http,
-                                               std::string access_token,
-                                               File file, http::Range range,
-                                               stdx::stop_token stop_token) {
+  Generator<std::string> GetFileContent(File file, http::Range range,
+                                        stdx::stop_token stop_token) {
     std::stringstream range_header;
     range_header << "bytes=" << range.start << "-";
     if (range.end) {
       range_header << *range.end;
     }
-    auto request = http::Request<>{
-        .url = GetEndpoint("/files/" + file.id) + "?alt=media",
-        .headers = {{"Authorization", "Bearer " + std::move(access_token)},
-                    {"Range", std::move(range_header).str()}}};
+    auto request =
+        Request{.url = GetEndpoint("/files/" + file.id) + "?alt=media",
+                .headers = {{"Range", std::move(range_header).str()}}};
     auto response =
-        co_await http.Fetch(std::move(request), std::move(stop_token));
+        co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
     FOR_CO_AWAIT(std::string body, response.body, { co_yield body; });
-  }
-
-  template <http::HttpClient HttpClient>
-  static Task<AuthToken> ExchangeAuthorizationCode(
-      HttpClient& http, AuthData auth_data, std::string code,
-      stdx::stop_token stop_token) {
-    auto request = http::Request<std::string>{
-        .url = "https://accounts.google.com/o/oauth2/token",
-        .method = "POST",
-        .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
-        .body =
-            http::FormDataToString({{"grant_type", "authorization_code"},
-                                    {"client_secret", auth_data.client_secret},
-                                    {"client_id", auth_data.client_id},
-                                    {"redirect_uri", auth_data.redirect_uri},
-                                    {"code", std::move(code)}})};
-    json json = co_await util::FetchJson(http, std::move(request),
-                                         std::move(stop_token));
-    co_return AuthToken{.access_token = json["access_token"],
-                        .refresh_token = json["refresh_token"]};
-  }
-
-  template <http::HttpClient HttpClient>
-  static Task<AuthToken> RefreshAccessToken(HttpClient& http,
-                                            AuthData auth_data,
-                                            std::string refresh_token,
-                                            stdx::stop_token stop_token) {
-    auto request = http::Request<std::string>{
-        .url = "https://accounts.google.com/o/oauth2/token",
-        .method = "POST",
-        .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
-        .body =
-            http::FormDataToString({{"refresh_token", refresh_token},
-                                    {"client_id", auth_data.client_id},
-                                    {"client_secret", auth_data.client_secret},
-                                    {"grant_type", "refresh_token"}})};
-    json json = co_await util::FetchJson(http, std::move(request),
-                                         std::move(stop_token));
-
-    co_return AuthToken{.access_token = json["access_token"],
-                        .refresh_token = std::move(refresh_token)};
-  }
-
-  static std::string GetAuthorizationUrl(const AuthData& data) {
-    return "https://accounts.google.com/o/oauth2/auth?" +
-           http::FormDataToString(
-               {{"response_type", "code"},
-                {"client_id", data.client_id},
-                {"redirect_uri", data.redirect_uri},
-                {"scope", "https://www.googleapis.com/auth/drive"},
-                {"access_type", "offline"},
-                {"prompt", "consent"},
-                {"state", data.state}});
   }
 
  private:
@@ -212,7 +217,10 @@ struct GoogleDrive {
     }
     return result;
   }
+
+  AuthManager auth_manager_;
 };
+
 }  // namespace coro::cloudstorage
 
 #endif  // CORO_CLOUDSTORAGE_GOOGLE_DRIVE_H

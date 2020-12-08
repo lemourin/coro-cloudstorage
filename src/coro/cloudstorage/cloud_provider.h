@@ -1,6 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_CLOUD_PROVIDER_H
 #define CORO_CLOUDSTORAGE_CLOUD_PROVIDER_H
 
+#include <coro/cloudstorage/util/auth_manager.h>
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
 #include <coro/promise.h>
@@ -21,7 +22,10 @@ concept CloudProviderImpl = requires(http::HttpStub& http, std::string code,
 
 class CloudStorageException : public std::exception {
  public:
-  enum class Type { kNotFound };
+  enum class Type { kNotFound, kUnknown };
+
+  explicit CloudStorageException(std::string message)
+      : type_(Type::kUnknown), message_(std::move(message)) {}
 
   explicit CloudStorageException(Type type)
       : type_(type),
@@ -34,6 +38,8 @@ class CloudStorageException : public std::exception {
     switch (type) {
       case Type::kNotFound:
         return "NotFound";
+      default:
+        return "Unknown";
     }
   }
 
@@ -42,63 +48,38 @@ class CloudStorageException : public std::exception {
   std::string message_;
 };
 
-template <CloudProviderImpl Impl, http::HttpClient HttpClient,
-          typename OnAuthTokenUpdated>
+template <typename Impl>
 class CloudProvider {
  public:
-  using AuthToken = typename Impl::AuthToken;
-  using AuthData = typename Impl::AuthData;
   using Directory = typename Impl::Directory;
   using File = typename Impl::File;
   using Item = typename Impl::Item;
   using PageData = typename Impl::PageData;
 
-  CloudProvider(HttpClient& http, AuthToken auth_token, AuthData auth_data,
-                OnAuthTokenUpdated on_auth_token_updated)
-      : http_(http),
-        auth_token_(std::move(auth_token)),
-        auth_data_(std::move(auth_data)),
-        on_auth_token_updated_(std::move(on_auth_token_updated)) {}
+  explicit CloudProvider(Impl impl) : impl_(std::move(impl)) {}
 
-  ~CloudProvider() { stop_source_.request_stop(); }
-
-  CloudProvider(const CloudProvider&) = delete;
-  CloudProvider(CloudProvider&&) = delete;
-  CloudProvider& operator=(const CloudProvider&) = delete;
-  CloudProvider& operator=(CloudProvider&&) = delete;
+  auto GetRoot(stdx::stop_token stop_token = stdx::stop_token()) {
+    return impl_.GetRoot(std::move(stop_token));
+  }
 
   auto GetGeneralData(stdx::stop_token stop_token = stdx::stop_token()) {
-    return RefreshAuthTokenIfNeeded(
-        [this, stop_token] {
-          return Impl::GetGeneralData(http_, auth_token_.access_token,
-                                      stop_token);
-        },
-        stop_token);
+    return impl_.GetGeneralData(std::move(stop_token));
   }
 
   auto GetItem(std::string id,
                stdx::stop_token stop_token = stdx::stop_token()) {
-    return RefreshAuthTokenIfNeeded(
-        [this, id, stop_token] {
-          return Impl::GetItem(http_, auth_token_, id, stop_token);
-        },
-        stop_token);
+    return impl_.GetItem(id, std::move(stop_token));
   }
 
   Task<Item> GetItemByPath(std::string path,
                            stdx::stop_token stop_token = stdx::stop_token()) {
-    co_return co_await GetItemByPath(co_await Impl::GetRoot(), std::move(path),
-                                     std::move(stop_token));
+    co_return co_await GetItemByPath(co_await impl_.GetRoot(stop_token),
+                                     std::move(path), stop_token);
   }
 
   auto GetFileContent(File file, http::Range range = http::Range{},
                       stdx::stop_token stop_token = stdx::stop_token()) {
-    return RefreshAuthTokenIfNeeded(
-        [this, file, range, stop_token] {
-          return Impl::GetFileContent(http_, auth_token_.access_token, file,
-                                      range, stop_token);
-        },
-        stop_token);
+    return impl_.GetFileContent(file, range, std::move(stop_token));
   }
 
   Generator<PageData> ListDirectory(
@@ -115,21 +96,9 @@ class CloudProvider {
   auto ListDirectoryPage(Directory directory,
                          std::optional<std::string> page_token = std::nullopt,
                          stdx::stop_token stop_token = stdx::stop_token()) {
-    return RefreshAuthTokenIfNeeded(
-        [this, directory, page_token, stop_token] {
-          return Impl::ListDirectoryPage(http_, auth_token_.access_token,
-                                         directory, page_token, stop_token);
-        },
-        stop_token);
+    return impl_.ListDirectoryPage(std::move(directory), std::move(page_token),
+                                   std::move(stop_token));
   }
-
-  auto RefreshAccessToken(
-      stdx::stop_token stop_token = stdx::stop_token()) const {
-    return Impl::RefreshAccessToken(
-        http_, auth_data_, auth_token_.refresh_token, std::move(stop_token));
-  }
-
-  const AuthToken& GetAuthToken() const { return auth_token_; }
 
  private:
   Task<Item> GetItemByPath(Directory current_directory, std::string path,
@@ -168,83 +137,21 @@ class CloudProvider {
     throw CloudStorageException(CloudStorageException::Type::kNotFound);
   }
 
-  template <typename Operation>
-  requires requires(Operation op) {
-    op().begin();
-  }
-  auto RefreshAuthTokenIfNeeded(Operation operation,
-                                stdx::stop_token stop_token)
-      -> decltype(operation()) {
-    bool success = false;
-    try {
-      auto generator = operation();
-      auto begin = co_await generator.begin();
-      success = true;
-      auto end = generator.end();
-      auto it = begin;
-      while (it != end) {
-        co_yield* it;
-        co_await ++it;
-      }
-      co_return;
-    } catch (const http::HttpException& exception) {
-      if (exception.status() != 401 || success) {
-        throw;
-      }
-    }
-    co_await RefreshAuthToken(std::move(stop_token));
-    FOR_CO_AWAIT(auto chunk, operation(), { co_yield chunk; });
-  }
-
-  template <typename Operation>
-  auto RefreshAuthTokenIfNeeded(Operation operation,
-                                stdx::stop_token stop_token)
-      -> decltype(operation()) {
-    try {
-      co_return co_await operation();
-    } catch (const http::HttpException& exception) {
-      if (exception.status() != 401) {
-        throw;
-      }
-    }
-    co_await RefreshAuthToken(std::move(stop_token));
-    co_return co_await operation();
-  }
-
-  Task<> RefreshAuthToken(stdx::stop_token stop_token) {
-    if (!current_auth_refresh_) {
-      current_auth_refresh_ = Promise<AuthToken>([this]() -> Task<AuthToken> {
-        auto stop_token = stop_source_.get_token();
-        auto d = this;
-        auto auth_token = co_await RefreshAccessToken(stop_token);
-        if (!stop_token.stop_requested()) {
-          d->current_auth_refresh_ = std::nullopt;
-          d->auth_token_ = auth_token;
-          d->on_auth_token_updated_(d->auth_token_);
-        }
-        co_return auth_token;
-      });
-    }
-    co_await current_auth_refresh_->Get(stop_token);
-  }
-
-  HttpClient& http_;
-  AuthData auth_data_;
-  stdx::stop_source stop_source_;
-  std::optional<Promise<AuthToken>> current_auth_refresh_;
-  AuthToken auth_token_;
-  OnAuthTokenUpdated on_auth_token_updated_;
+  Impl impl_;
 };
 
-template <CloudProviderImpl Impl, http::HttpClient HttpClient,
-          typename OnAuthTokenUpdated>
-CloudProvider<Impl, HttpClient, OnAuthTokenUpdated> MakeCloudProvider(
-    HttpClient& http, typename Impl::AuthToken auth_token,
-    typename Impl::AuthData auth_data,
-    OnAuthTokenUpdated on_auth_token_updated) {
-  return CloudProvider<Impl, HttpClient, OnAuthTokenUpdated>(
-      http, std::move(auth_token), std::move(auth_data),
-      std::move(on_auth_token_updated));
+template <typename CloudProviderImpl, typename... Args>
+auto MakeCloudProvider(Args&&... args) {
+  auto auth_manager = util::MakeAuthManager<typename CloudProviderImpl::Auth>(
+      std::forward<Args>(args)...);
+  using InternalImpl =
+      typename CloudProviderImpl::template Impl<decltype(auth_manager)>;
+  return CloudProvider<InternalImpl>(InternalImpl(std::move(auth_manager)));
+}
+
+template <typename CloudProviderImpl>
+auto MakeCloudProvider(CloudProviderImpl impl) {
+  return CloudProvider<CloudProviderImpl>(std::move(impl));
 }
 
 }  // namespace coro::cloudstorage

@@ -1,3 +1,4 @@
+#include <coro/cloudstorage/cloud_factory.h>
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/providers/google_drive.h>
 #include <coro/cloudstorage/providers/mega.h>
@@ -23,8 +24,13 @@ using ::coro::Task;
 using ::coro::Wait;
 using ::coro::cloudstorage::CloudProvider;
 using ::coro::cloudstorage::GoogleDrive;
+using ::coro::cloudstorage::MakeCloudFactory;
+using ::coro::cloudstorage::MakeCloudProvider;
+using ::coro::cloudstorage::Mega;
+using ::coro::cloudstorage::util::MakeAuthManager;
 using ::coro::http::CurlHttp;
 using ::coro::http::DecodeUri;
+using ::coro::http::FromBase64;
 using ::coro::http::GetExtension;
 using ::coro::http::GetMimeType;
 using ::coro::http::HttpServer;
@@ -33,6 +39,7 @@ using ::coro::http::ParseRange;
 using ::coro::http::ParseUri;
 using ::coro::http::Request;
 using ::coro::http::Response;
+using ::coro::http::ToBase64;
 using ::coro::util::MakePointer;
 
 constexpr std::string_view kRedirectUri = "http://localhost:12345";
@@ -42,21 +49,58 @@ constexpr std::string_view kGoogleDriveClientId =
 constexpr std::string_view kGoogleDriveClientSecret =
     R"(1f0FG5ch-kKOanTAv1Bqdp9U)";
 
-GoogleDrive::AuthData GetGoogleDriveAuthData() {
-  return {.client_id = std::string(kGoogleDriveClientId),
-          .client_secret = std::string(kGoogleDriveClientSecret),
-          .redirect_uri = std::string(kRedirectUri) + "/google"};
-}
+template <typename>
+struct AuthData;
+
+template <>
+struct AuthData<GoogleDrive> {
+  auto operator()() const {
+    return GoogleDrive::Auth::AuthData{
+        .client_id = std::string(kGoogleDriveClientId),
+        .client_secret = std::string(kGoogleDriveClientSecret),
+        .redirect_uri = std::string(kRedirectUri) + "/google"};
+  }
+};
+
+template <>
+struct AuthData<Mega> {
+  auto operator()() const {
+    return Mega::Auth::AuthData{.api_key = "ZVhB0Czb",
+                                .app_name = "coro-cloudstorage"};
+  }
+};
 
 template <typename CloudProvider, coro::http::HttpClient HttpClient>
 struct AuthHandler {
   Task<Response<>> operator()(const coro::http::Request<>& request,
                               coro::stdx::stop_token stop_token) const {
     auto query = ParseQuery(ParseUri(request.url).query.value_or(""));
-    auto it = query.find("code");
-    if (it != std::end(query)) {
-      co_await ProcessCode(it->second, stop_token);
+    if constexpr (std::is_same_v<CloudProvider, Mega>) {
+      auto it1 = query.find("email");
+      auto it2 = query.find("password");
+      if (it1 != std::end(query) && it2 != std::end(query)) {
+        auto it3 = query.find("twofactor");
+        Mega::UserCredential credential = {
+            .email = it1->second,
+            .password_hash = Mega::GetPasswordHash(it2->second),
+            .twofactor = it3 != std::end(query)
+                             ? std::make_optional(it3->second)
+                             : std::nullopt};
+        auto session =
+            co_await Mega::GetSession(event_loop, http, std::move(credential),
+                                      AuthData<Mega>{}(), stop_token);
+        token = {.session = std::move(session)};
+      } else {
+        throw std::logic_error("invalid credentials");
+      }
+    } else {
+      auto it = query.find("code");
+      if (it != std::end(query)) {
+        token = co_await CloudProvider::Auth::ExchangeAuthorizationCode(
+            http, AuthData<CloudProvider>{}(), it->second, stop_token);
+      }
     }
+    quit.resume();
     co_return Response<>{.status = 200,
                          .body = GenerateBody(std::move(stop_token))};
   }
@@ -74,24 +118,16 @@ struct AuthHandler {
     }
   }
 
-  Task<> ProcessCode(std::string_view code,
-                     coro::stdx::stop_token stop_token) const {
-    token = co_await GoogleDrive::ExchangeAuthorizationCode(
-        http, GetGoogleDriveAuthData(), std::string(code),
-        std::move(stop_token));
-    quit.resume();
-  }
-
   event_base* event_loop;
   HttpClient& http;
   Semaphore& quit;
-  typename CloudProvider::AuthToken& token;
+  typename CloudProvider::Auth::AuthToken& token;
 };
 
 template <typename CloudProvider, coro::http::HttpClient HttpClient>
 auto MakeAuthHandler(event_base* event_loop, HttpClient& http,
                      Semaphore& semaphore,
-                     typename CloudProvider::AuthToken& token) {
+                     typename CloudProvider::Auth::AuthToken& token) {
   return AuthHandler<CloudProvider, HttpClient>{event_loop, http, semaphore,
                                                 token};
 }
@@ -221,25 +257,59 @@ auto MakeProxyHandler(CloudProvider& cloud_provider, Semaphore& semaphore) {
 }
 
 template <typename AuthToken>
-void SaveToken(AuthToken token) {
-  std::ofstream token_file{std::string(kTokenFile)};
+auto ToJson(AuthToken token) {
   nlohmann::json json;
   json["access_token"] = std::move(token.access_token);
   json["refresh_token"] = std::move(token.refresh_token);
-  token_file << json;
+  return json;
+}
+
+template <>
+auto ToJson<Mega::AuthToken>(Mega::AuthToken token) {
+  nlohmann::json json;
+  json["session"] = ToBase64(token.session);
+  return json;
+}
+
+template <typename AuthToken>
+auto ToAuthToken(const nlohmann::json& json) {
+  return AuthToken{.access_token = json.at("access_token"),
+                   .refresh_token = json.at("refresh_token")};
+}
+
+template <>
+auto ToAuthToken<Mega::AuthToken>(const nlohmann::json& json) {
+  return Mega::AuthToken{.session =
+                             FromBase64(std::string(json.at("session")))};
+}
+
+template <typename AuthToken>
+std::optional<AuthToken> LoadToken() {
+  std::ifstream token_file{std::string(kTokenFile)};
+  if (token_file) {
+    try {
+      nlohmann::json json;
+      token_file >> json;
+      return ToAuthToken<AuthToken>(json);
+    } catch (const nlohmann::json::exception&) {
+    }
+  }
+  return std::nullopt;
+}
+
+template <typename AuthToken>
+void SaveToken(AuthToken token) {
+  std::ofstream{std::string(kTokenFile)} << ToJson(std::move(token));
 }
 
 template <typename CloudProvider, coro::http::HttpClient HttpClient>
-Task<typename CloudProvider::AuthToken> GetAuthToken(event_base* event_loop,
-                                                     HttpClient& http) {
-  using AuthToken = typename CloudProvider::AuthToken;
+Task<typename CloudProvider::Auth::AuthToken> GetAuthToken(
+    event_base* event_loop, HttpClient& http) {
+  using AuthToken = typename CloudProvider::Auth::AuthToken;
   {
-    std::ifstream token_file{std::string(kTokenFile)};
-    if (token_file) {
-      nlohmann::json json;
-      token_file >> json;
-      co_return AuthToken{.access_token = json["access_token"],
-                          .refresh_token = json["refresh_token"]};
+    auto token = LoadToken<AuthToken>();
+    if (token) {
+      co_return* token;
     }
   }
   Semaphore quit_semaphore;
@@ -247,9 +317,14 @@ Task<typename CloudProvider::AuthToken> GetAuthToken(event_base* event_loop,
   HttpServer http_server(
       event_loop, {.address = "0.0.0.0", .port = 12345},
       MakeAuthHandler<CloudProvider>(event_loop, http, quit_semaphore, token));
-  std::cerr << "AUTHORIZATION URL: "
-            << GoogleDrive::GetAuthorizationUrl(GetGoogleDriveAuthData())
-            << "\n";
+  if constexpr (std::is_same_v<CloudProvider, Mega>) {
+    std::cerr << "AUTHORIZATION URL: http://localhost:12345\n";
+  } else {
+    std::cerr << "AUTHORIZATION URL: "
+              << CloudProvider::Auth::GetAuthorizationUrl(
+                     AuthData<CloudProvider>{}())
+              << "\n";
+  }
   co_await quit_semaphore;
   co_await http_server.Quit();
   SaveToken(token);
@@ -258,24 +333,24 @@ Task<typename CloudProvider::AuthToken> GetAuthToken(event_base* event_loop,
 
 Task<> CoMain(event_base* event_loop) noexcept {
   try {
-    using ProviderImpl = GoogleDrive;
+    using CloudProvider = Mega;
 
     CurlHttp http(event_loop);
-    auto auth_token = co_await GetAuthToken<ProviderImpl>(event_loop, http);
-    std::cerr << "ACCESS TOKEN: " << auth_token.access_token << "\n";
-    auto provider = coro::cloudstorage::MakeCloudProvider<GoogleDrive>(
-        http, auth_token, GetGoogleDriveAuthData(),
-        [](auto token) { SaveToken(token); });
     Semaphore quit;
+    auto cloud_factory = MakeCloudFactory<AuthData>(event_loop, http);
+
+    auto auth_token = co_await GetAuthToken<CloudProvider>(event_loop, http);
+    auto cloud_provider = cloud_factory.Create<CloudProvider>(
+        auth_token, [](auto token) { SaveToken(token); });
     HttpServer http_server(event_loop, {.address = "0.0.0.0", .port = 12345},
-                           MakeProxyHandler(provider, quit));
+                           MakeProxyHandler(cloud_provider, quit));
     co_await quit;
   } catch (const coro::http::HttpException& exception) {
     if (exception.status() == 401) {
       std::remove(std::string(kTokenFile).c_str());
     }
   } catch (const std::exception& exception) {
-    std::cerr << "EXCEPTION: " << exception.what();
+    std::cerr << "EXCEPTION: " << exception.what() << "\n";
   }
 }
 
