@@ -42,6 +42,7 @@ struct GoogleDrive {
   };
 
   struct File : Directory {
+    std::string mime_type;
     std::optional<int64_t> size;
   };
 
@@ -207,6 +208,7 @@ struct GoogleDrive {
       if (json.contains("size")) {
         result.size = std::stoll(std::string(json["size"]));
       }
+      result.mime_type = json["mimeType"];
     }
     return result;
   }

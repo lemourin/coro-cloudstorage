@@ -133,7 +133,7 @@ class ProxyHandler {
     if (std::holds_alternative<File>(item)) {
       auto file = std::get<File>(item);
       std::unordered_multimap<std::string, std::string> headers = {
-          {"Content-Type", GetMimeType(GetExtension(std::move(path)))},
+          {"Content-Type", file.mime_type},
           {"Content-Disposition", "inline; filename=\"" + file.name + "\""},
           {"Access-Control-Allow-Origin", "*"},
           {"Access-Control-Allow-Headers", "*"}};
