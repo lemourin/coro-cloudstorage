@@ -73,7 +73,7 @@ class HttpIO : public ::mega::HttpIO {
           }
           r->put(
               const_cast<void*>(reinterpret_cast<const void*>(chunk.c_str())),
-              chunk.size());
+              static_cast<unsigned>(chunk.size()));
           lastdata = r->lastdata = ::mega::Waiter::ds;
           io_ready_ = true;
           on_event_();
@@ -88,7 +88,7 @@ class HttpIO : public ::mega::HttpIO {
         r->status = ::mega::REQ_SUCCESS;
         lastdata = r->lastdata = ::mega::Waiter::ds;
         success_ = true;
-      } catch (const http::HttpException& e) {
+      } catch (const http::HttpException&) {
         if (stop_source.request_stop()) {
           throw InterruptedException();
         }

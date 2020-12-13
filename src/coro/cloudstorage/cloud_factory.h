@@ -2,10 +2,18 @@
 #define CORO_CLOUDSTORAGE_CLOUD_FACTORY_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/cloudstorage/providers/google_drive.h>
 #include <coro/cloudstorage/providers/mega.h>
+#include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/http/http.h>
 
 namespace coro::cloudstorage {
+
+template <typename T>
+concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
+  { v.GetAuthorizationUrl({}) }
+  ->std::convertible_to<std::string>;
+};
 
 namespace internal {
 template <typename CloudProvider>
@@ -52,6 +60,22 @@ class CloudFactory {
         *this, std::move(auth_token), std::forward<Args>(args)...);
   }
 
+  template <typename CloudProvider, typename OnAuthTokenCreated>
+  auto CreateAuthHandler(OnAuthTokenCreated on_auth_token_created) const {
+    return util::MakeAuthHandler<AuthData, CloudProvider>(
+        event_loop_, http_, std::move(on_auth_token_created));
+  }
+
+  template <typename CloudProvider>
+  auto GetAuthorizationUrl() const {
+    if constexpr (HasGetAuthorizationUrl<CloudProvider>) {
+      return CloudProvider::Auth::GetAuthorizationUrl(
+          AuthData<CloudProvider>{}());
+    } else {
+      return "http://localhost:12345";
+    }
+  }
+
  private:
   template <typename>
   friend struct internal::CreateCloudProvider;
@@ -59,6 +83,19 @@ class CloudFactory {
   event_base* event_loop_;
   Http& http_;
 };
+
+template <typename CloudProvider>
+constexpr std::string_view GetCloudProviderId() = delete;
+
+template <>
+constexpr std::string_view GetCloudProviderId<Mega>() {
+  return "mega";
+}
+
+template <>
+constexpr std::string_view GetCloudProviderId<GoogleDrive>() {
+  return "google";
+}
 
 template <template <typename> typename AuthData, http::HttpClient Http>
 auto MakeCloudFactory(event_base* event_loop, Http& http) {
