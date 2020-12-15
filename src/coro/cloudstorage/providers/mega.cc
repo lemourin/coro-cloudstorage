@@ -53,7 +53,7 @@ std::string Mega::GetPasswordHash(const std::string& password) {
       /*worker_thread_count=*/0);
   auto e = mega_client.pw_key(password.c_str(), hashed_password);
   if (e != ::mega::API_OK) {
-    throw CloudStorageException(GetErrorDescription(e));
+    throw CloudException(GetErrorDescription(e));
   }
   return std::string(hashed_password, hashed_password + kHashLength);
 }
@@ -73,7 +73,9 @@ Task<std::string> Mega::GetSession(Data& d, UserCredential credentials,
       reinterpret_cast<const ::mega::byte*>(credentials.password_hash.c_str()),
       twofactor_ptr);
   co_await Wait(d.event_loop, 0);
-  Check(login_error);
+  if (login_error != ::mega::API_OK) {
+    throw CloudException(CloudException::Type::kUnauthorized);
+  }
 
   const int kHashBufferSize = 128;
   ::mega::byte buffer[kHashBufferSize];
@@ -87,7 +89,10 @@ Task<> Mega::LogIn() {
           d_->stop_source.get_token(),
           reinterpret_cast<const ::mega::byte*>(auth_token_.session.c_str()),
           static_cast<int>(auth_token_.session.size()));
-  co_await CoCheck(login_error);
+  co_await Wait(d_->event_loop, 0);
+  if (login_error != ::mega::API_OK) {
+    throw CloudException(CloudException::Type::kUnauthorized);
+  }
   auto [fetch_error] = co_await Do<&::mega::MegaClient::fetchnodes,
                                    &::mega::MegaApp::fetchnodes_result>(
       d_->stop_source.get_token(), /*nocache=*/false);
@@ -184,7 +189,7 @@ void Mega::Data::OnEvent() {
 ::mega::Node* Mega::GetNode(::mega::handle handle) const {
   auto node = d_->mega_client.nodebyhandle(handle);
   if (!node) {
-    throw CloudStorageException(CloudStorageException::Type::kNotFound);
+    throw CloudException(CloudException::Type::kNotFound);
   } else {
     return node;
   }

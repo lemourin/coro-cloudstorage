@@ -52,7 +52,6 @@ struct GoogleDrive {
                {"grant_type", "refresh_token"}})};
       json json = co_await util::FetchJson(http, std::move(request),
                                            std::move(stop_token));
-
       co_return AuthToken{.access_token = json["access_token"],
                           .refresh_token = std::move(refresh_token)};
     }

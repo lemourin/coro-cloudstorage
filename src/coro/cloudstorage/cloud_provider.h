@@ -20,34 +20,6 @@ concept CloudProviderImpl = requires(http::HttpStub& http, std::string code,
   ->Awaitable;
 };
 
-class CloudStorageException : public std::exception {
- public:
-  enum class Type { kNotFound, kUnknown };
-
-  explicit CloudStorageException(std::string message)
-      : type_(Type::kUnknown), message_(std::move(message)) {}
-
-  explicit CloudStorageException(Type type)
-      : type_(type),
-        message_(std::string("CloudStorageException: ") + TypeToString(type)) {}
-
-  Type type() const { return type_; }
-  const char* what() const noexcept final { return message_.c_str(); }
-
-  static const char* TypeToString(Type type) {
-    switch (type) {
-      case Type::kNotFound:
-        return "NotFound";
-      default:
-        return "Unknown";
-    }
-  }
-
- private:
-  Type type_;
-  std::string message_;
-};
-
 template <typename Impl>
 class CloudProvider {
  public:
@@ -134,7 +106,7 @@ class CloudProvider {
                    }
                  });
 
-    throw CloudStorageException(CloudStorageException::Type::kNotFound);
+    throw CloudException(CloudException::Type::kNotFound);
   }
 
   Impl impl_;

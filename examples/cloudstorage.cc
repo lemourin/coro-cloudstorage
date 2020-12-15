@@ -29,6 +29,7 @@ using ::coro::Promise;
 using ::coro::Semaphore;
 using ::coro::Task;
 using ::coro::Wait;
+using ::coro::cloudstorage::CloudException;
 using ::coro::cloudstorage::CloudProvider;
 using ::coro::cloudstorage::GetCloudProviderId;
 using ::coro::cloudstorage::GoogleDrive;
@@ -171,7 +172,7 @@ class HttpHandler {
         std::smatch match;
         if (response.status == 200 &&
             std::regex_match(url, match, std::regex("/auth(/[^?]*)?.*$"))) {
-          co_return Response<>{.status = 301,
+          co_return Response<>{.status = 302,
                                .headers = {{"Location", match[1].str() + "/"}}};
         } else {
           co_return response;
@@ -181,7 +182,8 @@ class HttpHandler {
     if (request.url.empty() || request.url == "/") {
       co_return coro::http::Response<>{.status = 200, .body = GetHomePage()};
     } else {
-      co_return coro::http::Response<>{.status = 404};
+      co_return coro::http::Response<>{.status = 302,
+                                       .headers = {{"Location", "/"}}};
     }
   }
 
@@ -210,19 +212,38 @@ class HttpHandler {
         pending_requests++;
         auto guard = MakePointer(
             this, [](ProxyHandler* handler) { handler->pending_requests--; });
-        co_return co_await proxy_handler(std::move(request),
-                                         std::move(stop_token));
-      } catch (const coro::http::HttpException& e) {
-        if (e.status() == 401 && pending_requests == 0) {
-          RemoveToken<CloudProvider>();
-          d->handlers_.erase(std::find_if(
-              std::begin(d->handlers_), std::end(d->handlers_),
-              [](const Handler& handler) {
-                return handler.id == GetCloudProviderId<CloudProvider>();
-              }));
+        auto response =
+            co_await proxy_handler(std::move(request), std::move(stop_token));
+        response.body = GenerateBody(std::move(response.body));
+        co_return response;
+      } catch (const CloudException& e) {
+        if (e.type() == CloudException::Type::kUnauthorized) {
+          OnAuthError();
           co_return Response<>{.status = 301, .headers = {{"Location", "/"}}};
         }
         throw;
+      }
+    }
+
+    Generator<std::string> GenerateBody(Generator<std::string> input) {
+      try {
+        FOR_CO_AWAIT(std::string chunk, input, { co_yield chunk; });
+      } catch (const CloudException& e) {
+        if (e.type() == CloudException::Type::kUnauthorized) {
+          OnAuthError();
+        }
+        throw;
+      }
+    }
+
+    void OnAuthError() {
+      if (pending_requests == 0) {
+        RemoveToken<CloudProvider>();
+        d->handlers_.erase(std::find_if(
+            std::begin(d->handlers_), std::end(d->handlers_),
+            [](const Handler& handler) {
+              return handler.id == GetCloudProviderId<CloudProvider>();
+            }));
       }
     }
 

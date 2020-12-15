@@ -129,8 +129,8 @@ class Mega : public MegaAuth {
         return ~static_cast<::mega::dstime>(0);
       }
       if (retry >= kMaxRetryCount) {
-        it->second->exception = std::make_exception_ptr(
-            CloudStorageException(GetErrorDescription(e)));
+        it->second->exception =
+            std::make_exception_ptr(CloudException(GetErrorDescription(e)));
         it->second->semaphore->resume();
         return ~static_cast<::mega::dstime>(0);
       } else {
@@ -262,7 +262,7 @@ class Mega : public MegaAuth {
 
   static void Check(::mega::error e) {
     if (e != ::mega::API_OK) {
-      throw CloudStorageException(GetErrorDescription(e));
+      throw CloudException(GetErrorDescription(e));
     }
   }
 

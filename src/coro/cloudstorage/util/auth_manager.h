@@ -1,6 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_AUTH_MANAGER_H
 #define CORO_CLOUDSTORAGE_AUTH_MANAGER_H
 
+#include <coro/cloudstorage/cloud_exception.h>
 #include <coro/http/http.h>
 #include <coro/promise.h>
 #include <coro/stdx/stop_source.h>
@@ -31,7 +32,11 @@ class AuthManager {
                                           stdx::stop_token stop_token) {
     auto response = co_await http_.Fetch(AuthorizeRequest(request), stop_token);
     if (response.status == 401) {
-      co_await RefreshAuthToken(stop_token);
+      try {
+        co_await RefreshAuthToken(stop_token);
+      } catch (const http::HttpException&) {
+        throw CloudException(CloudException::Type::kUnauthorized);
+      }
       co_return co_await http_.Fetch(AuthorizeRequest(request),
                                      std::move(stop_token));
     } else if (response.status / 100 == 2) {
