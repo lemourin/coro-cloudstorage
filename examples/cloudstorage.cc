@@ -12,6 +12,7 @@
 #include <coro/promise.h>
 #include <coro/stdx/any_invocable.h>
 #include <coro/stdx/coroutine.h>
+#include <coro/util/for_each.h>
 #include <coro/util/function_traits.h>
 #include <coro/util/make_pointer.h>
 #include <coro/wait_task.h>
@@ -49,6 +50,7 @@ using ::coro::http::ParseUri;
 using ::coro::http::Request;
 using ::coro::http::Response;
 using ::coro::http::ToBase64;
+using ::coro::util::ForEach;
 using ::coro::util::MakePointer;
 
 constexpr std::string_view kRedirectUri = "http://localhost:12345";
@@ -116,9 +118,32 @@ using HandlerType = coro::stdx::any_invocable<Task<coro::http::Response<>>(
 template <typename CloudFactory>
 class HttpHandler {
  public:
+  struct AddAuthHandlerFunctor {
+    template <typename CloudProvider>
+    void operator()() const {
+      handler->AddAuthHandler<CloudProvider>();
+    }
+    HttpHandler* handler;
+  };
+
+  struct GenerateAuthUrlTable {
+    template <typename CloudProvider>
+    void operator()() const {
+      std::string url =
+          LoadToken<CloudProvider>()
+              ? "/" + std::string(GetCloudProviderId<CloudProvider>()) + "/"
+              : factory.template GetAuthorizationUrl<CloudProvider>().value_or(
+                    "/auth/" +
+                    std::string(GetCloudProviderId<CloudProvider>()));
+      stream << "<tr><td><a href='" << url << "'>"
+             << GetCloudProviderId<CloudProvider>() << "</a></td></tr>";
+    }
+    const CloudFactory& factory;
+    std::stringstream& stream;
+  };
+
   explicit HttpHandler(const CloudFactory& factory) : factory_(factory) {
-    AddAuthHandler<Mega>();
-    AddAuthHandler<GoogleDrive>();
+    ForEach<coro::cloudstorage::CloudProviders>{}(AddAuthHandlerFunctor{this});
   }
 
   HttpHandler(const HttpHandler&) = delete;
@@ -139,7 +164,20 @@ class HttpHandler {
         }
       }
     }
-    co_return coro::http::Response<>{.status = 403};
+    if (request.url.empty() || request.url == "/") {
+      co_return coro::http::Response<>{.status = 200, .body = GetHomePage()};
+    } else {
+      co_return coro::http::Response<>{.status = 404};
+    }
+  }
+
+  Generator<std::string> GetHomePage() const {
+    std::stringstream result;
+    result << "<html><body><table>";
+    ForEach<coro::cloudstorage::CloudProviders>{}(
+        GenerateAuthUrlTable{factory_, result});
+    result << "</table></body></html>";
+    co_yield result.str();
   }
 
   template <typename CloudProvider,
@@ -155,10 +193,6 @@ class HttpHandler {
     auto auth_token = LoadToken<CloudProvider>();
     if (auth_token) {
       OnAuthTokenCreated<CloudProvider>(*auth_token);
-    } else {
-      std::cerr << "AUTH URL "
-                << factory_.template GetAuthorizationUrl<CloudProvider>()
-                << "\n";
     }
     handlers_.emplace_back(Handler{
         std::regex("/auth(/" +

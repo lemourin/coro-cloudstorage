@@ -6,6 +6,7 @@
 #include <coro/cloudstorage/providers/mega.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/http/http.h>
+#include <coro/util/type_list.h>
 
 namespace coro::cloudstorage {
 
@@ -67,12 +68,12 @@ class CloudFactory {
   }
 
   template <typename CloudProvider>
-  auto GetAuthorizationUrl() const {
+  std::optional<std::string> GetAuthorizationUrl() const {
     if constexpr (HasGetAuthorizationUrl<CloudProvider>) {
       return CloudProvider::Auth::GetAuthorizationUrl(
           AuthData<CloudProvider>{}());
     } else {
-      return "http://localhost:12345";
+      return std::nullopt;
     }
   }
 
@@ -96,6 +97,8 @@ template <>
 constexpr std::string_view GetCloudProviderId<GoogleDrive>() {
   return "google";
 }
+
+using CloudProviders = ::coro::util::TypeList<GoogleDrive, Mega>;
 
 template <template <typename> typename AuthData, http::HttpClient Http>
 auto MakeCloudFactory(event_base* event_loop, Http& http) {
