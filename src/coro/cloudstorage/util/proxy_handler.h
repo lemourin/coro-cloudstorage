@@ -94,6 +94,8 @@ class ProxyHandler {
     if (!path.empty() && path.back() != '/') {
       path += '/';
     }
+    co_yield "<tr><td>[DIR]</td><td><a href='" +
+        GetDirectoryPath(path_prefix_ + path) + "'>..</a></td></tr>";
     FOR_CO_AWAIT(
         const auto& page, provider_.ListDirectory(directory, stop_token), {
           for (const auto& item : page.items) {
@@ -109,6 +111,18 @@ class ProxyHandler {
   }
 
  private:
+  static std::string GetDirectoryPath(std::string path) {
+    if (path.empty()) {
+      return "";
+    }
+    path.pop_back();
+    auto it = path.find_last_of('/');
+    if (it == std::string_view::npos) {
+      return "";
+    }
+    return std::string(path.begin(), path.begin() + it + 1);
+  }
+
   CloudProvider provider_;
   std::string path_prefix_;
   struct SharedData {
