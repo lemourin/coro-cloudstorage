@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_PROXY_HANDLER_H
 
 #include <coro/http/http_parse.h>
+#include <coro/util/lru_cache.h>
 
 namespace coro::cloudstorage::util {
 
@@ -13,17 +14,11 @@ class ProxyHandler {
   using Directory = typename CloudProvider::Directory;
 
   ProxyHandler(CloudProvider provider, std::string path_prefix)
-      : provider_(std::move(provider)), path_prefix_(std::move(path_prefix)) {}
+      : provider_(std::make_unique<CloudProvider>(std::move(provider))),
+        path_prefix_(std::move(path_prefix)),
+        item_cache_(32, GetItem{provider_.get()}) {}
+
   ProxyHandler(ProxyHandler&& handler) = default;
-
-  ProxyHandler(const ProxyHandler&) = delete;
-  ProxyHandler& operator=(const ProxyHandler&) = delete;
-
-  ~ProxyHandler() {
-    if (shared_data_) {
-      shared_data_->stop_source.request_stop();
-    }
-  }
 
   Task<http::Response<>> operator()(const coro::http::Request<>& request,
                                     coro::stdx::stop_token stop_token) {
@@ -38,7 +33,7 @@ class ProxyHandler {
       std::cerr << it->second;
     }
     std::cerr << "\n";
-    auto item = co_await GetItem(path, stop_token);
+    auto item = co_await item_cache_.Get(path, stop_token);
     if (std::holds_alternative<File>(item)) {
       auto file = std::get<File>(item);
       std::unordered_multimap<std::string, std::string> headers = {
@@ -63,7 +58,7 @@ class ProxyHandler {
       co_return http::Response<>{
           .status = it == std::end(request.headers) || !file.size ? 200 : 206,
           .headers = std::move(headers),
-          .body = provider_.GetFileContent(file, range, stop_token)};
+          .body = provider_->GetFileContent(file, range, stop_token)};
     } else {
       auto directory = std::get<Directory>(item);
       co_return http::Response<>{
@@ -71,19 +66,6 @@ class ProxyHandler {
           .headers = {{"Content-Type", "text/html"}},
           .body = GetDirectoryContent(path, directory, stop_token)};
     }
-  }
-
-  Task<Item> GetItem(std::string path, coro::stdx::stop_token stop_token) {
-    auto it = shared_data_->tasks.find(path);
-    if (it == std::end(shared_data_->tasks)) {
-      auto promise = Promise<Item>(
-          [path, stop_token = shared_data_->stop_source.get_token(),
-           this]() -> Task<Item> {
-            co_return co_await provider_.GetItemByPath(path, stop_token);
-          });
-      it = shared_data_->tasks.insert({path, std::move(promise)}).first;
-    }
-    co_return co_await it->second.Get(stop_token);
   }
 
   Generator<std::string> GetDirectoryContent(
@@ -97,7 +79,7 @@ class ProxyHandler {
     co_yield "<tr><td>[DIR]</td><td><a href='" +
         GetDirectoryPath(path_prefix_ + path) + "'>..</a></td></tr>";
     FOR_CO_AWAIT(
-        const auto& page, provider_.ListDirectory(directory, stop_token), {
+        const auto& page, provider_->ListDirectory(directory, stop_token), {
           for (const auto& item : page.items) {
             auto name = std::visit([](auto item) { return item.name; }, item);
             std::string type =
@@ -123,13 +105,16 @@ class ProxyHandler {
     return std::string(path.begin(), path.begin() + it + 1);
   }
 
-  CloudProvider provider_;
-  std::string path_prefix_;
-  struct SharedData {
-    std::unordered_map<std::string, Promise<Item>> tasks;
-    coro::stdx::stop_source stop_source;
+  struct GetItem {
+    Task<Item> operator()(std::string path, stdx::stop_token stop_token) {
+      return provider->GetItemByPath(std::move(path), stop_token);
+    }
+    CloudProvider* provider;
   };
-  std::shared_ptr<SharedData> shared_data_ = std::make_shared<SharedData>();
+
+  std::unique_ptr<CloudProvider> provider_;
+  std::string path_prefix_;
+  ::coro::util::LRUCache<std::string, GetItem> item_cache_;
 };
 
 template <typename CloudProvider>
