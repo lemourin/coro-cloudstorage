@@ -4,6 +4,7 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/providers/google_drive.h>
 #include <coro/cloudstorage/providers/mega.h>
+#include <coro/cloudstorage/providers/one_drive.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/http/http.h>
 #include <coro/util/type_list.h>
@@ -98,7 +99,12 @@ constexpr std::string_view GetCloudProviderId<GoogleDrive>() {
   return "google";
 }
 
-using CloudProviders = ::coro::util::TypeList<GoogleDrive, Mega>;
+template <>
+constexpr std::string_view GetCloudProviderId<OneDrive>() {
+  return "onedrive";
+}
+
+using CloudProviders = ::coro::util::TypeList<GoogleDrive, Mega, OneDrive>;
 
 template <template <typename> typename AuthData, http::HttpClient Http>
 auto MakeCloudFactory(event_base* event_loop, Http& http) {

@@ -39,7 +39,7 @@ class AuthManager {
       }
       co_return co_await http_.Fetch(AuthorizeRequest(request),
                                      std::move(stop_token));
-    } else if (response.status / 100 == 2) {
+    } else if (response.status / 100 == 2 || response.status / 100 == 3) {
       co_return response;
     } else {
       throw coro::http::HttpException(
@@ -54,6 +54,8 @@ class AuthManager {
     std::string body = co_await http::GetBody(std::move(response.body));
     co_return nlohmann::json::parse(std::move(body));
   }
+
+  const AuthToken& GetAuthToken() const { return auth_token_; }
 
  private:
   Task<> RefreshAuthToken(stdx::stop_token stop_token) {
@@ -78,8 +80,8 @@ class AuthManager {
 
   template <typename Request>
   Request AuthorizeRequest(Request request) {
-    request.headers.insert(
-        {"Authorization", "Bearer " + auth_token_.access_token});
+    request.headers.emplace_back("Authorization",
+                                 "Bearer " + auth_token_.access_token);
     return request;
   }
 

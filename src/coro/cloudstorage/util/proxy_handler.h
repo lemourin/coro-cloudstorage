@@ -26,17 +26,17 @@ class ProxyHandler {
     std::string path =
         http::DecodeUri(http::ParseUri(request.url).path.value_or(""))
             .substr(path_prefix_.length());
-    auto it = request.headers.find("Range");
+    auto range_str = coro::http::GetHeader(request.headers, "Range");
     coro::http::Range range = {};
-    if (it != std::end(request.headers)) {
-      range = http::ParseRange(it->second);
-      std::cerr << it->second;
+    if (range_str) {
+      range = http::ParseRange(*range_str);
+      std::cerr << *range_str;
     }
     std::cerr << "\n";
     auto item = co_await item_cache_.Get(path, stop_token);
     if (std::holds_alternative<File>(item)) {
       auto file = std::get<File>(item);
-      std::unordered_multimap<std::string, std::string> headers = {
+      std::vector<std::pair<std::string, std::string>> headers = {
           {"Content-Type", file.mime_type},
           {"Content-Disposition", "inline; filename=\"" + file.name + "\""},
           {"Access-Control-Allow-Origin", "*"},
@@ -45,18 +45,18 @@ class ProxyHandler {
         if (!range.end) {
           range.end = *file.size - 1;
         }
-        headers.insert({"Accept-Ranges", "bytes"});
-        headers.insert(
-            {"Content-Length", std::to_string(*range.end - range.start + 1)});
-        if (it != std::end(request.headers)) {
-          std::stringstream range_str;
-          range_str << "bytes " << range.start << "-" << *range.end << "/"
-                    << *file.size;
-          headers.insert({"Content-Range", std::move(range_str).str()});
+        headers.emplace_back("Accept-Ranges", "bytes");
+        headers.emplace_back("Content-Length",
+                             std::to_string(*range.end - range.start + 1));
+        if (range_str) {
+          std::stringstream stream;
+          stream << "bytes " << range.start << "-" << *range.end << "/"
+                 << *file.size;
+          headers.emplace_back("Content-Range", std::move(stream).str());
         }
       }
       co_return http::Response<>{
-          .status = it == std::end(request.headers) || !file.size ? 200 : 206,
+          .status = !range_str || !file.size ? 200 : 206,
           .headers = std::move(headers),
           .body = provider_->GetFileContent(file, range, stop_token)};
     } else {

@@ -3,13 +3,24 @@
 
 #include <coro/http/http_parse.h>
 
+#include <concepts>
+
 namespace coro::cloudstorage::util {
+
+template <typename T>
+concept HasEndpoint = requires(T v) {
+  { v.endpoint }
+  ->std::convertible_to<std::string>;
+};
 
 template <typename AuthToken>
 auto ToJson(AuthToken token) {
   nlohmann::json json;
   json["access_token"] = std::move(token.access_token);
   json["refresh_token"] = std::move(token.refresh_token);
+  if constexpr (HasEndpoint<AuthToken>) {
+    json["endpoint"] = std::move(token.endpoint);
+  }
   return json;
 }
 
@@ -22,8 +33,12 @@ auto ToJson<Mega::AuthToken>(Mega::AuthToken token) {
 
 template <typename AuthToken>
 auto ToAuthToken(const nlohmann::json& json) {
-  return AuthToken{.access_token = json.at("access_token"),
-                   .refresh_token = json.at("refresh_token")};
+  AuthToken auth_token{.access_token = json.at("access_token"),
+                       .refresh_token = json.at("refresh_token")};
+  if constexpr (HasEndpoint<AuthToken>) {
+    auth_token.endpoint = json.at("endpoint");
+  }
+  return auth_token;
 }
 
 template <>
