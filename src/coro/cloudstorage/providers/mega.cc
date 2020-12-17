@@ -22,8 +22,6 @@ Type ToItemImpl(::mega::Node* node) {
   type.name = node->displayname();
   type.id = node->nodehandle;
   if constexpr (std::is_same_v<Type, Mega::File>) {
-    type.mime_type =
-        coro::http::GetMimeType(coro::http::GetExtension(type.name));
     type.size = node->size;
   }
   return type;

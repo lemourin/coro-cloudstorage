@@ -28,7 +28,7 @@ struct OneDrive {
                                               std::string refresh_token,
                                               stdx::stop_token stop_token) {
       auto request = http::Request<std::string>{
-          .url = "https://accounts.google.com/o/oauth2/token",
+          .url = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
           .method = "POST",
           .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
           .body = http::FormDataToString(
@@ -95,7 +95,7 @@ struct OneDrive {
   };
 
   struct File : Directory {
-    std::string mime_type;
+    std::optional<std::string> mime_type;
     std::optional<int64_t> size;
   };
 
@@ -150,12 +150,13 @@ struct OneDriveImpl : OneDrive {
     }
     auto request =
         Request{.url = GetEndpoint("/drive/items/" + file.id + "/content"),
-                .headers = {{"Range", std::move(range_header).str()}}};
+                .headers = {{"Range", range_header.str()}}};
     auto response =
         co_await auth_manager_.Fetch(std::move(request), stop_token);
     if (response.status == 302) {
       auto redirect_request = Request{
-          .url = coro::http::GetHeader(response.headers, "Location").value()};
+          .url = coro::http::GetHeader(response.headers, "Location").value(),
+          .headers = {{"Range", std::move(range_header).str()}}};
       response = co_await auth_manager_.Fetch(std::move(redirect_request),
                                               std::move(stop_token));
     }
@@ -194,8 +195,6 @@ struct OneDriveImpl : OneDrive {
       }
       if (json.contains("mimeType")) {
         result.mime_type = json["mimeType"];
-      } else {
-        result.mime_type = "application/octet-stream";
       }
     }
     return result;

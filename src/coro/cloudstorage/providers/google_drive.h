@@ -102,7 +102,7 @@ struct GoogleDrive {
   };
 
   struct File : Directory {
-    std::string mime_type;
+    std::optional<std::string> mime_type;
     std::optional<int64_t> size;
   };
 

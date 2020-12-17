@@ -37,7 +37,8 @@ class ProxyHandler {
     if (std::holds_alternative<File>(item)) {
       auto file = std::get<File>(item);
       std::vector<std::pair<std::string, std::string>> headers = {
-          {"Content-Type", file.mime_type},
+          {"Content-Type", file.mime_type.value_or(coro::http::GetMimeType(
+                               coro::http::GetExtension(file.name)))},
           {"Content-Disposition", "inline; filename=\"" + file.name + "\""},
           {"Access-Control-Allow-Origin", "*"},
           {"Access-Control-Allow-Headers", "*"}};
