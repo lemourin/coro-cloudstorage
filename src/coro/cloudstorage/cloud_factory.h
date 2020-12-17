@@ -14,7 +14,7 @@ namespace coro::cloudstorage {
 template <typename T>
 concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
   { v.GetAuthorizationUrl({}) }
-  ->std::convertible_to<std::string>;
+  ->stdx::convertible_to<std::string>;
 };
 
 namespace internal {

@@ -2,15 +2,14 @@
 #define CORO_CLOUDSTORAGE_SERIALIZE_UTILS_H
 
 #include <coro/http/http_parse.h>
-
-#include <concepts>
+#include <coro/stdx/concepts.h>
 
 namespace coro::cloudstorage::util {
 
 template <typename T>
 concept HasEndpoint = requires(T v) {
   { v.endpoint }
-  ->std::convertible_to<std::string>;
+  ->stdx::convertible_to<std::string>;
 };
 
 template <typename AuthToken>
