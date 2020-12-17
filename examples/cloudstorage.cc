@@ -230,7 +230,7 @@ class HttpHandler {
       } catch (const CloudException& e) {
         if (e.type() == CloudException::Type::kUnauthorized) {
           OnAuthError();
-          co_return Response<>{.status = 301, .headers = {{"Location", "/"}}};
+          co_return Response<>{.status = 302, .headers = {{"Location", "/"}}};
         }
         throw;
       }
