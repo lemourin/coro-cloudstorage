@@ -28,7 +28,7 @@ class AuthHandler {
           auto it3 = query.find("twofactor");
           Mega::UserCredential credential = {
               .email = it1->second,
-              .password_hash = Mega::GetPasswordHash(it2->second),
+              .password = it2->second,
               .twofactor = it3 != std::end(query)
                                ? std::make_optional(it3->second)
                                : std::nullopt};

@@ -7,15 +7,6 @@ namespace coro::cloudstorage {
 
 namespace {
 
-struct StubHttpIO : ::mega::HttpIO {
-  void post(struct ::mega::HttpReq*, const char*, unsigned) final {}
-  void cancel(::mega::HttpReq*) final {}
-  m_off_t postpos(void*) final { return 0; }
-  bool doio() final { return false; }
-  void setuseragent(std::string*) final {}
-  void addevents(::mega::Waiter*, int) final {}
-};
-
 template <typename Type>
 Type ToItemImpl(::mega::Node* node) {
   Type type;
@@ -37,42 +28,39 @@ Mega::Item ToItem(::mega::Node* node) {
 
 }  // namespace
 
-std::string Mega::GetPasswordHash(const std::string& password) {
-  const int kHashLength = 128;
-  ::mega::byte hashed_password[kHashLength];
-  mega::FileSystemAccess fs;
-  StubHttpIO http;
-  ::mega::MegaApp app;
-  ::mega::MegaClient mega_client(
-      /*mega_app=*/&app, /*waiter=*/nullptr, /*http_io=*/&http,
-      /*file_system_access=*/&fs, /*db_access=*/nullptr,
-      /*gfx_prox=*/nullptr, /*api_key=*/nullptr,
-      /*app_name=*/"coro-cloudstorage",
-      /*worker_thread_count=*/0);
-  auto e = mega_client.pw_key(password.c_str(), hashed_password);
-  if (e != ::mega::API_OK) {
-    throw CloudException(GetErrorDescription(e));
-  }
-  return std::string(hashed_password, hashed_password + kHashLength);
-}
-
 Task<std::string> Mega::GetSession(Data& d, UserCredential credentials,
                                    stdx::stop_token stop_token) {
-  auto [version, email, salt, prelogin_error] =
+  auto [version, email, salt_ptr, prelogin_error] =
       co_await Do<&::mega::MegaClient::prelogin,
                   &::mega::MegaApp::prelogin_result>(d, stop_token,
                                                      credentials.email.c_str());
+  std::string salt = *salt_ptr;
   co_await Wait(d.event_loop, 0);
   Check(prelogin_error);
   auto twofactor_ptr =
       credentials.twofactor ? credentials.twofactor->c_str() : nullptr;
-  auto [login_error] = co_await Do<kLogin, &::mega::MegaApp::login_result>(
-      d, std::move(stop_token), credentials.email.c_str(),
-      reinterpret_cast<const ::mega::byte*>(credentials.password_hash.c_str()),
-      twofactor_ptr);
-  co_await Wait(d.event_loop, 0);
-  if (login_error != ::mega::API_OK) {
-    throw CloudException(CloudException::Type::kUnauthorized);
+  if (version == 1) {
+    const int kHashLength = 128;
+    ::mega::byte hashed_password[kHashLength];
+    Check(d.mega_client.pw_key(credentials.password.c_str(), hashed_password));
+    auto [login_error] = co_await Do<kLogin, &::mega::MegaApp::login_result>(
+        d, std::move(stop_token), credentials.email.c_str(), hashed_password,
+        twofactor_ptr);
+    co_await Wait(d.event_loop, 0);
+    if (login_error != ::mega::API_OK) {
+      throw CloudException(CloudException::Type::kUnauthorized);
+    }
+  } else if (version == 2) {
+    auto [login_error] =
+        co_await Do<kLoginWithSalt, &::mega::MegaApp::login_result>(
+            d, std::move(stop_token), credentials.email.c_str(),
+            credentials.password.c_str(), &salt, twofactor_ptr);
+    co_await Wait(d.event_loop, 0);
+    if (login_error != ::mega::API_OK) {
+      throw CloudException(CloudException::Type::kUnauthorized);
+    }
+  } else {
+    throw CloudException("Unsupported MEGA login version.");
   }
 
   const int kHashBufferSize = 128;

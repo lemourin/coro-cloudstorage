@@ -27,7 +27,7 @@ struct MegaAuth {
 
   struct UserCredential {
     std::string email;
-    std::string password_hash;
+    std::string password;
     std::optional<std::string> twofactor;
   };
 };
@@ -65,8 +65,6 @@ class Mega : public MegaAuth {
                                     std::forward<Args>(args)...);
   }
 
-  static std::string GetPasswordHash(const std::string& password);
-
   Task<Directory> GetRoot(coro::stdx::stop_token);
   Task<PageData> ListDirectoryPage(Directory directory,
                                    std::optional<std::string> page_token,
@@ -86,6 +84,10 @@ class Mega : public MegaAuth {
   static constexpr auto kLogin = static_cast<void (::mega::MegaClient::*)(
       const char*, const ::mega::byte*, const char*)>(
       &::mega::MegaClient::login);
+  static constexpr auto kLoginWithSalt =
+      static_cast<void (::mega::MegaClient::*)(const char*, const char*,
+                                               std::string*, const char*)>(
+          &::mega::MegaClient::login2);
   static constexpr auto kSessionLogin =
       static_cast<void (::mega::MegaClient::*)(const ::mega::byte*, int)>(
           &::mega::MegaClient::login);
@@ -122,8 +124,8 @@ class Mega : public MegaAuth {
     ::mega::dstime pread_failure(const ::mega::Error& e, int retry,
                                  void* user_data, ::mega::dstime) final {
       const int kMaxRetryCount = 14;
-      std::cerr << "PREAD FAILURE " << GetErrorDescription(e) << " " << retry
-                << "\n";
+      std::cerr << "[MEGA] PREAD FAILURE " << GetErrorDescription(e) << " "
+                << retry << "\n";
       auto it = read_data.find(reinterpret_cast<intptr_t>(user_data));
       if (it == std::end(read_data)) {
         return ~static_cast<::mega::dstime>(0);
@@ -162,12 +164,12 @@ class Mega : public MegaAuth {
     }
 
     Task<> Retry(::mega::dstime time, bool abortbackoff = true) {
-      std::cerr << "RETRYING IN " << time * 100 << "\n";
+      std::cerr << "[MEGA] RETRYING IN " << time * 100 << "\n";
       co_await Wait(d->event_loop, 100 * time, d->stop_source.get_token());
       if (abortbackoff) {
         d->mega_client.abortbackoff();
       }
-      std::cerr << "RETRYING NOW\n";
+      std::cerr << "[MEGA] RETRYING NOW\n";
       d->OnEvent();
     }
 
