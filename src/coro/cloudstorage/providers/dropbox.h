@@ -85,7 +85,10 @@ class DropboxImpl : public Dropbox {
   DropboxImpl(Http& http, Dropbox::Auth::AuthToken auth_token)
       : http_(http), auth_token_(std::move(auth_token)) {}
 
-  static Task<Directory> GetRoot(stdx::stop_token) { co_return Directory{}; }
+  static Task<Directory> GetRoot(stdx::stop_token) {
+    Directory d;
+    co_return d;
+  }
 
   Task<PageData> ListDirectoryPage(Directory directory,
                                    std::optional<std::string> page_token,
