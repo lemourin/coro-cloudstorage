@@ -181,7 +181,7 @@ class HttpHandler {
         auto response =
             co_await handler.handler(std::move(request), stop_token);
         std::smatch match;
-        if (response.status == 200 &&
+        if (response.status == 302 &&
             std::regex_match(url, match, std::regex("/auth(/[^?]*)?.*$"))) {
           co_return Response<>{.status = 302,
                                .headers = {{"Location", match[1].str() + "/"}}};
