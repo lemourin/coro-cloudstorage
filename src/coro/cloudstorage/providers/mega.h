@@ -157,14 +157,16 @@ class Mega : public MegaAuth {
       return true;
     }
 
-    void notify_retry(::mega::dstime time, ::mega::retryreason_t) final {
-      Retry(time);
+    void notify_retry(::mega::dstime time, ::mega::retryreason_t reason) final {
+      Retry(time, /*abortbackoff=*/false);
     }
 
-    Task<> Retry(::mega::dstime time) {
+    Task<> Retry(::mega::dstime time, bool abortbackoff = true) {
       std::cerr << "RETRYING IN " << time * 100 << "\n";
       co_await Wait(d->event_loop, 100 * time, d->stop_source.get_token());
-      d->mega_client.abortbackoff();
+      if (abortbackoff) {
+        d->mega_client.abortbackoff();
+      }
       std::cerr << "RETRYING NOW\n";
       d->OnEvent();
     }

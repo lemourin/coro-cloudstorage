@@ -154,14 +154,21 @@ class HttpHandler {
   struct GenerateAuthUrlTable {
     template <typename CloudProvider>
     void operator()() const {
+      auto auth_token = LoadToken<CloudProvider>();
+      std::string id(GetCloudProviderId<CloudProvider>());
       std::string url =
-          LoadToken<CloudProvider>()
-              ? "/" + std::string(GetCloudProviderId<CloudProvider>()) + "/"
+          auth_token
+              ? "/" + id + "/"
               : factory.template GetAuthorizationUrl<CloudProvider>().value_or(
-                    "/auth/" +
-                    std::string(GetCloudProviderId<CloudProvider>()));
+                    "/auth/" + id);
       stream << "<tr><td><a href='" << url << "'>"
-             << GetCloudProviderId<CloudProvider>() << "</a></td></tr>";
+             << GetCloudProviderId<CloudProvider>() << "</a></td>";
+      if (auth_token) {
+        stream << "<td><form action='/remove/" << id
+               << "' method='POST' style='margin: auto;'><input type='submit' "
+                  "value='remove'/></form></td>";
+      }
+      stream << "</tr>";
     }
     const CloudFactory& factory;
     std::stringstream& stream;
@@ -249,12 +256,7 @@ class HttpHandler {
 
     void OnAuthError() {
       if (pending_requests == 0) {
-        RemoveToken<CloudProvider>();
-        d->handlers_.erase(std::find_if(
-            std::begin(d->handlers_), std::end(d->handlers_),
-            [](const Handler& handler) {
-              return handler.id == GetCloudProviderId<CloudProvider>();
-            }));
+        d->RemoveCloudProvider<CloudProvider>();
       }
     }
 
@@ -262,6 +264,15 @@ class HttpHandler {
     HttpHandler* d;
     ProxyHandlerT proxy_handler;
   };
+
+  template <typename CloudProvider>
+  void RemoveCloudProvider() {
+    RemoveToken<CloudProvider>();
+    handlers_.erase(std::find_if(
+        std::begin(handlers_), std::end(handlers_), [](const Handler& handler) {
+          return handler.id == GetCloudProviderId<CloudProvider>();
+        }));
+  }
 
   template <typename CloudProvider, typename ProxyHandlerT>
   auto MakeCustomProxyHandler(ProxyHandlerT proxy_handler) {
@@ -281,6 +292,15 @@ class HttpHandler {
                             ".*$)"),
         .handler = factory_.template CreateAuthHandler<CloudProvider>(
             [this](auto d) { this->OnAuthTokenCreated<CloudProvider>(d); })});
+    handlers_.emplace_back(Handler{
+        .regex = std::regex("/remove(/" +
+                            std::string(GetCloudProviderId<CloudProvider>()) +
+                            ".*$)"),
+        .handler = [this](Request<> request,
+                          coro::stdx::stop_token) -> Task<Response<>> {
+          RemoveCloudProvider<CloudProvider>();
+          co_return Response<>{.status = 302, .headers = {{"Location", "/"}}};
+        }});
   }
 
   template <typename CloudProvider,
