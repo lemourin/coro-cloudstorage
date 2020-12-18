@@ -10,7 +10,7 @@
 namespace coro::cloudstorage {
 
 template <http::HttpClient Http>
-struct DropboxImpl;
+class DropboxImpl;
 
 struct Dropbox {
   struct Directory {

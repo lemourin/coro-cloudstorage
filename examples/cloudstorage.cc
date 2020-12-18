@@ -1,21 +1,13 @@
 #include <coro/cloudstorage/cloud_factory.h>
-#include <coro/cloudstorage/cloud_provider.h>
-#include <coro/cloudstorage/providers/google_drive.h>
-#include <coro/cloudstorage/providers/mega.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/proxy_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
-#include <coro/generator.h>
 #include <coro/http/curl_http.h>
 #include <coro/http/http_parse.h>
 #include <coro/http/http_server.h>
-#include <coro/promise.h>
 #include <coro/stdx/any_invocable.h>
 #include <coro/stdx/coroutine.h>
 #include <coro/util/for_each.h>
-#include <coro/util/function_traits.h>
-#include <coro/util/make_pointer.h>
-#include <coro/wait_task.h>
 
 #include <csignal>
 #include <fstream>
@@ -24,44 +16,28 @@
 #include <regex>
 
 using ::coro::Generator;
-using ::coro::InterruptedException;
-using ::coro::Promise;
 using ::coro::Semaphore;
 using ::coro::Task;
-using ::coro::Wait;
 using ::coro::cloudstorage::CloudException;
 using ::coro::cloudstorage::CloudProvider;
+using ::coro::cloudstorage::Dropbox;
 using ::coro::cloudstorage::GetCloudProviderId;
 using ::coro::cloudstorage::GoogleDrive;
 using ::coro::cloudstorage::MakeCloudFactory;
 using ::coro::cloudstorage::Mega;
 using ::coro::cloudstorage::OneDrive;
-using ::coro::cloudstorage::Dropbox;
-using ::coro::cloudstorage::util::MakeAuthHandler;
 using ::coro::cloudstorage::util::MakeProxyHandler;
 using ::coro::cloudstorage::util::ToAuthToken;
 using ::coro::cloudstorage::util::ToJson;
 using ::coro::http::CurlHttp;
-using ::coro::http::DecodeUri;
-using ::coro::http::FromBase64;
-using ::coro::http::GetExtension;
-using ::coro::http::GetMimeType;
 using ::coro::http::HttpServer;
-using ::coro::http::ParseQuery;
-using ::coro::http::ParseRange;
-using ::coro::http::ParseUri;
 using ::coro::http::Request;
 using ::coro::http::Response;
-using ::coro::http::ToBase64;
 using ::coro::util::ForEach;
 using ::coro::util::MakePointer;
 
 constexpr std::string_view kRedirectUri = "http://localhost:12345";
 constexpr std::string_view kTokenFile = "access-token.json";
-constexpr std::string_view kGoogleDriveClientId =
-    R"(646432077068-hmvk44qgo6d0a64a5h9ieue34p3j2dcv.apps.googleusercontent.com)";
-constexpr std::string_view kGoogleDriveClientSecret =
-    R"(1f0FG5ch-kKOanTAv1Bqdp9U)";
 
 template <typename>
 struct AuthData;
@@ -70,8 +46,9 @@ template <>
 struct AuthData<GoogleDrive> {
   auto operator()() const {
     return GoogleDrive::Auth::AuthData{
-        .client_id = std::string(kGoogleDriveClientId),
-        .client_secret = std::string(kGoogleDriveClientSecret),
+        .client_id =
+            R"(646432077068-hmvk44qgo6d0a64a5h9ieue34p3j2dcv.apps.googleusercontent.com)",
+        .client_secret = "1f0FG5ch-kKOanTAv1Bqdp9U",
         .redirect_uri = std::string(kRedirectUri) + "/auth/google"};
   }
 };
