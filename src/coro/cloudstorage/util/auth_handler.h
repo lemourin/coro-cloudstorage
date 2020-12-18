@@ -16,10 +16,13 @@ class AuthHandler {
         http_(http),
         on_auth_token_created_(std::move(on_auth_token_created)) {}
 
-  Task<http::Response<>> operator()(const coro::http::Request<>& request,
+  Task<http::Response<>> operator()(coro::http::Request<> request,
                                     coro::stdx::stop_token stop_token) const {
     auto query =
         http::ParseQuery(http::ParseUri(request.url).query.value_or(""));
+    if (request.body) {
+      auto body = co_await http::GetBody(std::move(*request.body));
+    }
     if constexpr (std::is_same_v<CloudProvider, Mega>) {
       auto it1 = query.find("email");
       auto it2 = query.find("password");

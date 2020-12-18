@@ -214,16 +214,14 @@ Generator<std::string> Mega::GetFileContent(File file, http::Range range,
   co_await EnsureLoggedIn(stop_token);
   auto node = GetNode(file.id);
   intptr_t tag = d_->mega_client.nextreqtag();
-  std::unique_ptr<Semaphore> semaphore = std::make_unique<Semaphore>();
   auto size = range.end.value_or(node->size - 1) - range.start + 1;
-  auto data =
-      std::make_shared<ReadData>(ReadData{.semaphore = semaphore.get()});
+  auto data = std::make_shared<ReadData>();
   d_->mega_app.read_data.insert({tag, data});
   auto guard = coro::util::MakePointer(
       this, [tag](Mega* m) { m->d_->mega_app.read_data.erase(tag); });
 
   stdx::stop_callback callback(stop_token,
-                               [data] { data->semaphore->resume(); });
+                               [data] { data->semaphore.resume(); });
   while (!stop_token.stop_requested() && size > 0) {
     if (data->paused && 2 * data->size < App::kBufferSize) {
       data->paused = false;
@@ -239,14 +237,12 @@ Generator<std::string> Mega::GetFileContent(File file, http::Range range,
       range.start += chunk.size();
       co_yield chunk;
     } else if (!data->paused) {
-      Semaphore& semaphore_ref = *semaphore;
-      co_await semaphore_ref;
+      co_await data->semaphore;
       if (data->exception) {
         co_await Wait(d_->event_loop, 0);
         std::rethrow_exception(data->exception);
       }
-      semaphore = std::make_unique<Semaphore>();
-      data->semaphore = semaphore.get();
+      data->semaphore = Semaphore();
       co_await Wait(d_->event_loop, 0);
     }
   }

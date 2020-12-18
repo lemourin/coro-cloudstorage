@@ -93,7 +93,7 @@ class Mega : public MegaAuth {
   struct ReadData {
     std::deque<std::string> buffer;
     std::exception_ptr exception;
-    Semaphore* semaphore;
+    Semaphore semaphore;
     bool paused = true;
     int size = 0;
   };
@@ -131,7 +131,7 @@ class Mega : public MegaAuth {
       if (retry >= kMaxRetryCount) {
         it->second->exception =
             std::make_exception_ptr(CloudException(GetErrorDescription(e)));
-        it->second->semaphore->resume();
+        it->second->semaphore.resume();
         return ~static_cast<::mega::dstime>(0);
       } else {
         Retry(1 << (retry / 2));
@@ -150,10 +150,10 @@ class Mega : public MegaAuth {
       it->second->size += static_cast<int>(length);
       if (it->second->size >= kBufferSize) {
         it->second->paused = true;
-        it->second->semaphore->resume();
+        it->second->semaphore.resume();
         return false;
       }
-      it->second->semaphore->resume();
+      it->second->semaphore.resume();
       return true;
     }
 
