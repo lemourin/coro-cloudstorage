@@ -12,11 +12,19 @@ concept HasEndpoint = requires(T v) {
   ->stdx::convertible_to<std::string>;
 };
 
+template <typename T>
+concept HasRefreshToken = requires(T v) {
+  { v.refresh_token }
+  ->stdx::convertible_to<std::string>;
+};
+
 template <typename AuthToken>
 auto ToJson(AuthToken token) {
   nlohmann::json json;
   json["access_token"] = std::move(token.access_token);
-  json["refresh_token"] = std::move(token.refresh_token);
+  if constexpr (HasRefreshToken<AuthToken>) {
+    json["refresh_token"] = std::move(token.refresh_token);
+  }
   if constexpr (HasEndpoint<AuthToken>) {
     json["endpoint"] = std::move(token.endpoint);
   }
@@ -32,8 +40,10 @@ auto ToJson<Mega::AuthToken>(Mega::AuthToken token) {
 
 template <typename AuthToken>
 auto ToAuthToken(const nlohmann::json& json) {
-  AuthToken auth_token{.access_token = json.at("access_token"),
-                       .refresh_token = json.at("refresh_token")};
+  AuthToken auth_token{.access_token = json.at("access_token")};
+  if constexpr (HasRefreshToken<AuthToken>) {
+    auth_token.refresh_token = json.at("refresh_token");
+  }
   if constexpr (HasEndpoint<AuthToken>) {
     auth_token.endpoint = json.at("endpoint");
   }

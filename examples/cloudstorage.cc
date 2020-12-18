@@ -36,6 +36,7 @@ using ::coro::cloudstorage::GoogleDrive;
 using ::coro::cloudstorage::MakeCloudFactory;
 using ::coro::cloudstorage::Mega;
 using ::coro::cloudstorage::OneDrive;
+using ::coro::cloudstorage::Dropbox;
 using ::coro::cloudstorage::util::MakeAuthHandler;
 using ::coro::cloudstorage::util::MakeProxyHandler;
 using ::coro::cloudstorage::util::ToAuthToken;
@@ -90,6 +91,16 @@ struct AuthData<OneDrive> {
         .client_id = "56a1d60f-ea71-40e9-a489-b87fba12a23e",
         .client_secret = "zJRAsd0o4E9c33q4OLc7OhY",
         .redirect_uri = std::string(kRedirectUri) + "/auth/onedrive"};
+  }
+};
+
+template <>
+struct AuthData<Dropbox> {
+  auto operator()() const {
+    return Dropbox::Auth::AuthData{
+        .client_id = "ktryxp68ae5cicj",
+        .client_secret = "6evu94gcxnmyr59",
+        .redirect_uri = std::string(kRedirectUri) + "/auth/dropbox"};
   }
 };
 

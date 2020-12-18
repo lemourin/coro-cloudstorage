@@ -12,6 +12,7 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/cloud_provider.h
     coro/cloudstorage/providers/google_drive.h
     coro/cloudstorage/providers/one_drive.h
+    coro/cloudstorage/providers/dropbox.h
     coro/cloudstorage/providers/mega.h
     coro/cloudstorage/providers/mega/file_system_access.h
     coro/cloudstorage/providers/mega/http_io.h

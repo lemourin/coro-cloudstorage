@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_CLOUD_FACTORY_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/cloudstorage/providers/dropbox.h>
 #include <coro/cloudstorage/providers/google_drive.h>
 #include <coro/cloudstorage/providers/mega.h>
 #include <coro/cloudstorage/providers/one_drive.h>
@@ -44,6 +45,16 @@ struct CreateCloudProvider<Mega> {
              typename CloudFactory::template AuthData<Mega>{}()));
   }
 };
+
+template <>
+struct CreateCloudProvider<Dropbox> {
+  template <typename CloudFactory, typename... Args>
+  auto operator()(const CloudFactory& factory,
+                  Dropbox::Auth::AuthToken auth_token, Args&&...) const {
+    return MakeCloudProvider(DropboxImpl(factory.http_, std::move(auth_token)));
+  }
+};
+
 }  // namespace internal
 
 template <template <typename> typename AuthDataT, coro::http::HttpClient Http>
@@ -104,7 +115,13 @@ constexpr std::string_view GetCloudProviderId<OneDrive>() {
   return "onedrive";
 }
 
-using CloudProviders = ::coro::util::TypeList<GoogleDrive, Mega, OneDrive>;
+template <>
+constexpr std::string_view GetCloudProviderId<Dropbox>() {
+  return "dropbox";
+}
+
+using CloudProviders =
+    ::coro::util::TypeList<GoogleDrive, Mega, OneDrive, Dropbox>;
 
 template <template <typename> typename AuthData, http::HttpClient Http>
 auto MakeCloudFactory(event_base* event_loop, Http& http) {
