@@ -10,6 +10,7 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
     coro/cloudstorage/cloud_provider.h
+    coro/cloudstorage/providers/youtube.h
     coro/cloudstorage/providers/google_drive.h
     coro/cloudstorage/providers/one_drive.h
     coro/cloudstorage/providers/dropbox.h
