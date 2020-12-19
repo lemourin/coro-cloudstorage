@@ -60,11 +60,6 @@ constexpr std::string_view GetCloudProviderId() {
   return CloudProvider::kId;
 }
 
-template <http::HttpClient Http, typename AuthData>
-auto MakeCloudFactory(event_base* event_loop, Http& http, AuthData auth_data) {
-  return CloudFactory<Http, AuthData>(event_loop, http, std::move(auth_data));
-}
-
 }  // namespace coro::cloudstorage
 
 #endif  // CORO_CLOUDSTORAGE_CLOUD_FACTORY_H

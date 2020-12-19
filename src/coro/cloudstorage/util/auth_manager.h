@@ -10,7 +10,7 @@
 
 namespace coro::cloudstorage::util {
 
-template <typename Auth, http::HttpClient Http, typename OnAuthTokenUpdated>
+template <http::HttpClient Http, typename Auth, typename OnAuthTokenUpdated>
 class AuthManager {
  public:
   using AuthToken = typename Auth::AuthToken;
@@ -92,15 +92,6 @@ class AuthManager {
   OnAuthTokenUpdated on_auth_token_updated_;
   stdx::stop_source stop_source_;
 };
-
-template <typename Auth, http::HttpClient Http, typename OnAuthTokenUpdated>
-auto MakeAuthManager(Http& http, typename Auth::AuthToken auth_token,
-                     typename Auth::AuthData auth_data,
-                     OnAuthTokenUpdated on_auth_token_updated) {
-  return AuthManager<Auth, Http, OnAuthTokenUpdated>(
-      http, std::move(auth_token), std::move(auth_data),
-      std::move(on_auth_token_updated));
-}
 
 }  // namespace coro::cloudstorage::util
 

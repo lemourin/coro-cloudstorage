@@ -120,12 +120,6 @@ class ProxyHandler {
   ::coro::util::LRUCache<std::string, GetItem> item_cache_;
 };
 
-template <typename CloudProvider>
-auto MakeProxyHandler(CloudProvider cloud_provider, std::string path_prefix) {
-  return ProxyHandler<CloudProvider>(std::move(cloud_provider),
-                                     std::move(path_prefix));
-}
-
 }  // namespace coro::cloudstorage::util
 
 #endif  // CORO_CLOUDSTORAGE_PROXY_HANDLER_H

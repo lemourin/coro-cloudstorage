@@ -26,8 +26,6 @@ using ::coro::Task;
 using ::coro::cloudstorage::CloudException;
 using ::coro::cloudstorage::CloudProvider;
 using ::coro::cloudstorage::GetCloudProviderId;
-using ::coro::cloudstorage::MakeCloudFactory;
-using ::coro::cloudstorage::util::MakeProxyHandler;
 using ::coro::cloudstorage::util::ToAuthToken;
 using ::coro::cloudstorage::util::ToJson;
 using ::coro::http::CurlHttp;
@@ -296,13 +294,14 @@ class HttpHandler {
             typename AuthToken = typename CloudProvider::Auth::AuthToken>
   void AddProxyHandler(AuthToken token) {
     auto prefix = "/" + std::string(GetCloudProviderId<CloudProvider>());
-    handlers_.emplace_back(Handler{
-        .id = std::string(GetCloudProviderId<CloudProvider>()),
-        .regex = std::regex(prefix + "(/.*$)"),
-        .handler = HandlerType(MakeCustomProxyHandler<CloudProvider>(
-            MakeProxyHandler(factory_.template Create<CloudProvider>(
-                                 std::move(token), SaveToken<CloudProvider>),
-                             prefix)))});
+    handlers_.emplace_back(
+        Handler{.id = std::string(GetCloudProviderId<CloudProvider>()),
+                .regex = std::regex(prefix + "(/.*$)"),
+                .handler = HandlerType(MakeCustomProxyHandler<CloudProvider>(
+                    coro::cloudstorage::util::ProxyHandler(
+                        factory_.template Create<CloudProvider>(
+                            std::move(token), SaveToken<CloudProvider>),
+                        prefix)))});
   }
 
   struct Handler {
@@ -314,21 +313,19 @@ class HttpHandler {
   std::vector<Handler> handlers_;
 };
 
-template <typename CloudFactory>
-auto MakeHttpHandler(const CloudFactory& factory) {
-  return HandlerType(std::make_unique<HttpHandler<CloudFactory>>(factory));
-}
-
 Task<> CoMain(event_base* event_loop) noexcept {
   try {
     CurlHttp http(event_loop);
     Semaphore quit;
-    auto cloud_factory = MakeCloudFactory(event_loop, http, AuthData{});
+    coro::cloudstorage::CloudFactory cloud_factory(event_loop, http,
+                                                   AuthData{});
 
     Semaphore semaphore;
-    HttpServer http_server(event_loop, {.address = "0.0.0.0", .port = 12345},
-                           MakeHttpHandler(cloud_factory),
-                           [&] { semaphore.resume(); });
+    HttpServer http_server(
+        event_loop, {.address = "0.0.0.0", .port = 12345},
+        HandlerType(std::make_unique<HttpHandler<decltype(cloud_factory)>>(
+            cloud_factory)),
+        [&] { semaphore.resume(); });
     co_await semaphore;
   } catch (const std::exception& exception) {
     std::cerr << "EXCEPTION: " << exception.what() << "\n";

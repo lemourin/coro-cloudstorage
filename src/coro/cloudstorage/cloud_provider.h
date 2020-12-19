@@ -112,11 +112,6 @@ class CloudProvider {
   Impl impl_;
 };
 
-template <typename CloudProviderImpl>
-auto MakeCloudProvider(CloudProviderImpl impl) {
-  return CloudProvider<CloudProviderImpl>(std::move(impl));
-}
-
 template <typename CloudProvider>
 struct CreateCloudProvider {
   template <typename CloudFactory, typename OnTokenUpdated = void (*)(
@@ -126,13 +121,15 @@ struct CreateCloudProvider {
       typename CloudProvider::Auth::AuthToken auth_token,
       OnTokenUpdated on_token_updated =
           [](typename CloudProvider::Auth::AuthToken) {}) const {
-    auto auth_manager = util::MakeAuthManager<typename CloudProvider::Auth>(
-        factory.http_, std::move(auth_token),
-        factory.auth_data_.template operator()<CloudProvider>(),
-        std::move(on_token_updated));
+    util::AuthManager<std::remove_reference_t<decltype(factory.http_)>,
+                      typename CloudProvider::Auth, OnTokenUpdated>
+        auth_manager(factory.http_, std::move(auth_token),
+                     factory.auth_data_.template operator()<CloudProvider>(),
+                     std::move(on_token_updated));
     using InternalImpl =
         typename CloudProvider::template Impl<decltype(auth_manager)>;
-    return MakeCloudProvider(InternalImpl(std::move(auth_manager)));
+    return ::coro::cloudstorage::CloudProvider(
+        InternalImpl(std::move(auth_manager)));
   }
 };
 
