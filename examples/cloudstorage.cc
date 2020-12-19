@@ -1,4 +1,8 @@
 #include <coro/cloudstorage/cloud_factory.h>
+#include <coro/cloudstorage/providers/dropbox.h>
+#include <coro/cloudstorage/providers/google_drive.h>
+#include <coro/cloudstorage/providers/mega.h>
+#include <coro/cloudstorage/providers/one_drive.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/proxy_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
@@ -20,12 +24,8 @@ using ::coro::Semaphore;
 using ::coro::Task;
 using ::coro::cloudstorage::CloudException;
 using ::coro::cloudstorage::CloudProvider;
-using ::coro::cloudstorage::Dropbox;
 using ::coro::cloudstorage::GetCloudProviderId;
-using ::coro::cloudstorage::GoogleDrive;
 using ::coro::cloudstorage::MakeCloudFactory;
-using ::coro::cloudstorage::Mega;
-using ::coro::cloudstorage::OneDrive;
 using ::coro::cloudstorage::util::MakeProxyHandler;
 using ::coro::cloudstorage::util::ToAuthToken;
 using ::coro::cloudstorage::util::ToJson;
@@ -36,48 +36,41 @@ using ::coro::http::Response;
 using ::coro::util::ForEach;
 using ::coro::util::MakePointer;
 
+using CloudProviders = ::coro::util::TypeList<
+    coro::cloudstorage::GoogleDrive, coro::cloudstorage::Mega,
+    coro::cloudstorage::OneDrive, coro::cloudstorage::Dropbox>;
+
 constexpr std::string_view kRedirectUri = "http://localhost:12345";
 constexpr std::string_view kTokenFile = "access-token.json";
 
-template <typename>
-struct AuthData;
-
-template <>
-struct AuthData<GoogleDrive> {
+struct AuthData {
+  template <typename CloudProvider>
   auto operator()() const {
-    return GoogleDrive::Auth::AuthData{
-        .client_id =
-            R"(646432077068-hmvk44qgo6d0a64a5h9ieue34p3j2dcv.apps.googleusercontent.com)",
-        .client_secret = "1f0FG5ch-kKOanTAv1Bqdp9U",
-        .redirect_uri = std::string(kRedirectUri) + "/auth/google"};
-  }
-};
+    using AuthData = typename CloudProvider::Auth::AuthData;
 
-template <>
-struct AuthData<Mega> {
-  auto operator()() const {
-    return Mega::Auth::AuthData{.api_key = "ZVhB0Czb",
-                                .app_name = "coro-cloudstorage"};
-  }
-};
-
-template <>
-struct AuthData<OneDrive> {
-  auto operator()() const {
-    return OneDrive::Auth::AuthData{
-        .client_id = "56a1d60f-ea71-40e9-a489-b87fba12a23e",
-        .client_secret = "zJRAsd0o4E9c33q4OLc7OhY",
-        .redirect_uri = std::string(kRedirectUri) + "/auth/onedrive"};
-  }
-};
-
-template <>
-struct AuthData<Dropbox> {
-  auto operator()() const {
-    return Dropbox::Auth::AuthData{
-        .client_id = "ktryxp68ae5cicj",
-        .client_secret = "6evu94gcxnmyr59",
-        .redirect_uri = std::string(kRedirectUri) + "/auth/dropbox"};
+    if constexpr (std::is_same_v<CloudProvider,
+                                 coro::cloudstorage::GoogleDrive>) {
+      return AuthData{
+          .client_id =
+              R"(646432077068-hmvk44qgo6d0a64a5h9ieue34p3j2dcv.apps.googleusercontent.com)",
+          .client_secret = "1f0FG5ch-kKOanTAv1Bqdp9U",
+          .redirect_uri = std::string(kRedirectUri) + "/auth/google"};
+    } else if constexpr (std::is_same_v<CloudProvider,
+                                        coro::cloudstorage::Mega>) {
+      return AuthData{.api_key = "ZVhB0Czb", .app_name = "coro-cloudstorage"};
+    } else if constexpr (std::is_same_v<CloudProvider,
+                                        coro::cloudstorage::OneDrive>) {
+      return AuthData{
+          .client_id = "56a1d60f-ea71-40e9-a489-b87fba12a23e",
+          .client_secret = "zJRAsd0o4E9c33q4OLc7OhY",
+          .redirect_uri = std::string(kRedirectUri) + "/auth/onedrive"};
+    } else {
+      static_assert(std::is_same_v<CloudProvider, coro::cloudstorage::Dropbox>);
+      return AuthData{
+          .client_id = "ktryxp68ae5cicj",
+          .client_secret = "6evu94gcxnmyr59",
+          .redirect_uri = std::string(kRedirectUri) + "/auth/dropbox"};
+    }
   }
 };
 
@@ -125,8 +118,8 @@ void RemoveToken() {
   std::ofstream{std::string(kTokenFile)} << json;
 }
 
-using HandlerType = coro::stdx::any_invocable<Task<coro::http::Response<>>(
-    coro::http::Request<>, coro::stdx::stop_token)>;
+using HandlerType = coro::stdx::any_invocable<Task<Response<>>(
+    Request<>, coro::stdx::stop_token)>;
 
 template <typename CloudFactory>
 class HttpHandler {
@@ -163,7 +156,7 @@ class HttpHandler {
   };
 
   explicit HttpHandler(const CloudFactory& factory) : factory_(factory) {
-    ForEach<coro::cloudstorage::CloudProviders>{}(AddAuthHandlerFunctor{this});
+    ForEach<CloudProviders>{}(AddAuthHandlerFunctor{this});
   }
 
   HttpHandler(const HttpHandler&) = delete;
@@ -196,8 +189,7 @@ class HttpHandler {
   Generator<std::string> GetHomePage() const {
     std::stringstream result;
     result << "<html><body><table>";
-    ForEach<coro::cloudstorage::CloudProviders>{}(
-        GenerateAuthUrlTable{factory_, result});
+    ForEach<CloudProviders>{}(GenerateAuthUrlTable{factory_, result});
     result << "</table></body></html>";
     co_yield result.str();
   }
@@ -322,7 +314,7 @@ Task<> CoMain(event_base* event_loop) noexcept {
   try {
     CurlHttp http(event_loop);
     Semaphore quit;
-    auto cloud_factory = MakeCloudFactory<AuthData>(event_loop, http);
+    auto cloud_factory = MakeCloudFactory(event_loop, http, AuthData{});
 
     Semaphore semaphore;
     HttpServer http_server(event_loop, {.address = "0.0.0.0", .port = 12345},

@@ -112,19 +112,29 @@ class CloudProvider {
   Impl impl_;
 };
 
-template <typename CloudProviderImpl, typename... Args>
-auto MakeCloudProvider(Args&&... args) {
-  auto auth_manager = util::MakeAuthManager<typename CloudProviderImpl::Auth>(
-      std::forward<Args>(args)...);
-  using InternalImpl =
-      typename CloudProviderImpl::template Impl<decltype(auth_manager)>;
-  return CloudProvider<InternalImpl>(InternalImpl(std::move(auth_manager)));
-}
-
 template <typename CloudProviderImpl>
 auto MakeCloudProvider(CloudProviderImpl impl) {
   return CloudProvider<CloudProviderImpl>(std::move(impl));
 }
+
+template <typename CloudProvider>
+struct CreateCloudProvider {
+  template <typename CloudFactory, typename OnTokenUpdated = void (*)(
+                                       typename CloudProvider::Auth::AuthToken)>
+  auto operator()(
+      const CloudFactory& factory,
+      typename CloudProvider::Auth::AuthToken auth_token,
+      OnTokenUpdated on_token_updated =
+          [](typename CloudProvider::Auth::AuthToken) {}) const {
+    auto auth_manager = util::MakeAuthManager<typename CloudProvider::Auth>(
+        factory.http_, std::move(auth_token),
+        factory.auth_data_.template operator()<CloudProvider>(),
+        std::move(on_token_updated));
+    using InternalImpl =
+        typename CloudProvider::template Impl<decltype(auth_manager)>;
+    return MakeCloudProvider(InternalImpl(std::move(auth_manager)));
+  }
+};
 
 }  // namespace coro::cloudstorage
 

@@ -1,6 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_DROPBOX_H
 #define CORO_CLOUDSTORAGE_DROPBOX_H
 
+#include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/util/fetch_json.h>
 #include <coro/http/http.h>
 
@@ -74,6 +75,8 @@ struct Dropbox {
 
   template <http::HttpClient Http>
   using Impl = DropboxImpl<Http>;
+
+  static constexpr std::string_view kId = "dropbox";
 };
 
 template <http::HttpClient Http>
@@ -171,6 +174,15 @@ class DropboxImpl : public Dropbox {
 
   Http& http_;
   Dropbox::Auth::AuthToken auth_token_;
+};
+
+template <>
+struct CreateCloudProvider<Dropbox> {
+  template <typename CloudFactory, typename... Args>
+  auto operator()(const CloudFactory& factory,
+                  Dropbox::Auth::AuthToken auth_token, Args&&...) const {
+    return MakeCloudProvider(DropboxImpl(factory.http_, std::move(auth_token)));
+  }
 };
 
 }  // namespace coro::cloudstorage

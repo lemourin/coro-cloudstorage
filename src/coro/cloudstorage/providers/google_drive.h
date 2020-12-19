@@ -112,6 +112,8 @@ struct GoogleDrive {
     std::vector<Item> items;
     std::optional<std::string> next_page_token;
   };
+
+  static constexpr std::string_view kId = "google";
 };
 
 template <typename AuthManager>

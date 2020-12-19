@@ -31,13 +31,6 @@ auto ToJson(AuthToken token) {
   return json;
 }
 
-template <>
-auto ToJson<Mega::AuthToken>(Mega::AuthToken token) {
-  nlohmann::json json;
-  json["session"] = http::ToBase64(token.session);
-  return json;
-}
-
 template <typename AuthToken>
 auto ToAuthToken(const nlohmann::json& json) {
   AuthToken auth_token{.access_token = json.at("access_token")};
@@ -48,12 +41,6 @@ auto ToAuthToken(const nlohmann::json& json) {
     auth_token.endpoint = json.at("endpoint");
   }
   return auth_token;
-}
-
-template <>
-auto ToAuthToken<Mega::AuthToken>(const nlohmann::json& json) {
-  return Mega::AuthToken{.session =
-                             http::FromBase64(std::string(json.at("session")))};
 }
 
 }  // namespace coro::cloudstorage::util

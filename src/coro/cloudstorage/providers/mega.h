@@ -4,6 +4,8 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/providers/mega/file_system_access.h>
 #include <coro/cloudstorage/providers/mega/http_io.h>
+#include <coro/cloudstorage/util/auth_handler.h>
+#include <coro/cloudstorage/util/serialize_utils.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/util/function_traits.h>
 #include <coro/util/make_pointer.h>
@@ -35,6 +37,8 @@ struct MegaAuth {
 class Mega : public MegaAuth {
  public:
   using Auth = MegaAuth;
+
+  static constexpr std::string_view kId = "mega";
 
   struct Directory {
     ::mega::handle id;
@@ -279,6 +283,99 @@ class Mega : public MegaAuth {
   AuthToken auth_token_;
   std::unique_ptr<Data> d_;
 };
+
+template <>
+struct CreateCloudProvider<Mega> {
+  template <typename CloudFactory, typename... Args>
+  auto operator()(const CloudFactory& factory, Mega::AuthToken auth_token,
+                  Args&&...) const {
+    return MakeCloudProvider(
+        Mega(factory.event_loop_, factory.http_, std::move(auth_token),
+             factory.auth_data_.template operator()<Mega>()));
+  }
+};
+
+namespace util {
+template <>
+inline auto ToJson<Mega::AuthToken>(Mega::AuthToken token) {
+  nlohmann::json json;
+  json["session"] = http::ToBase64(token.session);
+  return json;
+}
+
+template <>
+inline auto ToAuthToken<Mega::AuthToken>(const nlohmann::json& json) {
+  return Mega::AuthToken{.session =
+                             http::FromBase64(std::string(json.at("session")))};
+}
+
+template <coro::http::HttpClient HttpClient, typename OnAuthTokenCreated>
+class AuthHandler<Mega, HttpClient, OnAuthTokenCreated> {
+ public:
+  AuthHandler(event_base* event_loop, HttpClient& http,
+              Mega::AuthData auth_data,
+              OnAuthTokenCreated on_auth_token_created)
+      : event_loop_(event_loop),
+        http_(http),
+        auth_data_(std::move(auth_data)),
+        on_auth_token_created_(std::move(on_auth_token_created)) {}
+
+  Task<http::Response<>> operator()(coro::http::Request<> request,
+                                    coro::stdx::stop_token stop_token) const {
+    if (request.method == "POST") {
+      auto query =
+          http::ParseQuery(co_await http::GetBody(std::move(*request.body)));
+      auto it1 = query.find("email");
+      auto it2 = query.find("password");
+      if (it1 != std::end(query) && it2 != std::end(query)) {
+        auto it3 = query.find("twofactor");
+        Mega::UserCredential credential = {
+            .email = it1->second,
+            .password = it2->second,
+            .twofactor = it3 != std::end(query)
+                             ? std::make_optional(it3->second)
+                             : std::nullopt};
+        auto session = co_await Mega::GetSession(
+            event_loop_, http_, std::move(credential), auth_data_, stop_token);
+        on_auth_token_created_(Mega::AuthToken{std::move(session)});
+        co_return http::Response<>{.status = 302};
+      }
+    } else {
+      co_return http::Response<>{.status = 200, .body = GenerateLoginPage()};
+    }
+    co_return http::Response<>{.status = 400};
+  }
+
+ private:
+  Generator<std::string> GenerateLoginPage() const {
+    co_yield R"(
+      <html>
+        <body>
+          <form method="post">
+            <table>
+              <tr>
+                <td><label for="email">email:</label></td>
+                <td><input type="text" id="email" name="email"/></td>
+              </tr>
+              <tr>
+                <td><label for="password">password:</label></td>
+                <td><input type="password" id="password" name="password"/></td>
+              </tr>
+              <tr><td><input type="submit" value="Submit"/></td></tr>
+            </table>
+          </form>
+        </body>
+      </html>
+    )";
+  }
+
+  event_base* event_loop_;
+  HttpClient& http_;
+  Mega::AuthData auth_data_;
+  OnAuthTokenCreated on_auth_token_created_;
+};
+
+}  // namespace util
 
 }  // namespace coro::cloudstorage
 

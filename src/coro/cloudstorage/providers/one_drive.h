@@ -9,6 +9,8 @@ struct OneDriveImpl;
 struct OneDrive {
   using json = nlohmann::json;
 
+  static constexpr std::string_view kId = "onedrive";
+
   struct Auth {
     struct AuthToken {
       std::string access_token;

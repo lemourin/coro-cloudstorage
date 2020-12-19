@@ -4,6 +4,8 @@
 #include <coro/http/http_parse.h>
 #include <coro/util/lru_cache.h>
 
+#include <sstream>
+
 namespace coro::cloudstorage::util {
 
 template <typename CloudProvider>
