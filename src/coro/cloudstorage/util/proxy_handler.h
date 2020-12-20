@@ -89,9 +89,10 @@ class ProxyHandler {
                                            Directory directory, Request request,
                                            coro::stdx::stop_token stop_token) {
     co_yield R"(<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:">)";
-    co_yield GetElement(ElementData{.path = path_prefix_ + path,
-                                    .name = directory.name,
-                                    .is_directory = true});
+    ElementData current_element_data{.path = path_prefix_ + path,
+                                     .name = directory.name,
+                                     .is_directory = true};
+    co_yield GetElement(std::move(current_element_data));
     if (::coro::http::GetHeader(request.headers, "Depth") == "1") {
       FOR_CO_AWAIT(
           const auto& page, provider_->ListDirectory(directory, stop_token), {

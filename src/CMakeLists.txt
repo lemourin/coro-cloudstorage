@@ -3,6 +3,8 @@ add_library(coro-cloudstorage)
 set(coro-cloudstorage-HEADERS
     coro/cloudstorage/version.h
     coro/cloudstorage/util/fetch_json.h
+    coro/cloudstorage/util/account_manager_handler.h
+    coro/cloudstorage/util/auth_token_manager.h
     coro/cloudstorage/util/auth_manager.h
     coro/cloudstorage/util/auth_handler.h
     coro/cloudstorage/util/proxy_handler.h

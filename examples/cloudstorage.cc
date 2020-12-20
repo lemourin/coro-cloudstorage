@@ -4,7 +4,9 @@
 #include <coro/cloudstorage/providers/mega.h>
 #include <coro/cloudstorage/providers/one_drive.h>
 #include <coro/cloudstorage/providers/youtube.h>
+#include <coro/cloudstorage/util/account_manager_handler.h>
 #include <coro/cloudstorage/util/auth_handler.h>
+#include <coro/cloudstorage/util/auth_token_manager.h>
 #include <coro/cloudstorage/util/proxy_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
@@ -27,9 +29,11 @@ using ::coro::Task;
 using ::coro::cloudstorage::CloudException;
 using ::coro::cloudstorage::CloudProvider;
 using ::coro::cloudstorage::GetCloudProviderId;
+using ::coro::cloudstorage::util::AccountManagerHandler;
 using ::coro::cloudstorage::util::ElementData;
 using ::coro::cloudstorage::util::GetElement;
 using ::coro::cloudstorage::util::GetMultiStatusResponse;
+using ::coro::cloudstorage::util::ProxyHandler;
 using ::coro::cloudstorage::util::ToAuthToken;
 using ::coro::cloudstorage::util::ToJson;
 using ::coro::http::CurlHttp;
@@ -85,251 +89,57 @@ struct AuthData {
   }
 };
 
-template <typename CloudProvider,
-          typename AuthToken = typename CloudProvider::Auth::AuthToken>
-std::optional<AuthToken> LoadToken() {
-  std::ifstream token_file{std::string(kTokenFile)};
-  if (token_file) {
-    try {
-      nlohmann::json json;
-      token_file >> json;
-      return ToAuthToken<AuthToken>(
-          json.at(std::string(GetCloudProviderId<CloudProvider>())));
-    } catch (const nlohmann::json::exception&) {
-    }
-  }
-  return std::nullopt;
-}
-
-template <typename CloudProvider,
-          typename AuthToken = typename CloudProvider::Auth::AuthToken>
-void SaveToken(AuthToken token) {
-  nlohmann::json json;
-  {
-    std::ifstream input_token_file{std::string(kTokenFile)};
-    if (input_token_file) {
-      input_token_file >> json;
-    }
-  }
-  json[std::string(GetCloudProviderId<CloudProvider>())] =
-      ToJson(std::move(token));
-  std::ofstream{std::string(kTokenFile)} << json;
-}
-
-template <typename CloudProvider>
-void RemoveToken() {
-  nlohmann::json json;
-  {
-    std::ifstream input_token_file{std::string(kTokenFile)};
-    if (input_token_file) {
-      input_token_file >> json;
-    }
-  }
-  json.erase(std::string(GetCloudProviderId<CloudProvider>()));
-  std::ofstream{std::string(kTokenFile)} << json;
-}
-
 using HandlerType = coro::stdx::any_invocable<Task<Response<>>(
     Request<>, coro::stdx::stop_token)>;
 
 template <typename CloudFactory>
 class HttpHandler {
  public:
-  struct AddAuthHandlerFunctor {
+  struct AuthTokenManager : coro::cloudstorage::util::AuthTokenManager {
     template <typename CloudProvider>
-    void operator()() const {
-      handler->AddAuthHandler<CloudProvider>();
+    void OnAuthTokenCreated(typename CloudProvider::Auth::AuthToken token) {
+      SaveToken<CloudProvider>(token);
+      handler->AddProxyHandler<CloudProvider>(token);
+    }
+    template <typename CloudProvider>
+    void OnCloudProviderRemoved() {
+      RemoveToken<CloudProvider>();
+      handler->RemoveCloudProvider<CloudProvider>();
     }
     HttpHandler* handler;
   };
 
-  struct GenerateAuthUrlTable {
-    template <typename CloudProvider>
-    void operator()() const {
-      auto auth_token = LoadToken<CloudProvider>();
-      std::string id(GetCloudProviderId<CloudProvider>());
-      std::string url =
-          auth_token
-              ? "/" + id + "/"
-              : factory.template GetAuthorizationUrl<CloudProvider>().value_or(
-                    "/auth/" + id);
-      stream << "<tr><td><a href='" << url << "'>"
-             << GetCloudProviderId<CloudProvider>() << "</a></td>";
-      if (auth_token) {
-        stream << "<td><form action='/remove/" << id
-               << "' method='POST' style='margin: auto;'><input type='submit' "
-                  "value='remove'/></form></td>";
-      }
-      stream << "</tr>";
-    }
-    const CloudFactory& factory;
-    std::stringstream& stream;
-  };
-
-  struct GenerateRootContent {
-    template <typename CloudProvider>
-    void operator()() const {
-      auto auth_token = LoadToken<CloudProvider>();
-      std::string id(GetCloudProviderId<CloudProvider>());
-      if (auth_token) {
-        stream.push_back(GetElement(ElementData{
-            .path = "/" + id + "/", .name = id, .is_directory = true}));
-      }
-    }
-    const CloudFactory& factory;
-    std::vector<std::string>& stream;
-  };
-
-  explicit HttpHandler(const CloudFactory& factory) : factory_(factory) {
-    ForEach<CloudProviders>{}(AddAuthHandlerFunctor{this});
-  }
+  explicit HttpHandler(const CloudFactory& factory)
+      : factory_(factory),
+        auth_handler_(
+            factory,
+            AuthTokenManager{{.token_file = std::string(kTokenFile)}, this}) {}
 
   HttpHandler(const HttpHandler&) = delete;
-
-  static Generator<std::string> CreateBody(std::string body) {
-    co_yield std::move(body);
-  }
 
   Task<Response<>> operator()(Request<> request,
                               coro::stdx::stop_token stop_token) {
     std::cerr << coro::http::MethodToString(request.method) << " "
               << request.url << "\n";
-    if (request.method == coro::http::Method::kOptions) {
-      co_return Response<>{
-          .status = 204,
-          .headers = {{"Allow", "OPTIONS, GET, HEAD, POST, PROPFIND"},
-                      {"DAV", "1"}}};
+    if (auth_handler_.CanHandleUrl(request.url)) {
+      co_return co_await auth_handler_(std::move(request), stop_token);
     }
     for (auto& handler : handlers_) {
       if (std::regex_match(request.url, handler.regex)) {
-        auto url = request.url;
-        auto response =
-            co_await handler.handler(std::move(request), stop_token);
-        std::smatch match;
-        if (response.status == 302 &&
-            std::regex_match(url, match, std::regex("/auth(/[^?]*)?.*$"))) {
-          co_return Response<>{.status = 302,
-                               .headers = {{"Location", match[1].str() + "/"}}};
-        } else {
-          co_return response;
-        }
+        co_return co_await handler.handler(std::move(request), stop_token);
       }
     }
-    if (request.url.empty() || request.url == "/") {
-      if (request.method == coro::http::Method::kPropfind) {
-        std::vector<std::string> responses = {GetElement(
-            ElementData{.path = "/", .name = "root", .is_directory = true})};
-        if (coro::http::GetHeader(request.headers, "Depth") == "1") {
-          ForEach<CloudProviders>{}(GenerateRootContent{factory_, responses});
-        }
-        co_return coro::http::Response<>{
-            .status = 207,
-            .headers = {{"Content-Type", "text/xml"}},
-            .body = CreateBody(GetMultiStatusResponse(responses))};
-      } else {
-        co_return coro::http::Response<>{.status = 200, .body = GetHomePage()};
-      }
-    } else {
-      co_return coro::http::Response<>{.status = 302,
-                                       .headers = {{"Location", "/"}}};
-    }
-  }
-
-  Generator<std::string> GetHomePage() const {
-    std::stringstream result;
-    result << "<html><body><table>";
-    ForEach<CloudProviders>{}(GenerateAuthUrlTable{factory_, result});
-    result << "</table></body></html>";
-    co_yield result.str();
-  }
-
-  template <typename CloudProvider,
-            typename AuthToken = typename CloudProvider::Auth::AuthToken>
-  void OnAuthTokenCreated(AuthToken token) {
-    SaveToken<CloudProvider>(token);
-    AddProxyHandler<CloudProvider>(token);
+    co_return coro::http::Response<>{.status = 302,
+                                     .headers = {{"Location", "/"}}};
   }
 
  private:
-  template <typename CloudProvider, typename ProxyHandlerT>
-  struct ProxyHandler {
-    Task<Response<>> operator()(Request<> request,
-                                coro::stdx::stop_token stop_token) {
-      try {
-        pending_requests++;
-        auto guard = MakePointer(
-            this, [](ProxyHandler* handler) { handler->pending_requests--; });
-        auto response =
-            co_await proxy_handler(std::move(request), std::move(stop_token));
-        response.body = GenerateBody(std::move(response.body));
-        co_return response;
-      } catch (const CloudException& e) {
-        if (e.type() == CloudException::Type::kUnauthorized) {
-          OnAuthError();
-          co_return Response<>{.status = 302, .headers = {{"Location", "/"}}};
-        }
-        throw;
-      }
-    }
-
-    Generator<std::string> GenerateBody(Generator<std::string> input) {
-      try {
-        FOR_CO_AWAIT(std::string chunk, input, { co_yield chunk; });
-      } catch (const CloudException& e) {
-        if (e.type() == CloudException::Type::kUnauthorized) {
-          OnAuthError();
-        }
-        throw;
-      }
-    }
-
-    void OnAuthError() {
-      if (pending_requests == 0) {
-        d->RemoveCloudProvider<CloudProvider>();
-      }
-    }
-
-    int pending_requests = 0;
-    HttpHandler* d;
-    ProxyHandlerT proxy_handler;
-  };
-
   template <typename CloudProvider>
   void RemoveCloudProvider() {
-    RemoveToken<CloudProvider>();
     handlers_.erase(std::find_if(
         std::begin(handlers_), std::end(handlers_), [](const Handler& handler) {
           return handler.id == GetCloudProviderId<CloudProvider>();
         }));
-  }
-
-  template <typename CloudProvider, typename ProxyHandlerT>
-  auto MakeCustomProxyHandler(ProxyHandlerT proxy_handler) {
-    return ProxyHandler<CloudProvider, ProxyHandlerT>{
-        .d = this, .proxy_handler = std::move(proxy_handler)};
-  }
-
-  template <typename CloudProvider>
-  void AddAuthHandler() {
-    auto auth_token = LoadToken<CloudProvider>();
-    if (auth_token) {
-      OnAuthTokenCreated<CloudProvider>(*auth_token);
-    }
-    handlers_.emplace_back(Handler{
-        .regex = std::regex("/auth(/" +
-                            std::string(GetCloudProviderId<CloudProvider>()) +
-                            ".*$)"),
-        .handler = factory_.template CreateAuthHandler<CloudProvider>(
-            [this](auto d) { this->OnAuthTokenCreated<CloudProvider>(d); })});
-    handlers_.emplace_back(Handler{
-        .regex = std::regex("/remove(/" +
-                            std::string(GetCloudProviderId<CloudProvider>()) +
-                            ".*$)"),
-        .handler = [this](Request<> request,
-                          coro::stdx::stop_token) -> Task<Response<>> {
-          RemoveCloudProvider<CloudProvider>();
-          co_return Response<>{.status = 302, .headers = {{"Location", "/"}}};
-        }});
   }
 
   template <typename CloudProvider,
@@ -339,12 +149,20 @@ class HttpHandler {
     handlers_.emplace_back(
         Handler{.id = std::string(GetCloudProviderId<CloudProvider>()),
                 .regex = std::regex(prefix + "(.*$)"),
-                .handler = HandlerType(MakeCustomProxyHandler<CloudProvider>(
-                    coro::cloudstorage::util::ProxyHandler(
-                        factory_.template Create<CloudProvider>(
-                            std::move(token), SaveToken<CloudProvider>),
-                        prefix)))});
+                .handler = HandlerType(ProxyHandler(
+                    factory_.template Create<CloudProvider>(
+                        std::move(token), SaveToken<CloudProvider>{}),
+                    prefix))});
   }
+
+  template <typename CloudProvider>
+  struct SaveToken {
+    void operator()(typename CloudProvider::Auth::AuthToken token) const {
+      coro::cloudstorage::util::AuthTokenManager{.token_file =
+                                                     std::string(kTokenFile)}
+          .SaveToken<CloudProvider>(token);
+    }
+  };
 
   struct Handler {
     std::string id;
@@ -353,6 +171,8 @@ class HttpHandler {
   };
   const CloudFactory& factory_;
   std::vector<Handler> handlers_;
+  AccountManagerHandler<CloudProviders, CloudFactory, AuthTokenManager>
+      auth_handler_;
 };
 
 Task<> CoMain(event_base* event_loop) noexcept {
