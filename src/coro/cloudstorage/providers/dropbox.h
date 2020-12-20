@@ -55,7 +55,7 @@ struct Dropbox {
 
     template <http::HttpClient Http>
     static Task<AuthToken> ExchangeAuthorizationCode(
-        Http& http, AuthData auth_data, std::string code,
+        const Http& http, AuthData auth_data, std::string code,
         stdx::stop_token stop_token) {
       auto request = http::Request<std::string>{
           .url = "https://api.dropboxapi.com/oauth2/token",
@@ -85,7 +85,7 @@ class DropboxImpl : public Dropbox {
   using json = nlohmann::json;
   using Request = http::Request<std::string>;
 
-  DropboxImpl(Http& http, Dropbox::Auth::AuthToken auth_token)
+  DropboxImpl(const Http& http, Dropbox::Auth::AuthToken auth_token)
       : http_(http), auth_token_(std::move(auth_token)) {}
 
   static Task<Directory> GetRoot(stdx::stop_token) {
@@ -172,7 +172,7 @@ class DropboxImpl : public Dropbox {
     return result;
   }
 
-  Http& http_;
+  const Http& http_;
   Dropbox::Auth::AuthToken auth_token_;
 };
 

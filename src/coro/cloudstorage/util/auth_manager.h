@@ -16,7 +16,7 @@ class AuthManager {
   using AuthToken = typename Auth::AuthToken;
   using AuthData = typename Auth::AuthData;
 
-  AuthManager(Http& http, AuthToken auth_token, AuthData auth_data,
+  AuthManager(const Http& http, AuthToken auth_token, AuthData auth_data,
               OnAuthTokenUpdated on_auth_token_updated)
       : http_(http),
         auth_token_(std::move(auth_token)),
@@ -85,7 +85,7 @@ class AuthManager {
     return request;
   }
 
-  Http& http_;
+  const Http& http_;
   AuthToken auth_token_;
   AuthData auth_data_;
   std::unique_ptr<Promise<AuthToken>> current_auth_refresh_;

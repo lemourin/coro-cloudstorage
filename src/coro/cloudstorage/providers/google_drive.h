@@ -38,7 +38,8 @@ struct GoogleDrive {
     };
 
     template <http::HttpClient Http>
-    static Task<AuthToken> RefreshAccessToken(Http& http, AuthData auth_data,
+    static Task<AuthToken> RefreshAccessToken(const Http& http,
+                                              AuthData auth_data,
                                               std::string refresh_token,
                                               stdx::stop_token stop_token) {
       auto request = http::Request<std::string>{
@@ -70,7 +71,7 @@ struct GoogleDrive {
 
     template <http::HttpClient Http>
     static Task<AuthToken> ExchangeAuthorizationCode(
-        Http& http, AuthData auth_data, std::string code,
+        const Http& http, AuthData auth_data, std::string code,
         stdx::stop_token stop_token) {
       auto request = http::Request<std::string>{
           .url = "https://accounts.google.com/o/oauth2/token",
