@@ -31,7 +31,7 @@ struct OneDrive {
                                               stdx::stop_token stop_token) {
       auto request = http::Request<std::string>{
           .url = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-          .method = "POST",
+          .method = http::Method::kPost,
           .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
           .body = http::FormDataToString(
               {{"refresh_token", refresh_token},
@@ -60,7 +60,7 @@ struct OneDrive {
         stdx::stop_token stop_token) {
       auto request = http::Request<std::string>{
           .url = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-          .method = "POST",
+          .method = http::Method::kPost,
           .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
           .body = http::FormDataToString(
               {{"grant_type", "authorization_code"},

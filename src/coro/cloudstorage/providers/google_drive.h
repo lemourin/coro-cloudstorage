@@ -43,7 +43,7 @@ struct GoogleDrive {
                                               stdx::stop_token stop_token) {
       auto request = http::Request<std::string>{
           .url = "https://accounts.google.com/o/oauth2/token",
-          .method = "POST",
+          .method = http::Method::kPost,
           .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
           .body = http::FormDataToString(
               {{"refresh_token", refresh_token},
@@ -74,7 +74,7 @@ struct GoogleDrive {
         stdx::stop_token stop_token) {
       auto request = http::Request<std::string>{
           .url = "https://accounts.google.com/o/oauth2/token",
-          .method = "POST",
+          .method = http::Method::kPost,
           .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
           .body = http::FormDataToString(
               {{"grant_type", "authorization_code"},

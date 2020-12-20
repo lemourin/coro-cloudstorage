@@ -35,7 +35,7 @@ using ::coro::http::Response;
 using ::coro::util::ForEach;
 using ::coro::util::MakePointer;
 
-using CloudProviders = ::coro::util::TypeList<
+ using CloudProviders = ::coro::util::TypeList<
     coro::cloudstorage::GoogleDrive, coro::cloudstorage::Mega,
     coro::cloudstorage::OneDrive, coro::cloudstorage::Dropbox,
     coro::cloudstorage::YouTube>;
@@ -170,6 +170,8 @@ class HttpHandler {
 
   Task<Response<>> operator()(Request<> request,
                               coro::stdx::stop_token stop_token) {
+    std::cerr << coro::http::MethodToString(request.method) << " "
+              << request.url << "\n";
     for (auto& handler : handlers_) {
       if (std::regex_match(request.url, handler.regex)) {
         auto url = request.url;

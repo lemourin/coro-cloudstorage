@@ -47,7 +47,8 @@ class HttpIO : public ::mega::HttpIO {
   Task<> DoRequest(::mega::HttpReq* r, const char* data, unsigned size) {
     auto request = http::Request<std::string>{
         .url = r->posturl,
-        .method = r->method == ::mega::METHOD_POST ? "POST" : "GET",
+        .method = r->method == ::mega::METHOD_POST ? http::Method::kPost
+                                                   : http::Method::kGet,
         .headers = {{"Content-Type", r->type == ::mega::REQ_JSON
                                          ? "application/json"
                                          : "application/octet-stream"}},

@@ -24,7 +24,8 @@ class ProxyHandler {
 
   Task<http::Response<>> operator()(const coro::http::Request<>& request,
                                     coro::stdx::stop_token stop_token) {
-    std::cerr << "[" << request.method << "] " << request.url << " ";
+    std::cerr << "[" << http::MethodToString(request.method) << "] "
+              << request.url << " ";
     std::string path =
         http::DecodeUri(http::ParseUri(request.url).path.value_or(""))
             .substr(path_prefix_.length());

@@ -59,7 +59,7 @@ struct Dropbox {
         stdx::stop_token stop_token) {
       auto request = http::Request<std::string>{
           .url = "https://api.dropboxapi.com/oauth2/token",
-          .method = "POST",
+          .method = http::Method::kPost,
           .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
           .body = http::FormDataToString(
               {{"grant_type", "authorization_code"},
@@ -125,7 +125,7 @@ class DropboxImpl : public Dropbox {
     }
     auto request = Request{
         .url = "https://content.dropboxapi.com/2/files/download",
-        .method = "POST",
+        .method = http::Method::kPost,
         .headers = {{"Range", std::move(range_header).str()},
                     {"Content-Type", ""},
                     {"Dropbox-API-arg", R"({"path":")" + file.id + R"("})"},
@@ -144,7 +144,7 @@ class DropboxImpl : public Dropbox {
 
   auto FetchJson(http::Request<std::string> request,
                  stdx::stop_token stop_token) const {
-    request.method = "POST";
+    request.method = http::Method::kPost;
     request.headers.emplace_back("Content-Type", "application/json");
     request.headers.emplace_back("Authorization",
                                  "Bearer " + auth_token_.access_token);

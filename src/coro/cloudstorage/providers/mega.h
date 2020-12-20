@@ -322,7 +322,7 @@ class AuthHandler<Mega, HttpClient, OnAuthTokenCreated> {
 
   Task<http::Response<>> operator()(coro::http::Request<> request,
                                     coro::stdx::stop_token stop_token) const {
-    if (request.method == "POST") {
+    if (request.method == http::Method::kPost) {
       auto query =
           http::ParseQuery(co_await http::GetBody(std::move(*request.body)));
       auto it1 = query.find("email");
