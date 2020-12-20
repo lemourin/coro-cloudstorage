@@ -7,6 +7,7 @@
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/proxy_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
+#include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/curl_http.h>
 #include <coro/http/http_parse.h>
 #include <coro/http/http_server.h>
@@ -26,6 +27,9 @@ using ::coro::Task;
 using ::coro::cloudstorage::CloudException;
 using ::coro::cloudstorage::CloudProvider;
 using ::coro::cloudstorage::GetCloudProviderId;
+using ::coro::cloudstorage::util::ElementData;
+using ::coro::cloudstorage::util::GetElement;
+using ::coro::cloudstorage::util::GetMultiStatusResponse;
 using ::coro::cloudstorage::util::ToAuthToken;
 using ::coro::cloudstorage::util::ToJson;
 using ::coro::http::CurlHttp;
@@ -35,7 +39,7 @@ using ::coro::http::Response;
 using ::coro::util::ForEach;
 using ::coro::util::MakePointer;
 
- using CloudProviders = ::coro::util::TypeList<
+using CloudProviders = ::coro::util::TypeList<
     coro::cloudstorage::GoogleDrive, coro::cloudstorage::Mega,
     coro::cloudstorage::OneDrive, coro::cloudstorage::Dropbox,
     coro::cloudstorage::YouTube>;
@@ -162,16 +166,40 @@ class HttpHandler {
     std::stringstream& stream;
   };
 
+  struct GenerateRootContent {
+    template <typename CloudProvider>
+    void operator()() const {
+      auto auth_token = LoadToken<CloudProvider>();
+      std::string id(GetCloudProviderId<CloudProvider>());
+      if (auth_token) {
+        stream.push_back(GetElement(ElementData{
+            .path = "/" + id + "/", .name = id, .is_directory = true}));
+      }
+    }
+    const CloudFactory& factory;
+    std::vector<std::string>& stream;
+  };
+
   explicit HttpHandler(const CloudFactory& factory) : factory_(factory) {
     ForEach<CloudProviders>{}(AddAuthHandlerFunctor{this});
   }
 
   HttpHandler(const HttpHandler&) = delete;
 
+  static Generator<std::string> CreateBody(std::string body) {
+    co_yield std::move(body);
+  }
+
   Task<Response<>> operator()(Request<> request,
                               coro::stdx::stop_token stop_token) {
     std::cerr << coro::http::MethodToString(request.method) << " "
               << request.url << "\n";
+    if (request.method == coro::http::Method::kOptions) {
+      co_return Response<>{
+          .status = 204,
+          .headers = {{"Allow", "OPTIONS, GET, HEAD, POST, PROPFIND"},
+                      {"DAV", "1"}}};
+    }
     for (auto& handler : handlers_) {
       if (std::regex_match(request.url, handler.regex)) {
         auto url = request.url;
@@ -188,7 +216,19 @@ class HttpHandler {
       }
     }
     if (request.url.empty() || request.url == "/") {
-      co_return coro::http::Response<>{.status = 200, .body = GetHomePage()};
+      if (request.method == coro::http::Method::kPropfind) {
+        std::vector<std::string> responses = {GetElement(
+            ElementData{.path = "/", .name = "root", .is_directory = true})};
+        if (coro::http::GetHeader(request.headers, "Depth") == "1") {
+          ForEach<CloudProviders>{}(GenerateRootContent{factory_, responses});
+        }
+        co_return coro::http::Response<>{
+            .status = 207,
+            .headers = {{"Content-Type", "text/xml"}},
+            .body = CreateBody(GetMultiStatusResponse(responses))};
+      } else {
+        co_return coro::http::Response<>{.status = 200, .body = GetHomePage()};
+      }
     } else {
       co_return coro::http::Response<>{.status = 302,
                                        .headers = {{"Location", "/"}}};
@@ -298,7 +338,7 @@ class HttpHandler {
     auto prefix = "/" + std::string(GetCloudProviderId<CloudProvider>());
     handlers_.emplace_back(
         Handler{.id = std::string(GetCloudProviderId<CloudProvider>()),
-                .regex = std::regex(prefix + "(/.*$)"),
+                .regex = std::regex(prefix + "(.*$)"),
                 .handler = HandlerType(MakeCustomProxyHandler<CloudProvider>(
                     coro::cloudstorage::util::ProxyHandler(
                         factory_.template Create<CloudProvider>(
