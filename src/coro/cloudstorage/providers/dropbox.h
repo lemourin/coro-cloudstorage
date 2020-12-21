@@ -86,7 +86,7 @@ class DropboxImpl : public Dropbox {
   using Request = http::Request<std::string>;
 
   DropboxImpl(const Http& http, Dropbox::Auth::AuthToken auth_token)
-      : http_(http), auth_token_(std::move(auth_token)) {}
+      : http_(&http), auth_token_(std::move(auth_token)) {}
 
   static Task<Directory> GetRoot(stdx::stop_token) {
     Directory d;
@@ -131,7 +131,7 @@ class DropboxImpl : public Dropbox {
                     {"Dropbox-API-arg", R"({"path":")" + file.id + R"("})"},
                     {"Authorization", "Bearer " + auth_token_.access_token}}};
     auto response =
-        co_await http_.Fetch(std::move(request), std::move(stop_token));
+        co_await http_->Fetch(std::move(request), std::move(stop_token));
     FOR_CO_AWAIT(std::string body, response.body, { co_yield body; });
   }
 
@@ -148,7 +148,7 @@ class DropboxImpl : public Dropbox {
     request.headers.emplace_back("Content-Type", "application/json");
     request.headers.emplace_back("Authorization",
                                  "Bearer " + auth_token_.access_token);
-    return util::FetchJson(http_, std::move(request), std::move(stop_token));
+    return util::FetchJson(*http_, std::move(request), std::move(stop_token));
   }
 
   static Item ToItem(const json& json) {
@@ -172,7 +172,7 @@ class DropboxImpl : public Dropbox {
     return result;
   }
 
-  const Http& http_;
+  const Http* http_;
   Dropbox::Auth::AuthToken auth_token_;
 };
 
@@ -181,7 +181,7 @@ struct CreateCloudProvider<Dropbox> {
   template <typename CloudFactory, typename... Args>
   auto operator()(const CloudFactory& factory,
                   Dropbox::Auth::AuthToken auth_token, Args&&...) const {
-    return CloudProvider(DropboxImpl(factory.http_, std::move(auth_token)));
+    return CloudProvider(DropboxImpl(*factory.http_, std::move(auth_token)));
   }
 };
 

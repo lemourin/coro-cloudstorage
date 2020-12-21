@@ -80,33 +80,13 @@ struct AuthData {
   }
 };
 
-using HandlerType = coro::stdx::any_invocable<Task<Response<>>(
-    Request<>, coro::stdx::stop_token)>;
-
 template <typename CloudFactory>
 class HttpHandler {
  public:
-  struct AuthTokenManager : coro::cloudstorage::util::AuthTokenManager {
-    template <typename CloudProvider>
-    void OnAuthTokenCreated(typename CloudProvider::Auth::AuthToken token) {
-      SaveToken<CloudProvider>(token);
-      handler->AddProxyHandler<CloudProvider>(token);
-    }
-    template <typename CloudProvider>
-    void OnCloudProviderRemoved() {
-      RemoveToken<CloudProvider>();
-      handler->RemoveCloudProvider<CloudProvider>();
-    }
-    HttpHandler* handler;
-  };
-
   explicit HttpHandler(const CloudFactory& factory)
-      : factory_(factory),
-        auth_handler_(
-            factory,
-            AuthTokenManager{{.token_file = std::string(kTokenFile)}, this}) {}
-
-  HttpHandler(const HttpHandler&) = delete;
+      : auth_handler_(factory, AccountListener{},
+                      coro::cloudstorage::util::AuthTokenManager{
+                          .token_file = std::string(kTokenFile)}) {}
 
   Task<Response<>> operator()(Request<> request,
                               coro::stdx::stop_token stop_token) {
@@ -115,54 +95,23 @@ class HttpHandler {
     if (auth_handler_.CanHandleUrl(request.url)) {
       co_return co_await auth_handler_(std::move(request), stop_token);
     }
-    for (auto& handler : handlers_) {
-      if (std::regex_match(request.url, handler.regex)) {
-        co_return co_await handler.handler(std::move(request), stop_token);
-      }
-    }
     co_return coro::http::Response<>{.status = 302,
                                      .headers = {{"Location", "/"}}};
   }
 
  private:
-  template <typename CloudProvider>
-  void RemoveCloudProvider() {
-    handlers_.erase(std::find_if(
-        std::begin(handlers_), std::end(handlers_), [](const Handler& handler) {
-          return handler.id == GetCloudProviderId<CloudProvider>();
-        }));
-  }
-
-  template <typename CloudProvider,
-            typename AuthToken = typename CloudProvider::Auth::AuthToken>
-  void AddProxyHandler(AuthToken token) {
-    auto prefix = "/" + std::string(GetCloudProviderId<CloudProvider>());
-    handlers_.emplace_back(
-        Handler{.id = std::string(GetCloudProviderId<CloudProvider>()),
-                .regex = std::regex(prefix + "(.*$)"),
-                .handler = HandlerType(ProxyHandler(
-                    factory_.template Create<CloudProvider>(
-                        std::move(token), SaveToken<CloudProvider>{}),
-                    prefix))});
-  }
-
-  template <typename CloudProvider>
-  struct SaveToken {
-    void operator()(typename CloudProvider::Auth::AuthToken token) const {
-      coro::cloudstorage::util::AuthTokenManager{.token_file =
-                                                     std::string(kTokenFile)}
-          .SaveToken<CloudProvider>(token);
+  struct AccountListener {
+    template <typename CloudAccount>
+    void OnCreate(CloudAccount* d) {
+      std::cerr << "CREATED " << d->id << "\n";
+    }
+    template <typename CloudAccount>
+    void OnDestroy(CloudAccount* d) {
+      std::cerr << "REMOVED " << d->id << "\n";
     }
   };
 
-  struct Handler {
-    std::string id;
-    std::regex regex;
-    HandlerType handler;
-  };
-  const CloudFactory& factory_;
-  std::vector<Handler> handlers_;
-  AccountManagerHandler<CloudProviders, CloudFactory, AuthTokenManager>
+  AccountManagerHandler<CloudProviders, CloudFactory, AccountListener>
       auth_handler_;
 };
 
@@ -174,11 +123,9 @@ Task<> CoMain(event_base* event_loop) noexcept {
                                                    AuthData{});
 
     Semaphore semaphore;
-    HttpServer http_server(
-        event_loop, {.address = "0.0.0.0", .port = 12345},
-        HandlerType(std::make_unique<HttpHandler<decltype(cloud_factory)>>(
-            cloud_factory)),
-        [&] { semaphore.resume(); });
+    HttpServer http_server(event_loop, {.address = "0.0.0.0", .port = 12345},
+                           HttpHandler(cloud_factory),
+                           [&] { semaphore.resume(); });
     co_await semaphore;
   } catch (const std::exception& exception) {
     std::cerr << "EXCEPTION: " << exception.what() << "\n";

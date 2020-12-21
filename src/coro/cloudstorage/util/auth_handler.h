@@ -10,11 +10,11 @@ template <typename CloudProvider, coro::http::HttpClient HttpClient,
           typename OnAuthTokenCreated>
 class AuthHandler {
  public:
-  AuthHandler(event_base* event_loop, HttpClient& http,
+  AuthHandler(event_base* event_loop, const HttpClient& http,
               typename CloudProvider::Auth::AuthData auth_data,
               OnAuthTokenCreated on_auth_token_created)
       : event_loop_(event_loop),
-        http_(http),
+        http_(&http),
         auth_data_(std::move(auth_data)),
         on_auth_token_created_(std::move(on_auth_token_created)) {}
 
@@ -26,7 +26,7 @@ class AuthHandler {
     if (it != std::end(query)) {
       on_auth_token_created_(
           co_await CloudProvider::Auth::ExchangeAuthorizationCode(
-              http_, auth_data_, it->second, stop_token));
+              *http_, auth_data_, it->second, stop_token));
       co_return http::Response<>{.status = 302};
     }
     co_return http::Response<>{.status = 400};
@@ -34,14 +34,14 @@ class AuthHandler {
 
  private:
   event_base* event_loop_;
-  HttpClient& http_;
+  const HttpClient* http_;
   typename CloudProvider::Auth::AuthData auth_data_;
   OnAuthTokenCreated on_auth_token_created_;
 };
 
 template <typename CloudProvider, coro::http::HttpClient HttpClient,
           typename OnAuthTokenCreated>
-auto MakeAuthHandler(event_base* event_loop, HttpClient& http,
+auto MakeAuthHandler(event_base* event_loop, const HttpClient& http,
                      typename CloudProvider::Auth::AuthData auth_data,
                      OnAuthTokenCreated on_auth_token_created) {
   return AuthHandler<CloudProvider, HttpClient, OnAuthTokenCreated>(

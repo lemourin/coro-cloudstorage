@@ -78,7 +78,7 @@ class Mega : public MegaAuth {
 
   template <http::HttpClient HttpClient>
   static Task<std::string> GetSession(
-      event_base* event_loop, HttpClient& http, UserCredential credential,
+      event_base* event_loop, const HttpClient& http, UserCredential credential,
       AuthData auth_data, stdx::stop_token stop_token = stdx::stop_token()) {
     Data d(event_loop, http, auth_data);
     co_return co_await GetSession(d, credential, std::move(stop_token));
@@ -289,7 +289,7 @@ struct CreateCloudProvider<Mega> {
   template <typename CloudFactory, typename... Args>
   auto operator()(const CloudFactory& factory, Mega::AuthToken auth_token,
                   Args&&...) const {
-    return CloudProvider(Mega(factory.event_loop_, factory.http_,
+    return CloudProvider(Mega(factory.event_loop_, *factory.http_,
                               std::move(auth_token),
                               factory.auth_data_.template operator()<Mega>()));
   }
@@ -312,11 +312,11 @@ inline auto ToAuthToken<Mega::AuthToken>(const nlohmann::json& json) {
 template <coro::http::HttpClient HttpClient, typename OnAuthTokenCreated>
 class AuthHandler<Mega, HttpClient, OnAuthTokenCreated> {
  public:
-  AuthHandler(event_base* event_loop, HttpClient& http,
+  AuthHandler(event_base* event_loop, const HttpClient& http,
               Mega::AuthData auth_data,
               OnAuthTokenCreated on_auth_token_created)
       : event_loop_(event_loop),
-        http_(http),
+        http_(&http),
         auth_data_(std::move(auth_data)),
         on_auth_token_created_(std::move(on_auth_token_created)) {}
 
@@ -336,7 +336,7 @@ class AuthHandler<Mega, HttpClient, OnAuthTokenCreated> {
                              ? std::make_optional(it3->second)
                              : std::nullopt};
         auto session = co_await Mega::GetSession(
-            event_loop_, http_, std::move(credential), auth_data_, stop_token);
+            event_loop_, *http_, std::move(credential), auth_data_, stop_token);
         on_auth_token_created_(Mega::AuthToken{std::move(session)});
         co_return http::Response<>{.status = 302};
       }
@@ -370,7 +370,7 @@ class AuthHandler<Mega, HttpClient, OnAuthTokenCreated> {
   }
 
   event_base* event_loop_;
-  HttpClient& http_;
+  const HttpClient* http_;
   Mega::AuthData auth_data_;
   OnAuthTokenCreated on_auth_token_created_;
 };

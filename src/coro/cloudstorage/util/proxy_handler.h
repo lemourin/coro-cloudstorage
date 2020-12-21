@@ -18,10 +18,10 @@ class ProxyHandler {
   using Request = http::Request<>;
   using Response = http::Response<>;
 
-  ProxyHandler(CloudProvider provider, std::string path_prefix)
-      : provider_(std::make_unique<CloudProvider>(std::move(provider))),
+  ProxyHandler(CloudProvider* provider, std::string path_prefix)
+      : provider_(provider),
         path_prefix_(std::move(path_prefix)),
-        item_cache_(32, GetItem{provider_.get()}) {}
+        item_cache_(32, GetItem{provider_}) {}
 
   ProxyHandler(ProxyHandler&& handler) = default;
 
@@ -156,7 +156,7 @@ class ProxyHandler {
     CloudProvider* provider;
   };
 
-  std::unique_ptr<CloudProvider> provider_;
+  CloudProvider* provider_;
   std::string path_prefix_;
   ::coro::util::LRUCache<std::string, GetItem> item_cache_;
 };

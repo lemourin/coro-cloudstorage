@@ -19,7 +19,7 @@ class CloudFactory {
  public:
   CloudFactory(event_base* event_loop, const Http& http, AuthData auth_data)
       : event_loop_(event_loop),
-        http_(http),
+        http_(&http),
         auth_data_(std::move(auth_data)) {}
 
   template <typename CloudProvider, typename... Args>
@@ -32,7 +32,7 @@ class CloudFactory {
   template <typename CloudProvider, typename OnAuthTokenCreated>
   auto CreateAuthHandler(OnAuthTokenCreated on_auth_token_created) const {
     return util::MakeAuthHandler<CloudProvider>(
-        event_loop_, http_, auth_data_.template operator()<CloudProvider>(),
+        event_loop_, *http_, auth_data_.template operator()<CloudProvider>(),
         std::move(on_auth_token_created));
   }
 
@@ -51,7 +51,7 @@ class CloudFactory {
   friend struct CreateCloudProvider;
 
   event_base* event_loop_;
-  const Http& http_;
+  const Http* http_;
   AuthData auth_data_;
 };
 
