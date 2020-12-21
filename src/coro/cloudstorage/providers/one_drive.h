@@ -123,6 +123,13 @@ struct OneDriveImpl : OneDrive {
     co_return d;
   }
 
+  Task<GeneralData> GetGeneralData(stdx::stop_token stop_token) {
+    auto request = Request{.url = GetEndpoint("/me")};
+    json json = co_await auth_manager_.FetchJson(std::move(request),
+                                                 std::move(stop_token));
+    co_return GeneralData{.username = json["userPrincipalName"]};
+  }
+
   Task<PageData> ListDirectoryPage(Directory directory,
                                    std::optional<std::string> page_token,
                                    stdx::stop_token stop_token) {

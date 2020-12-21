@@ -197,6 +197,10 @@ Task<Mega::Directory> Mega::GetRoot(coro::stdx::stop_token stop_token) {
   co_return Directory{.id = d_->mega_client.rootnodes[0]};
 }
 
+Task<Mega::GeneralData> Mega::GetGeneralData(coro::stdx::stop_token) {
+  co_return GeneralData{.username = auth_token_.email};
+}
+
 Generator<std::string> Mega::GetFileContent(File file, http::Range range,
                                             coro::stdx::stop_token stop_token) {
   co_await EnsureLoggedIn(stop_token);

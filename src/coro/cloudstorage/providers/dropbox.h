@@ -19,6 +19,10 @@ struct Dropbox {
     std::string name;
   };
 
+  struct GeneralData {
+    std::string username;
+  };
+
   struct File : Directory {
     std::optional<std::string> mime_type;
     std::optional<int64_t> size;
@@ -91,6 +95,17 @@ class DropboxImpl : public Dropbox {
   static Task<Directory> GetRoot(stdx::stop_token) {
     Directory d;
     co_return d;
+  }
+
+  Task<GeneralData> GetGeneralData(stdx::stop_token stop_token) {
+    Request request = {
+        .url = GetEndpoint("/users/get_current_account"),
+        .method = http::Method::kPost,
+        .headers = {{"Content-Type", ""},
+                    {"Authorization", "Bearer " + auth_token_.access_token}}};
+    json json = co_await util::FetchJson(*http_, std::move(request),
+                                         std::move(stop_token));
+    co_return GeneralData{.username = json["email"]};
   }
 
   Task<PageData> ListDirectoryPage(Directory directory,

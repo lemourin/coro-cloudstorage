@@ -4,42 +4,20 @@
 #include <coro/cloudstorage/providers/mega.h>
 #include <coro/cloudstorage/providers/one_drive.h>
 #include <coro/cloudstorage/util/account_manager_handler.h>
-#include <coro/cloudstorage/util/auth_handler.h>
-#include <coro/cloudstorage/util/auth_token_manager.h>
-#include <coro/cloudstorage/util/proxy_handler.h>
-#include <coro/cloudstorage/util/serialize_utils.h>
-#include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/curl_http.h>
-#include <coro/http/http_parse.h>
 #include <coro/http/http_server.h>
-#include <coro/stdx/any_invocable.h>
 #include <coro/stdx/coroutine.h>
-#include <coro/util/for_each.h>
 
 #include <csignal>
-#include <fstream>
 #include <iostream>
-#include <nlohmann/json.hpp>
-#include <regex>
 
-using ::coro::Generator;
 using ::coro::Semaphore;
 using ::coro::Task;
-using ::coro::cloudstorage::CloudException;
-using ::coro::cloudstorage::CloudProvider;
-using ::coro::cloudstorage::GetCloudProviderId;
 using ::coro::cloudstorage::util::AccountManagerHandler;
-using ::coro::cloudstorage::util::ElementData;
-using ::coro::cloudstorage::util::GetElement;
-using ::coro::cloudstorage::util::GetMultiStatusResponse;
-using ::coro::cloudstorage::util::ProxyHandler;
-using ::coro::cloudstorage::util::ToAuthToken;
-using ::coro::cloudstorage::util::ToJson;
 using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
 using ::coro::http::Request;
 using ::coro::http::Response;
-using ::coro::util::ForEach;
 using ::coro::util::MakePointer;
 
 using CloudProviders = ::coro::util::TypeList<

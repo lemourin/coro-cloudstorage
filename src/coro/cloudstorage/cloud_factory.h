@@ -29,11 +29,10 @@ class CloudFactory {
                                                 std::forward<Args>(args)...);
   }
 
-  template <typename CloudProvider, typename OnAuthTokenCreated>
-  auto CreateAuthHandler(OnAuthTokenCreated on_auth_token_created) const {
+  template <typename CloudProvider>
+  auto CreateAuthHandler() const {
     return util::MakeAuthHandler<CloudProvider>(
-        event_loop_, *http_, auth_data_.template operator()<CloudProvider>(),
-        std::move(on_auth_token_created));
+        event_loop_, *http_, auth_data_.template operator()<CloudProvider>());
   }
 
   template <typename CloudProvider>

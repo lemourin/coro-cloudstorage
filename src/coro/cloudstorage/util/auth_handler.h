@@ -6,46 +6,39 @@
 
 namespace coro::cloudstorage::util {
 
-template <typename CloudProvider, coro::http::HttpClient HttpClient,
-          typename OnAuthTokenCreated>
+template <typename CloudProvider, coro::http::HttpClient HttpClient>
 class AuthHandler {
  public:
   AuthHandler(event_base* event_loop, const HttpClient& http,
-              typename CloudProvider::Auth::AuthData auth_data,
-              OnAuthTokenCreated on_auth_token_created)
+              typename CloudProvider::Auth::AuthData auth_data)
       : event_loop_(event_loop),
         http_(&http),
-        auth_data_(std::move(auth_data)),
-        on_auth_token_created_(std::move(on_auth_token_created)) {}
+        auth_data_(std::move(auth_data)) {}
 
-  Task<http::Response<>> operator()(coro::http::Request<> request,
-                                    coro::stdx::stop_token stop_token) const {
+  Task<typename CloudProvider::Auth::AuthToken> operator()(
+      coro::http::Request<> request, coro::stdx::stop_token stop_token) const {
     auto query =
         http::ParseQuery(http::ParseUri(request.url).query.value_or(""));
     auto it = query.find("code");
     if (it != std::end(query)) {
-      on_auth_token_created_(
-          co_await CloudProvider::Auth::ExchangeAuthorizationCode(
-              *http_, auth_data_, it->second, stop_token));
-      co_return http::Response<>{.status = 302};
+      co_return co_await CloudProvider::Auth::ExchangeAuthorizationCode(
+          *http_, auth_data_, it->second, stop_token);
+    } else {
+      throw http::HttpException(http::HttpException::kBadRequest);
     }
-    co_return http::Response<>{.status = 400};
   }
 
  private:
   event_base* event_loop_;
   const HttpClient* http_;
   typename CloudProvider::Auth::AuthData auth_data_;
-  OnAuthTokenCreated on_auth_token_created_;
 };
 
-template <typename CloudProvider, coro::http::HttpClient HttpClient,
-          typename OnAuthTokenCreated>
+template <typename CloudProvider, coro::http::HttpClient HttpClient>
 auto MakeAuthHandler(event_base* event_loop, const HttpClient& http,
-                     typename CloudProvider::Auth::AuthData auth_data,
-                     OnAuthTokenCreated on_auth_token_created) {
-  return AuthHandler<CloudProvider, HttpClient, OnAuthTokenCreated>(
-      event_loop, http, std::move(auth_data), std::move(on_auth_token_created));
+                     typename CloudProvider::Auth::AuthData auth_data) {
+  return AuthHandler<CloudProvider, HttpClient>(event_loop, http,
+                                                std::move(auth_data));
 }
 
 }  // namespace coro::cloudstorage::util

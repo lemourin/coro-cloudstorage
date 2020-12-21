@@ -19,6 +19,7 @@ struct LoadToken<coro::util::TypeList<CloudProviders...>> {
   template <typename CloudProviderT>
   struct AuthToken : CloudProviderT::Auth::AuthToken {
     using CloudProvider = CloudProviderT;
+    std::string id;
   };
 
   using AnyToken = std::variant<AuthToken<CloudProviders>...>;
@@ -44,9 +45,10 @@ struct LoadToken<coro::util::TypeList<CloudProviders...>> {
   template <typename CloudProvider>
   bool PutToken(const nlohmann::json& json,
                 std::vector<AnyToken>& result) const {
-    if (json["id"] == std::string(GetCloudProviderId<CloudProvider>())) {
+    if (json["type"] == std::string(GetCloudProviderId<CloudProvider>())) {
       result.emplace_back(AuthToken<CloudProvider>{
-          ToAuthToken<typename CloudProvider::Auth::AuthToken>(json)});
+          {ToAuthToken<typename CloudProvider::Auth::AuthToken>(json)},
+          {std::string(json["id"])}});
       return true;
     } else {
       return false;
@@ -74,7 +76,7 @@ struct AuthTokenManager {
     }
     bool found = false;
     for (auto& entry : json["auth_token"]) {
-      if (entry["type"] == std::string(GetCloudProviderId<CloudProvider>()) ||
+      if (entry["type"] == std::string(GetCloudProviderId<CloudProvider>()) &&
           entry["id"] == std::string(id)) {
         entry = ToJson(std::move(token));
         entry["id"] = id;

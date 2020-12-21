@@ -19,6 +19,7 @@ namespace coro::cloudstorage {
 
 struct MegaAuth {
   struct AuthToken {
+    std::string email;
     std::string session;
   };
 
@@ -57,6 +58,10 @@ class Mega : public MegaAuth {
     std::optional<std::string> next_page_token;
   };
 
+  struct GeneralData {
+    std::string username;
+  };
+
   template <http::HttpClient HttpClient>
   Mega(event_base* event_loop, HttpClient& http, AuthToken auth_token,
        const AuthData& auth_data)
@@ -69,6 +74,7 @@ class Mega : public MegaAuth {
                                     std::forward<Args>(args)...);
   }
 
+  Task<GeneralData> GetGeneralData(coro::stdx::stop_token);
   Task<Directory> GetRoot(coro::stdx::stop_token);
   Task<PageData> ListDirectoryPage(Directory directory,
                                    std::optional<std::string> page_token,
@@ -299,29 +305,29 @@ namespace util {
 template <>
 inline auto ToJson<Mega::AuthToken>(Mega::AuthToken token) {
   nlohmann::json json;
+  json["email"] = std::move(token.email);
   json["session"] = http::ToBase64(token.session);
   return json;
 }
 
 template <>
 inline auto ToAuthToken<Mega::AuthToken>(const nlohmann::json& json) {
-  return Mega::AuthToken{.session =
-                             http::FromBase64(std::string(json.at("session")))};
+  return Mega::AuthToken{
+      .email = json.at("email"),
+      .session = http::FromBase64(std::string(json.at("session")))};
 }
 
-template <coro::http::HttpClient HttpClient, typename OnAuthTokenCreated>
-class AuthHandler<Mega, HttpClient, OnAuthTokenCreated> {
+template <coro::http::HttpClient HttpClient>
+class AuthHandler<Mega, HttpClient> {
  public:
   AuthHandler(event_base* event_loop, const HttpClient& http,
-              Mega::AuthData auth_data,
-              OnAuthTokenCreated on_auth_token_created)
+              Mega::AuthData auth_data)
       : event_loop_(event_loop),
         http_(&http),
-        auth_data_(std::move(auth_data)),
-        on_auth_token_created_(std::move(on_auth_token_created)) {}
+        auth_data_(std::move(auth_data)) {}
 
-  Task<http::Response<>> operator()(coro::http::Request<> request,
-                                    coro::stdx::stop_token stop_token) const {
+  Task<std::variant<http::Response<>, Mega::AuthToken>> operator()(
+      coro::http::Request<> request, coro::stdx::stop_token stop_token) const {
     if (request.method == http::Method::kPost) {
       auto query =
           http::ParseQuery(co_await http::GetBody(std::move(*request.body)));
@@ -335,15 +341,16 @@ class AuthHandler<Mega, HttpClient, OnAuthTokenCreated> {
             .twofactor = it3 != std::end(query)
                              ? std::make_optional(it3->second)
                              : std::nullopt};
-        auto session = co_await Mega::GetSession(
+        std::string session = co_await Mega::GetSession(
             event_loop_, *http_, std::move(credential), auth_data_, stop_token);
-        on_auth_token_created_(Mega::AuthToken{std::move(session)});
-        co_return http::Response<>{.status = 302};
+        co_return Mega::AuthToken{.email = it1->second,
+                                  .session = std::move(session)};
+      } else {
+        throw http::HttpException(http::HttpException::kBadRequest);
       }
     } else {
       co_return http::Response<>{.status = 200, .body = GenerateLoginPage()};
     }
-    co_return http::Response<>{.status = 400};
   }
 
  private:
@@ -372,7 +379,6 @@ class AuthHandler<Mega, HttpClient, OnAuthTokenCreated> {
   event_base* event_loop_;
   const HttpClient* http_;
   Mega::AuthData auth_data_;
-  OnAuthTokenCreated on_auth_token_created_;
 };
 
 }  // namespace util

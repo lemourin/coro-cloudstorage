@@ -1,10 +1,13 @@
 #ifndef CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
 #define CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
 
+#include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/auth_token_manager.h>
 #include <coro/cloudstorage/util/proxy_handler.h>
+#include <coro/cloudstorage/util/serialize_utils.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http.h>
+#include <coro/http/http_parse.h>
 #include <coro/stdx/any_invocable.h>
 #include <coro/util/type_list.h>
 
@@ -32,11 +35,13 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   template <typename CloudProvider>
   struct OnAuthTokenChanged {
     void operator()(typename CloudProvider::Auth::AuthToken auth_token) {
-      d->auth_token_manager.template SaveToken<CloudProvider>(
-          std::move(auth_token), account_id);
+      if (*account_id) {
+        d->auth_token_manager.template SaveToken<CloudProvider>(
+            std::move(auth_token), **account_id);
+      }
     }
     Data* d;
-    std::string account_id;
+    std::shared_ptr<std::optional<std::string>> account_id;
   };
 
   struct CloudProviderAccount {
@@ -90,13 +95,81 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
 
     template <typename CloudProvider>
+    struct AuthHandler {
+      using AuthToken = typename CloudProvider::Auth::AuthToken;
+
+      Task<Response> operator()(Request request,
+                                stdx::stop_token stop_token) const {
+        auto result =
+            co_await d->factory.template CreateAuthHandler<CloudProvider>()(
+                std::move(request), stop_token);
+        AuthToken auth_token;
+        if constexpr (std::is_same_v<decltype(result), AuthToken>) {
+          auth_token = std::move(result);
+        } else {
+          if (std::holds_alternative<Response>(result)) {
+            co_return std::move(std::get<Response>(result));
+          } else {
+            auth_token = std::move(std::get<AuthToken>(result));
+          }
+        }
+        auto account_id =
+            std::make_shared<std::optional<std::string>>(std::nullopt);
+        auto provider = d->factory.template Create<CloudProvider>(
+            auth_token, OnAuthTokenChanged<CloudProvider>{d, account_id});
+        auto general_data =
+            co_await provider.GetGeneralData(std::move(stop_token));
+        *account_id = std::string(GetCloudProviderId<CloudProvider>()) + "/" +
+                      std::move(general_data.username);
+        d->auth_token_manager.template SaveToken<CloudProvider>(
+            std::move(auth_token), **account_id);
+        d->OnCloudProviderCreated<CloudProvider>(std::move(provider),
+                                                 **account_id);
+        co_return Response{.status = 302,
+                           .headers = {{"Location", "/" + **account_id}}};
+      }
+
+      Data* d;
+    };
+
+    template <typename CloudProvider>
     void AddAuthHandler() {
       handlers.emplace_back(Handler{
           .regex = std::regex("/auth(/" +
                               std::string(GetCloudProviderId<CloudProvider>()) +
                               ".*$)"),
-          .handler = factory.template CreateAuthHandler<CloudProvider>(
-              OnAuthTokenCreated<CloudProvider>{this})});
+          .handler = AuthHandler<CloudProvider>{this}});
+    }
+
+    template <typename CloudProvider, typename CloudProviderT>
+    void OnCloudProviderCreated(CloudProviderT provider_impl,
+                                std::string account_id) {
+      for (const auto& entry : accounts) {
+        if (entry.id == account_id) {
+          return;
+        }
+      }
+      handlers.emplace_back(Handler{
+          .id = account_id,
+          .regex = std::regex("/remove(/" + account_id + ".*$)"),
+          .handler = [d = this, id = account_id](
+                         Request request,
+                         coro::stdx::stop_token) -> Task<Response> {
+            d->template RemoveCloudProvider<CloudProvider>(id);
+            co_return Response{.status = 302, .headers = {{"Location", "/"}}};
+          }});
+
+      accounts.emplace_back(CloudProviderAccount{
+          .id = account_id, .provider = std::move(provider_impl)});
+
+      auto* provider =
+          &std::get<typename CloudProviderAccount::template CloudProviderT<
+              CloudProvider>>(accounts.back().provider);
+      handlers.emplace_back(Handler{
+          .id = account_id,
+          .regex = std::regex("/" + account_id + "(.*$)"),
+          .handler = HandlerType(ProxyHandler(provider, "/" + account_id))});
+      account_listener.OnCreate(&accounts.back());
     }
 
     const CloudFactory& factory;
@@ -115,9 +188,15 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     for (const auto& any_token : d_->auth_token_manager.template LoadTokenData<
                                  coro::util::TypeList<CloudProviders...>>()) {
       std::visit(
-          [this](auto token) {
-            OnAuthTokenCreated<typename decltype(token)::CloudProvider>{
-                d_.get()}(std::move(token));
+          [d = d_.get()](auto token) {
+            using CloudProvider = typename decltype(token)::CloudProvider;
+            auto id = std::move(token.id);
+            d->template OnCloudProviderCreated<CloudProvider>(
+                d->factory.template Create<CloudProvider>(
+                    std::move(token),
+                    OnAuthTokenChanged<CloudProvider>{
+                        d, std::make_shared<std::optional<std::string>>(id)}),
+                id);
           },
           any_token);
     }
@@ -145,17 +224,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
     for (auto& handler : d_->handlers) {
       if (std::regex_match(request.url, handler.regex)) {
-        auto url = request.url;
-        auto response =
-            co_await handler.handler(std::move(request), stop_token);
-        std::smatch match;
-        if (response.status == 302 &&
-            std::regex_match(url, match, std::regex("/auth(/[^?]*)?.*$"))) {
-          co_return Response{.status = 302,
-                             .headers = {{"Location", match[1].str() + "/"}}};
-        } else {
-          co_return response;
-        }
+        co_return co_await handler.handler(std::move(request), stop_token);
       }
     }
     if (request.url.empty() || request.url == "/") {
@@ -195,45 +264,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
            << GetCloudProviderId<CloudProvider>() << "</a></td>";
     stream << "</tr>";
   }
-
-  template <typename CloudProvider>
-  struct OnAuthTokenCreated {
-    void operator()(typename CloudProvider::Auth::AuthToken auth_token) const {
-      auto account_id = std::string(GetCloudProviderId<CloudProvider>());
-      for (const auto& entry : d->accounts) {
-        if (entry.id == account_id) {
-          return;
-        }
-      }
-      d->handlers.emplace_back(Handler{
-          .id = account_id,
-          .regex = std::regex("/remove(/" + account_id + ".*$)"),
-          .handler = [d = this->d, id = account_id](
-                         Request request,
-                         coro::stdx::stop_token) -> Task<Response> {
-            d->template RemoveCloudProvider<CloudProvider>(id);
-            co_return Response{.status = 302, .headers = {{"Location", "/"}}};
-          }});
-
-      d->auth_token_manager.template SaveToken<CloudProvider>(auth_token,
-                                                              account_id);
-
-      d->accounts.emplace_back(CloudProviderAccount{
-          .id = account_id,
-          .provider = d->factory.template Create<CloudProvider>(
-              auth_token, OnAuthTokenChanged<CloudProvider>{d, account_id})});
-
-      auto* provider =
-          &std::get<typename CloudProviderAccount::template CloudProviderT<
-              CloudProvider>>(d->accounts.back().provider);
-      d->handlers.emplace_back(Handler{
-          .id = account_id,
-          .regex = std::regex("/" + account_id + "(.*$)"),
-          .handler = HandlerType(ProxyHandler(provider, "/" + account_id))});
-      d->account_listener.OnCreate(&d->accounts.back());
-    }
-    Data* d;
-  };
 
   Generator<std::string> GetHomePage() {
     std::stringstream result;
