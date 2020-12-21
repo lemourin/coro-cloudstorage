@@ -34,7 +34,8 @@ class ProxyHandler {
       path = '/' + path;
     }
     auto range_str = coro::http::GetHeader(request.headers, "Range");
-    coro::http::Range range = {};
+    coro::http::Range range =
+        coro::http::ParseRange(range_str.value_or("bytes=0-"));
     if (range_str) {
       std::cerr << "[RANGE] " << *range_str << " " << path << "\n";
     }
