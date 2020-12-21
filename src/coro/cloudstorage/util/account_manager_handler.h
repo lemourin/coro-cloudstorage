@@ -267,9 +267,10 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
   Generator<std::string> GetHomePage() {
     std::stringstream result;
-    result << "<html><body><table>";
+    result << "<html><body><table><tr><th colspan='2'>AVAILABLE "
+              "PROVIDERS</th></tr>";
     (AppendAuthUrl<CloudProviders>(d_->factory, result), ...);
-    result << "</table><table>";
+    result << "</table><table><tr><th colspan='2'>ACCOUNT LIST</th></tr>";
 
     for (const auto& account : d_->accounts) {
       result << "<tr><td><a href='/" << account.id << "/'>" << account.id
