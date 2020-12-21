@@ -121,6 +121,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
             co_await provider.GetGeneralData(std::move(stop_token));
         *account_id = std::string(GetCloudProviderId<CloudProvider>()) + "/" +
                       std::move(general_data.username);
+        d->template RemoveCloudProvider<CloudProvider>(**account_id);
         d->auth_token_manager.template SaveToken<CloudProvider>(
             std::move(auth_token), **account_id);
         d->OnCloudProviderCreated<CloudProvider>(std::move(provider),
