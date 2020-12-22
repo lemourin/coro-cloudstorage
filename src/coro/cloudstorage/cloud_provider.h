@@ -30,28 +30,36 @@ class CloudProvider {
 
   explicit CloudProvider(Impl impl) : impl_(std::move(impl)) {}
 
+  CloudProvider(const CloudProvider&) = delete;
+  CloudProvider(CloudProvider&&) noexcept = default;
+  CloudProvider& operator=(const CloudProvider&) = delete;
+  CloudProvider& operator=(CloudProvider&&) noexcept = default;
+
+  ~CloudProvider() { stop_source_.request_stop(); }
+
   auto GetRoot(stdx::stop_token stop_token = stdx::stop_token()) {
-    return impl_.GetRoot(std::move(stop_token));
+    return Do<&Impl::GetRoot>(std::move(stop_token));
   }
 
   auto GetGeneralData(stdx::stop_token stop_token = stdx::stop_token()) {
-    return impl_.GetGeneralData(std::move(stop_token));
+    return Do<&Impl::GetGeneralData>(std::move(stop_token));
   }
 
   auto GetItem(std::string id,
                stdx::stop_token stop_token = stdx::stop_token()) {
-    return impl_.GetItem(id, std::move(stop_token));
+    return Do<&Impl::GetItem>(std::move(id), std::move(stop_token));
   }
 
   Task<Item> GetItemByPath(std::string path,
                            stdx::stop_token stop_token = stdx::stop_token()) {
-    co_return co_await GetItemByPath(co_await impl_.GetRoot(stop_token),
+    co_return co_await GetItemByPath(co_await GetRoot(stop_token),
                                      std::move(path), stop_token);
   }
 
   auto GetFileContent(File file, http::Range range = http::Range{},
                       stdx::stop_token stop_token = stdx::stop_token()) {
-    return impl_.GetFileContent(file, range, std::move(stop_token));
+    return Do<&Impl::GetFileContent>(std::move(stop_token), std::move(file),
+                                     range);
   }
 
   Generator<PageData> ListDirectory(
@@ -68,8 +76,8 @@ class CloudProvider {
   auto ListDirectoryPage(Directory directory,
                          std::optional<std::string> page_token = std::nullopt,
                          stdx::stop_token stop_token = stdx::stop_token()) {
-    return impl_.ListDirectoryPage(std::move(directory), std::move(page_token),
-                                   std::move(stop_token));
+    return Do<&Impl::ListDirectoryPage>(
+        std::move(stop_token), std::move(directory), std::move(page_token));
   }
 
  private:
@@ -109,6 +117,49 @@ class CloudProvider {
     throw CloudException(CloudException::Type::kNotFound);
   }
 
+  template <auto Method, typename... Args>
+  auto Do(stdx::stop_token stop_token, Args... args)
+      -> Task<decltype((std::declval<Impl>().*Method)(
+                           std::forward<Args>(args)..., std::move(stop_token))
+                           .await_resume())> {
+    stdx::stop_source stop_source;
+    stdx::stop_callback callback_fst(stop_token,
+                                     [&] { stop_source.request_stop(); });
+    stdx::stop_callback callback_nd(stop_source_.get_token(),
+                                    [&] { stop_source.request_stop(); });
+    stop_token = stop_source.get_token();
+    auto result = co_await(impl_.*Method)(std::move(args)..., stop_token);
+    if (stop_token.stop_requested()) {
+      throw InterruptedException();
+    }
+    co_return std::move(result);
+  }
+
+  template <auto Method, typename... Args>
+  auto Do(stdx::stop_token stop_token, Args... args)
+      -> Generator<std::remove_reference_t<
+          decltype(*(std::declval<Impl>().*Method)(std::forward<Args>(args)...,
+                                                   std::move(stop_token))
+                        .begin()
+                        .await_resume())>> {
+    stdx::stop_source stop_source;
+    stdx::stop_callback callback_fst(stop_token,
+                                     [&] { stop_source.request_stop(); });
+    stdx::stop_callback callback_nd(stop_source_.get_token(),
+                                    [&] { stop_source.request_stop(); });
+    stop_token = stop_source.get_token();
+    FOR_CO_AWAIT(auto entry, (impl_.*Method)(std::move(args)..., stop_token), {
+      if (stop_token.stop_requested()) {
+        throw InterruptedException();
+      }
+      co_yield std::move(entry);
+    });
+    if (stop_token.stop_requested()) {
+      throw InterruptedException();
+    }
+  }
+
+  stdx::stop_source stop_source_;
   Impl impl_;
 };
 

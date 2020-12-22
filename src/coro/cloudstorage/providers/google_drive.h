@@ -124,7 +124,7 @@ struct GoogleDriveImpl : GoogleDrive {
   explicit GoogleDriveImpl(AuthManager auth_manager)
       : auth_manager_(std::move(auth_manager)) {}
 
-  static Task<Directory> GetRoot(stdx::stop_token) {
+  Task<Directory> GetRoot(stdx::stop_token) {
     Directory d;
     d.id = "root";
     co_return d;

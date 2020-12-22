@@ -145,6 +145,9 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     template <typename CloudProvider, typename CloudProviderT>
     void OnCloudProviderCreated(CloudProviderT provider_impl,
                                 std::string account_id) {
+      if (account_id.empty()) {
+        return;
+      }
       for (const auto& entry : accounts) {
         if (entry.id == account_id) {
           return;

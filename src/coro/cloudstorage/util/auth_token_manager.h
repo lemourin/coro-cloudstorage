@@ -33,8 +33,12 @@ struct LoadToken<coro::util::TypeList<CloudProviders...>> {
       nlohmann::json json;
       file >> json;
       std::vector<AnyToken> result;
+
       for (const auto& entry : json["auth_token"]) {
-        (PutToken<CloudProviders>(entry, result) || ...);
+        try {
+          (PutToken<CloudProviders>(entry, result) || ...);
+        } catch (const nlohmann::json::exception&) {
+        }
       }
       return result;
     } catch (const nlohmann::json::exception&) {

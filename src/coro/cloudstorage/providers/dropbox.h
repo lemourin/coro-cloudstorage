@@ -92,7 +92,7 @@ class DropboxImpl : public Dropbox {
   DropboxImpl(const Http& http, Dropbox::Auth::AuthToken auth_token)
       : http_(&http), auth_token_(std::move(auth_token)) {}
 
-  static Task<Directory> GetRoot(stdx::stop_token) {
+  Task<Directory> GetRoot(stdx::stop_token) {
     Directory d;
     co_return d;
   }

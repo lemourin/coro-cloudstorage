@@ -75,64 +75,63 @@ class ProxyHandler {
         co_return Response{
             .status = 207,
             .headers = {{"Content-Type", "text/xml"}},
-            .body = GetWebDavResponse(path, directory, std::move(request),
-                                      stop_token)};
+            .body = GetWebDavResponse(
+                directory,
+                provider_->ListDirectory(directory, std::move(stop_token)),
+                std::move(request), path_prefix_ + path)};
       } else {
         co_return Response{
             .status = 200,
             .headers = {{"Content-Type", "text/html"}},
-            .body = GetDirectoryContent(path, directory, stop_token)};
+            .body = GetDirectoryContent(
+                provider_->ListDirectory(directory, std::move(stop_token)),
+                path_prefix_ + path)};
       }
     }
   }
 
-  Generator<std::string> GetWebDavResponse(std::string path,
-                                           Directory directory, Request request,
-                                           coro::stdx::stop_token stop_token) {
+  static Generator<std::string> GetWebDavResponse(
+      Directory directory,
+      Generator<typename CloudProvider::PageData> page_data, Request request,
+      std::string path) {
     co_yield R"(<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:">)";
-    ElementData current_element_data{.path = path_prefix_ + path,
-                                     .name = directory.name,
-                                     .is_directory = true};
+    ElementData current_element_data{
+        .path = path, .name = directory.name, .is_directory = true};
     co_yield GetElement(std::move(current_element_data));
     if (::coro::http::GetHeader(request.headers, "Depth") == "1") {
-      FOR_CO_AWAIT(
-          const auto& page, provider_->ListDirectory(directory, stop_token), {
-            for (const auto& item : page.items) {
-              auto name = std::visit([](auto item) { return item.name; }, item);
-              ElementData element_data(
-                  {.path = path_prefix_ + path + coro::http::EncodeUri(name),
-                   .name = coro::http::EncodeUri(name),
-                   .is_directory = std::holds_alternative<Directory>(item)});
-              if (std::holds_alternative<File>(item)) {
-                const File& file = std::get<File>(item);
-                element_data.mime_type =
-                    file.mime_type.value_or(coro::http::GetMimeType(
-                        coro::http::GetExtension(file.name)));
-                element_data.size = file.size;
-              }
-              co_yield GetElement(std::move(element_data));
-            }
-          });
+      FOR_CO_AWAIT(const auto& page, page_data, {
+        for (const auto& item : page.items) {
+          auto name = std::visit([](auto item) { return item.name; }, item);
+          ElementData element_data(
+              {.path = path + coro::http::EncodeUri(name),
+               .name = coro::http::EncodeUri(name),
+               .is_directory = std::holds_alternative<Directory>(item)});
+          if (std::holds_alternative<File>(item)) {
+            const File& file = std::get<File>(item);
+            element_data.mime_type = file.mime_type.value_or(
+                coro::http::GetMimeType(coro::http::GetExtension(file.name)));
+            element_data.size = file.size;
+          }
+          co_yield GetElement(std::move(element_data));
+        }
+      });
     }
     co_yield "</d:multistatus>";
   }
 
-  Generator<std::string> GetDirectoryContent(
-      std::string path, Directory directory,
-      coro::stdx::stop_token stop_token) {
+  static Generator<std::string> GetDirectoryContent(
+      Generator<typename CloudProvider::PageData> page_data, std::string path) {
     co_yield R"(<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body><table><tr><td>[DIR]</td><td><a href=')" +
-        GetDirectoryPath(path_prefix_ + path) + "'>..</a></td></tr>";
-    FOR_CO_AWAIT(
-        const auto& page, provider_->ListDirectory(directory, stop_token), {
-          for (const auto& item : page.items) {
-            auto name = std::visit([](auto item) { return item.name; }, item);
-            std::string type =
-                std::holds_alternative<Directory>(item) ? "DIR" : "FILE";
-            co_yield "<tr><td>[" + type + "]</td><td><a href='" + path_prefix_ +
-                path + coro::http::EncodeUri(name) + "'>" + name +
-                "</a></td></tr>";
-          }
-        });
+        GetDirectoryPath(path) + "'>..</a></td></tr>";
+    FOR_CO_AWAIT(const auto& page, page_data, {
+      for (const auto& item : page.items) {
+        auto name = std::visit([](auto item) { return item.name; }, item);
+        std::string type =
+            std::holds_alternative<Directory>(item) ? "DIR" : "FILE";
+        co_yield "<tr><td>[" + type + "]</td><td><a href='" + path +
+            coro::http::EncodeUri(name) + "'>" + name + "</a></td></tr>";
+      }
+    });
     co_yield "</table></body></html>";
   }
 
