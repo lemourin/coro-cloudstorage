@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_GOOGLE_DRIVE_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_manager.h>
 #include <coro/cloudstorage/util/fetch_json.h>
 #include <coro/http/http.h>
@@ -222,6 +223,16 @@ struct GoogleDriveImpl : GoogleDrive {
 
   AuthManager auth_manager_;
 };
+
+namespace util {
+template <>
+inline GoogleDrive::Auth::AuthData GetAuthData<GoogleDrive>() {
+  return {
+      .client_id =
+          R"(646432077068-hmvk44qgo6d0a64a5h9ieue34p3j2dcv.apps.googleusercontent.com)",
+      .client_secret = "1f0FG5ch-kKOanTAv1Bqdp9U"};
+}
+}  // namespace util
 
 }  // namespace coro::cloudstorage
 

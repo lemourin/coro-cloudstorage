@@ -9,6 +9,7 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/util/proxy_handler.h
     coro/cloudstorage/util/serialize_utils.h
     coro/cloudstorage/util/webdav_utils.h
+    coro/cloudstorage/util/auth_data.h
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
     coro/cloudstorage/cloud_provider.h

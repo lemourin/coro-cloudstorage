@@ -24,39 +24,7 @@ using CloudProviders = ::coro::util::TypeList<
     coro::cloudstorage::GoogleDrive, coro::cloudstorage::Mega,
     coro::cloudstorage::OneDrive, coro::cloudstorage::Dropbox>;
 
-constexpr std::string_view kRedirectUri = "http://localhost:12345";
 constexpr std::string_view kTokenFile = "access-token.json";
-
-struct AuthData {
-  template <typename CloudProvider>
-  auto operator()() const {
-    using AuthData = typename CloudProvider::Auth::AuthData;
-
-    if constexpr (std::is_same_v<CloudProvider,
-                                 coro::cloudstorage::GoogleDrive>) {
-      return AuthData{
-          .client_id =
-              R"(646432077068-hmvk44qgo6d0a64a5h9ieue34p3j2dcv.apps.googleusercontent.com)",
-          .client_secret = "1f0FG5ch-kKOanTAv1Bqdp9U",
-          .redirect_uri = std::string(kRedirectUri) + "/auth/google"};
-    } else if constexpr (std::is_same_v<CloudProvider,
-                                        coro::cloudstorage::Mega>) {
-      return AuthData{.api_key = "ZVhB0Czb", .app_name = "coro-cloudstorage"};
-    } else if constexpr (std::is_same_v<CloudProvider,
-                                        coro::cloudstorage::OneDrive>) {
-      return AuthData{
-          .client_id = "56a1d60f-ea71-40e9-a489-b87fba12a23e",
-          .client_secret = "zJRAsd0o4E9c33q4OLc7OhY",
-          .redirect_uri = std::string(kRedirectUri) + "/auth/onedrive"};
-    } else {
-      static_assert(std::is_same_v<CloudProvider, coro::cloudstorage::Dropbox>);
-      return AuthData{
-          .client_id = "ktryxp68ae5cicj",
-          .client_secret = "6evu94gcxnmyr59",
-          .redirect_uri = std::string(kRedirectUri) + "/auth/dropbox"};
-    }
-  }
-};
 
 template <typename CloudFactory>
 class HttpHandler {
@@ -97,8 +65,7 @@ Task<> CoMain(event_base* event_loop) noexcept {
   try {
     CurlHttp http(event_loop);
     Semaphore quit;
-    coro::cloudstorage::CloudFactory cloud_factory(event_loop, http,
-                                                   AuthData{});
+    coro::cloudstorage::CloudFactory cloud_factory(event_loop, http);
 
     Semaphore semaphore;
     HttpServer http_server(event_loop, {.address = "0.0.0.0", .port = 12345},

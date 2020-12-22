@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_DROPBOX_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/fetch_json.h>
 #include <coro/http/http.h>
 
@@ -199,6 +200,16 @@ struct CreateCloudProvider<Dropbox> {
     return CloudProvider(DropboxImpl(*factory.http_, std::move(auth_token)));
   }
 };
+
+namespace util {
+template <>
+inline Dropbox::Auth::AuthData GetAuthData<Dropbox>() {
+  return {
+      .client_id = "ktryxp68ae5cicj",
+      .client_secret = "6evu94gcxnmyr59",
+  };
+}
+}  // namespace util
 
 }  // namespace coro::cloudstorage
 

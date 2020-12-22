@@ -4,6 +4,7 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/providers/mega/file_system_access.h>
 #include <coro/cloudstorage/providers/mega/http_io.h>
+#include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
 #include <coro/stdx/stop_token.h>
@@ -380,6 +381,11 @@ class AuthHandler<Mega, HttpClient> {
   const HttpClient* http_;
   Mega::AuthData auth_data_;
 };
+
+template <>
+inline Mega::AuthData GetAuthData<Mega>() {
+  return {.api_key = "ZVhB0Czb", .app_name = "coro-cloudstorage"};
+}
 
 }  // namespace util
 

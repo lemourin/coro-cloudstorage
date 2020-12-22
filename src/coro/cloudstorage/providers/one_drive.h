@@ -1,6 +1,8 @@
 #ifndef CORO_CLOUDSTORAGE_ONE_DRIVE_H
 #define CORO_CLOUDSTORAGE_ONE_DRIVE_H
 
+#include <coro/cloudstorage/util/auth_data.h>
+
 namespace coro::cloudstorage {
 
 template <typename Auth>
@@ -212,6 +214,14 @@ struct OneDriveImpl : OneDrive {
 
   AuthManager auth_manager_;
 };
+
+namespace util {
+template <>
+inline OneDrive::Auth::AuthData GetAuthData<OneDrive>() {
+  return {.client_id = "56a1d60f-ea71-40e9-a489-b87fba12a23e",
+          .client_secret = "zJRAsd0o4E9c33q4OLc7OhY"};
+}
+}  // namespace util
 
 }  // namespace coro::cloudstorage
 
