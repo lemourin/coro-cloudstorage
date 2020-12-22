@@ -11,8 +11,6 @@
 #include <coro/stdx/any_invocable.h>
 #include <coro/util/type_list.h>
 
-#include <regex>
-
 namespace coro::cloudstorage::util {
 
 template <typename CloudProviderTypeList, typename CloudFactory,
@@ -57,7 +55,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
   struct Handler {
     std::string id;
-    std::regex regex;
+    std::string prefix;
     HandlerType handler;
   };
 
@@ -119,15 +117,16 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
             auth_token, OnAuthTokenChanged<CloudProvider>{d, account_id});
         auto general_data =
             co_await provider.GetGeneralData(std::move(stop_token));
-        *account_id = std::string(GetCloudProviderId<CloudProvider>()) + "/" +
-                      std::move(general_data.username);
+        *account_id = "[" + std::string(GetCloudProviderId<CloudProvider>()) +
+                      "] " + std::move(general_data.username);
         d->template RemoveCloudProvider<CloudProvider>(**account_id);
         d->auth_token_manager.template SaveToken<CloudProvider>(
             std::move(auth_token), **account_id);
         d->OnCloudProviderCreated<CloudProvider>(std::move(provider),
                                                  **account_id);
-        co_return Response{.status = 302,
-                           .headers = {{"Location", "/" + **account_id}}};
+        co_return Response{
+            .status = 302,
+            .headers = {{"Location", "/" + http::EncodeUri(**account_id)}}};
       }
 
       Data* d;
@@ -136,9 +135,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     template <typename CloudProvider>
     void AddAuthHandler() {
       handlers.emplace_back(Handler{
-          .regex = std::regex("/auth(/" +
-                              std::string(GetCloudProviderId<CloudProvider>()) +
-                              ".*$)"),
+          .prefix = "/auth/" + std::string(GetCloudProviderId<CloudProvider>()),
           .handler = AuthHandler<CloudProvider>{this}});
     }
 
@@ -155,7 +152,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       }
       handlers.emplace_back(Handler{
           .id = account_id,
-          .regex = std::regex("/remove(/" + account_id + ".*$)"),
+          .prefix = "/remove/" + account_id,
           .handler = [d = this, id = account_id](
                          Request request,
                          coro::stdx::stop_token) -> Task<Response> {
@@ -171,7 +168,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
               CloudProvider>>(accounts.back().provider);
       handlers.emplace_back(Handler{
           .id = account_id,
-          .regex = std::regex("/" + account_id + "(.*$)"),
+          .prefix = "/" + account_id,
           .handler = HandlerType(ProxyHandler(provider, "/" + account_id))});
       account_listener.OnCreate(&accounts.back());
     }
@@ -206,18 +203,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
   }
 
-  bool CanHandleUrl(std::string_view url) const {
-    if (url.empty() || url == "/") {
-      return true;
-    }
-    for (const auto& handler : d_->handlers) {
-      if (std::regex_match(std::string(url), handler.regex)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   Task<Response> operator()(Request request,
                             coro::stdx::stop_token stop_token) {
     if (request.method == coro::http::Method::kOptions) {
@@ -226,12 +211,17 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           .headers = {{"Allow", "OPTIONS, GET, HEAD, POST, PROPFIND"},
                       {"DAV", "1"}}};
     }
+    auto path_opt = http::ParseUri(request.url).path;
+    if (!path_opt) {
+      co_return Response{.status = 400};
+    }
+    auto path = http::DecodeUri(std::move(*path_opt));
     for (auto& handler : d_->handlers) {
-      if (std::regex_match(request.url, handler.regex)) {
+      if (path.starts_with(handler.prefix)) {
         co_return co_await handler.handler(std::move(request), stop_token);
       }
     }
-    if (request.url.empty() || request.url == "/") {
+    if (path.empty() || path == "/") {
       if (request.method == coro::http::Method::kPropfind) {
         std::vector<std::string> responses = {GetElement(
             ElementData{.path = "/", .name = "root", .is_directory = true})};
@@ -243,12 +233,12 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
                                        .is_directory = true}));
           }
         }
-        co_return coro::http::Response<>{
+        co_return Response{
             .status = 207,
             .headers = {{"Content-Type", "text/xml"}},
             .body = CreateBody(GetMultiStatusResponse(responses))};
       } else {
-        co_return coro::http::Response<>{.status = 200, .body = GetHomePage()};
+        co_return Response{.status = 200, .body = GetHomePage()};
       }
     } else {
       co_return coro::http::Response<>{.status = 302,
@@ -277,9 +267,9 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     result << "</table><table><tr><th colspan='2'>ACCOUNT LIST</th></tr>";
 
     for (const auto& account : d_->accounts) {
-      result << "<tr><td><a href='/" << account.id << "/'>" << account.id
-             << "</a></td>";
-      result << "<td><form action='/remove/" << account.id
+      result << "<tr><td><a href='/" << http::EncodeUri(account.id) << "/'>"
+             << account.id << "</a></td>";
+      result << "<td><form action='/remove/" << http::EncodeUri(account.id)
              << "' method='POST' style='margin: auto;'><input "
                 "type='submit' value='remove'/></form></td>";
       result << "</tr>";

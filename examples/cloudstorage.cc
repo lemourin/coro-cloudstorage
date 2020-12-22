@@ -66,15 +66,15 @@ class HttpHandler {
                       coro::cloudstorage::util::AuthTokenManager{
                           .token_file = std::string(kTokenFile)}) {}
 
-  Task<Response<>> operator()(Request<> request,
-                              coro::stdx::stop_token stop_token) {
+  auto operator()(Request<> request, coro::stdx::stop_token stop_token) {
+    auto range_str = coro::http::GetHeader(request.headers, "Range");
     std::cerr << coro::http::MethodToString(request.method) << " "
-              << request.url << "\n";
-    if (auth_handler_.CanHandleUrl(request.url)) {
-      co_return co_await auth_handler_(std::move(request), stop_token);
+              << request.url;
+    if (range_str) {
+      std::cerr << " " << *range_str;
     }
-    co_return coro::http::Response<>{.status = 302,
-                                     .headers = {{"Location", "/"}}};
+    std::cerr << "\n";
+    return auth_handler_(std::move(request), stop_token);
   }
 
  private:

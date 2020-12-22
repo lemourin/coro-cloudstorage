@@ -1,5 +1,7 @@
 #include "webdav_utils.h"
 
+#include <coro/http/http_parse.h>
+
 #include <sstream>
 
 namespace coro::cloudstorage::util {
@@ -18,14 +20,16 @@ std::string GetMultiStatusResponse(std::span<const std::string> responses) {
 std::string GetElement(const ElementData& data) {
   std::stringstream stream;
   stream << "<d:response><d:href>"
-         << data.path + (data.is_directory && !data.path.empty() &&
-                                 data.path.back() != '/'
-                             ? "/"
-                             : "")
+         << http::EncodeUriPath(data.path + (data.is_directory &&
+                                                     !data.path.empty() &&
+                                                     data.path.back() != '/'
+                                                 ? "/"
+                                                 : ""))
          << "</d:href>"
          << "<d:propstat><d:status>HTTP/1.1 200 OK</d:status>"
          << "<d:prop>"
-         << "<d:displayname>" << data.name << "</d:displayname>";
+         << "<d:displayname>" << http::EncodeUri(data.name)
+         << "</d:displayname>";
   if (data.size) {
     stream << "<d:getcontentlength>" << *data.size << "</d:getcontentlength>";
   }

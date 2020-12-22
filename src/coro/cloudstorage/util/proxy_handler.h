@@ -33,12 +33,6 @@ class ProxyHandler {
     if (path.empty() || path.front() != '/') {
       path = '/' + path;
     }
-    auto range_str = coro::http::GetHeader(request.headers, "Range");
-    coro::http::Range range =
-        coro::http::ParseRange(range_str.value_or("bytes=0-"));
-    if (range_str) {
-      std::cerr << "[RANGE] " << *range_str << " " << path << "\n";
-    }
     auto item = co_await item_cache_.Get(path, stop_token);
     if (std::holds_alternative<File>(item)) {
       auto file = std::get<File>(item);
@@ -48,6 +42,9 @@ class ProxyHandler {
           {"Content-Disposition", "inline; filename=\"" + file.name + "\""},
           {"Access-Control-Allow-Origin", "*"},
           {"Access-Control-Allow-Headers", "*"}};
+      auto range_str = coro::http::GetHeader(request.headers, "Range");
+      coro::http::Range range =
+          coro::http::ParseRange(range_str.value_or("bytes=0-"));
       if (file.size) {
         if (!range.end) {
           range.end = *file.size - 1;
@@ -103,8 +100,8 @@ class ProxyHandler {
         for (const auto& item : page.items) {
           auto name = std::visit([](auto item) { return item.name; }, item);
           ElementData element_data(
-              {.path = path + coro::http::EncodeUri(name),
-               .name = coro::http::EncodeUri(name),
+              {.path = path + name,
+               .name = name,
                .is_directory = std::holds_alternative<Directory>(item)});
           if (std::holds_alternative<File>(item)) {
             const File& file = std::get<File>(item);
@@ -128,8 +125,9 @@ class ProxyHandler {
         auto name = std::visit([](auto item) { return item.name; }, item);
         std::string type =
             std::holds_alternative<Directory>(item) ? "DIR" : "FILE";
-        co_yield "<tr><td>[" + type + "]</td><td><a href='" + path +
-            coro::http::EncodeUri(name) + "'>" + name + "</a></td></tr>";
+        co_yield "<tr><td>[" + type + "]</td><td><a href='" +
+            coro::http::EncodeUriPath(path + name) + "'>" + name +
+            "</a></td></tr>";
       }
     });
     co_yield "</table></body></html>";
