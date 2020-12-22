@@ -35,7 +35,7 @@ Task<std::string> Mega::GetSession(Data& d, UserCredential credentials,
                   &::mega::MegaApp::prelogin_result>(d, stop_token,
                                                      credentials.email.c_str());
   std::string salt = *salt_ptr;
-  co_await Wait(d.event_loop, 0);
+  co_await d.event_loop->Wait(0);
   Check(prelogin_error);
   auto twofactor_ptr =
       credentials.twofactor ? credentials.twofactor->c_str() : nullptr;
@@ -46,7 +46,7 @@ Task<std::string> Mega::GetSession(Data& d, UserCredential credentials,
     auto [login_error] = co_await Do<kLogin, &::mega::MegaApp::login_result>(
         d, std::move(stop_token), credentials.email.c_str(), hashed_password,
         twofactor_ptr);
-    co_await Wait(d.event_loop, 0);
+    co_await d.event_loop->Wait(0);
     if (login_error != ::mega::API_OK) {
       throw CloudException(CloudException::Type::kUnauthorized);
     }
@@ -55,7 +55,7 @@ Task<std::string> Mega::GetSession(Data& d, UserCredential credentials,
         co_await Do<kLoginWithSalt, &::mega::MegaApp::login_result>(
             d, std::move(stop_token), credentials.email.c_str(),
             credentials.password.c_str(), &salt, twofactor_ptr);
-    co_await Wait(d.event_loop, 0);
+    co_await d.event_loop->Wait(0);
     if (login_error != ::mega::API_OK) {
       throw CloudException(CloudException::Type::kUnauthorized);
     }
@@ -75,7 +75,7 @@ Task<> Mega::LogIn() {
           d_->stop_source.get_token(),
           reinterpret_cast<const ::mega::byte*>(auth_token_.session.c_str()),
           static_cast<int>(auth_token_.session.size()));
-  co_await Wait(d_->event_loop, 0);
+  co_await d_->event_loop->Wait(0);
   if (login_error != ::mega::API_OK) {
     throw CloudException(CloudException::Type::kUnauthorized);
   }
@@ -231,15 +231,15 @@ Generator<std::string> Mega::GetFileContent(File file, http::Range range,
     } else if (!data->paused) {
       co_await data->semaphore;
       if (data->exception) {
-        co_await Wait(d_->event_loop, 0);
+        co_await d_->event_loop->Wait(0);
         std::rethrow_exception(data->exception);
       }
       data->semaphore = Semaphore();
-      co_await Wait(d_->event_loop, 0);
+      co_await d_->event_loop->Wait(0);
     }
   }
   if (stop_token.stop_requested()) {
-    throw InterruptedException();
+    throw coro::util::InterruptedException();
   }
 }
 

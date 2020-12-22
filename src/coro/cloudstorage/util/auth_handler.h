@@ -9,11 +9,9 @@ namespace coro::cloudstorage::util {
 template <typename CloudProvider, coro::http::HttpClient HttpClient>
 class AuthHandler {
  public:
-  AuthHandler(event_base* event_loop, const HttpClient& http,
+  AuthHandler(const HttpClient& http,
               typename CloudProvider::Auth::AuthData auth_data)
-      : event_loop_(event_loop),
-        http_(&http),
-        auth_data_(std::move(auth_data)) {}
+      : http_(&http), auth_data_(std::move(auth_data)) {}
 
   Task<typename CloudProvider::Auth::AuthToken> operator()(
       coro::http::Request<> request, coro::stdx::stop_token stop_token) const {
@@ -29,17 +27,20 @@ class AuthHandler {
   }
 
  private:
-  event_base* event_loop_;
   const HttpClient* http_;
   typename CloudProvider::Auth::AuthData auth_data_;
 };
 
-template <typename CloudProvider, coro::http::HttpClient HttpClient>
-auto MakeAuthHandler(event_base* event_loop, const HttpClient& http,
-                     typename CloudProvider::Auth::AuthData auth_data) {
-  return AuthHandler<CloudProvider, HttpClient>(event_loop, http,
-                                                std::move(auth_data));
-}
+template <typename CloudProvider>
+struct CreateAuthHandler {
+  template <typename CloudFactory>
+  auto operator()(const CloudFactory& cloud_factory,
+                  typename CloudProvider::Auth::AuthData auth_data) const {
+    return AuthHandler<CloudProvider,
+                       std::remove_pointer_t<decltype(cloud_factory.http_)>>(
+        *cloud_factory.http_, std::move(auth_data));
+  }
+};
 
 }  // namespace coro::cloudstorage::util
 

@@ -5,7 +5,7 @@
 #include <coro/http/http_parse.h>
 #include <coro/semaphore.h>
 #include <coro/stdx/stop_source.h>
-#include <coro/wait_task.h>
+#include <coro/util/event_loop.h>
 #include <mega.h>
 
 namespace coro::cloudstorage {
@@ -18,7 +18,7 @@ template <http::HttpClient HttpClient>
 class HttpIO : public ::mega::HttpIO {
  public:
   template <typename F>
-  HttpIO(HttpClient& http, F on_event)
+  HttpIO(const HttpClient& http, F on_event)
       : http_(http), on_event_(std::move(on_event)) {}
 
   void post(::mega::HttpReq* r, const char* data, unsigned size) final {
@@ -61,7 +61,7 @@ class HttpIO : public ::mega::HttpIO {
         auto response =
             co_await http_.Fetch(std::move(request), stop_source.get_token());
         if (stop_source.get_token().stop_requested()) {
-          throw InterruptedException();
+          throw coro::util::InterruptedException();
         }
         auto content_length = GetContentLength(response.headers);
         if (!content_length) {
@@ -70,7 +70,7 @@ class HttpIO : public ::mega::HttpIO {
         int64_t response_size = 0;
         FOR_CO_AWAIT(const std::string& chunk, response.body, {
           if (stop_source.get_token().stop_requested()) {
-            throw InterruptedException();
+            throw coro::util::InterruptedException();
           }
           r->put(
               const_cast<void*>(reinterpret_cast<const void*>(chunk.c_str())),
@@ -91,14 +91,14 @@ class HttpIO : public ::mega::HttpIO {
         success_ = true;
       } catch (const http::HttpException&) {
         if (stop_source.request_stop()) {
-          throw InterruptedException();
+          throw coro::util::InterruptedException();
         }
         io_ready_ = true;
         lastdata = r->lastdata = ::mega::Waiter::ds;
         r->status = ::mega::REQ_FAILURE;
       }
       on_event_();
-    } catch (const InterruptedException&) {
+    } catch (const coro::util::InterruptedException&) {
     }
   }
 
@@ -116,7 +116,7 @@ class HttpIO : public ::mega::HttpIO {
     return content_length;
   }
 
-  HttpClient& http_;
+  const HttpClient& http_;
   bool io_ready_ = false;
   bool success_ = false;
   std::function<void()> on_event_;

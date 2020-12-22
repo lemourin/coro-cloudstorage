@@ -65,7 +65,8 @@ Task<> CoMain(event_base* event_loop) noexcept {
   try {
     CurlHttp http(event_loop);
     Semaphore quit;
-    coro::cloudstorage::CloudFactory cloud_factory(event_loop, http);
+    coro::cloudstorage::CloudFactory cloud_factory(
+        coro::util::EventLoop(event_loop), http);
 
     Semaphore semaphore;
     HttpServer http_server(event_loop, {.address = "0.0.0.0", .port = 12345},

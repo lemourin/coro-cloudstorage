@@ -130,7 +130,7 @@ class CloudProvider {
     stop_token = stop_source.get_token();
     auto result = co_await(impl_.*Method)(std::move(args)..., stop_token);
     if (stop_token.stop_requested()) {
-      throw InterruptedException();
+      throw coro::util::InterruptedException();
     }
     co_return std::move(result);
   }
@@ -150,12 +150,12 @@ class CloudProvider {
     stop_token = stop_source.get_token();
     FOR_CO_AWAIT(auto entry, (impl_.*Method)(std::move(args)..., stop_token), {
       if (stop_token.stop_requested()) {
-        throw InterruptedException();
+        throw coro::util::InterruptedException();
       }
       co_yield std::move(entry);
     });
     if (stop_token.stop_requested()) {
-      throw InterruptedException();
+      throw coro::util::InterruptedException();
     }
   }
 
