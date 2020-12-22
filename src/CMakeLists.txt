@@ -1,7 +1,6 @@
 add_library(coro-cloudstorage)
 
 set(coro-cloudstorage-HEADERS
-    coro/cloudstorage/version.h
     coro/cloudstorage/util/fetch_json.h
     coro/cloudstorage/util/account_manager_handler.h
     coro/cloudstorage/util/auth_token_manager.h
@@ -21,7 +20,6 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/providers/mega/http_io.h
 )
 set(coro-cloudstorage-SOURCES
-    coro/cloudstorage/version.cc
     coro/cloudstorage/util/webdav_utils.cc
     coro/cloudstorage/providers/mega.cc
 )
