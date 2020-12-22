@@ -67,7 +67,7 @@ class AuthManager {
             auto stop_token = stop_source_.get_token();
             auto d = this;
             auto auth_token = co_await Auth::RefreshAccessToken(
-                *d->http_, d->auth_data_, d->auth_token_.refresh_token,
+                *d->http_, d->auth_data_, d->auth_token_,
                 stop_token);
             if (!stop_token.stop_requested()) {
               d->current_auth_refresh_ = nullptr;

@@ -28,21 +28,21 @@ struct OneDrive {
     template <http::HttpClient Http>
     static Task<AuthToken> RefreshAccessToken(const Http& http,
                                               AuthData auth_data,
-                                              std::string refresh_token,
+                                              AuthToken auth_token,
                                               stdx::stop_token stop_token) {
       auto request = http::Request<std::string>{
           .url = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
           .method = http::Method::kPost,
           .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
           .body = http::FormDataToString(
-              {{"refresh_token", refresh_token},
+              {{"refresh_token", auth_token.refresh_token},
                {"client_id", auth_data.client_id},
                {"client_secret", auth_data.client_secret},
                {"grant_type", "refresh_token"}})};
       json json = co_await util::FetchJson(http, std::move(request),
                                            std::move(stop_token));
-      co_return AuthToken{.access_token = json["access_token"],
-                          .refresh_token = std::move(refresh_token)};
+      auth_token.access_token = json["access_token"];
+      co_return auth_token;
     }
 
     static std::string GetAuthorizationUrl(const AuthData& data) {
