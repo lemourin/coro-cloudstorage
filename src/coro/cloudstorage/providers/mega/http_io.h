@@ -3,9 +3,9 @@
 
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
+#include <coro/interrupted_exception.h>
 #include <coro/semaphore.h>
 #include <coro/stdx/stop_source.h>
-#include <coro/util/event_loop.h>
 #include <mega.h>
 
 namespace coro::cloudstorage {
@@ -61,7 +61,7 @@ class HttpIO : public ::mega::HttpIO {
         auto response =
             co_await http_.Fetch(std::move(request), stop_source.get_token());
         if (stop_source.get_token().stop_requested()) {
-          throw coro::util::InterruptedException();
+          throw InterruptedException();
         }
         auto content_length = GetContentLength(response.headers);
         if (!content_length) {
@@ -70,7 +70,7 @@ class HttpIO : public ::mega::HttpIO {
         int64_t response_size = 0;
         FOR_CO_AWAIT(const std::string& chunk, response.body, {
           if (stop_source.get_token().stop_requested()) {
-            throw coro::util::InterruptedException();
+            throw InterruptedException();
           }
           r->put(
               const_cast<void*>(reinterpret_cast<const void*>(chunk.c_str())),
@@ -91,14 +91,14 @@ class HttpIO : public ::mega::HttpIO {
         success_ = true;
       } catch (const http::HttpException&) {
         if (stop_source.request_stop()) {
-          throw coro::util::InterruptedException();
+          throw InterruptedException();
         }
         io_ready_ = true;
         lastdata = r->lastdata = ::mega::Waiter::ds;
         r->status = ::mega::REQ_FAILURE;
       }
       on_event_();
-    } catch (const coro::util::InterruptedException&) {
+    } catch (const InterruptedException&) {
     }
   }
 

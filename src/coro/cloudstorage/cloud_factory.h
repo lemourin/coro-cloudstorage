@@ -5,7 +5,6 @@
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/http/http.h>
-#include <coro/util/event_loop.h>
 #include <coro/util/type_list.h>
 
 namespace coro::cloudstorage {
@@ -16,11 +15,15 @@ concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
   ->stdx::convertible_to<std::string>;
 };
 
-template <coro::http::HttpClient Http,
-          typename AuthData = coro::cloudstorage::util::AuthData>
+template <typename EventLoopT, coro::http::HttpClient HttpT,
+          typename AuthDataT = coro::cloudstorage::util::AuthData>
 class CloudFactory {
  public:
-  CloudFactory(const coro::util::EventLoop& event_loop, const Http& http,
+  using EventLoop = EventLoopT;
+  using Http = HttpT;
+  using AuthData = AuthDataT;
+
+  CloudFactory(const EventLoop& event_loop, const Http& http,
                AuthData auth_data = AuthData{})
       : event_loop_(&event_loop),
         http_(&http),
@@ -56,7 +59,7 @@ class CloudFactory {
   template <typename>
   friend struct ::coro::cloudstorage::util::CreateAuthHandler;
 
-  const coro::util::EventLoop* event_loop_;
+  const EventLoop* event_loop_;
   const Http* http_;
   AuthData auth_data_;
 };

@@ -7,6 +7,7 @@
 #include <coro/http/curl_http.h>
 #include <coro/http/http_server.h>
 #include <coro/stdx/coroutine.h>
+#include <coro/util/event_loop.h>
 
 #include <csignal>
 #include <iostream>

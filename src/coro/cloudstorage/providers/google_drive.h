@@ -10,7 +10,6 @@
 #include <coro/stdx/coroutine.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/task.h>
-#include <coro/util/event_loop.h>
 
 #include <iostream>
 #include <nlohmann/json.hpp>

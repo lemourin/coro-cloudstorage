@@ -36,8 +36,7 @@ struct CreateAuthHandler {
   template <typename CloudFactory>
   auto operator()(const CloudFactory& cloud_factory,
                   typename CloudProvider::Auth::AuthData auth_data) const {
-    return AuthHandler<CloudProvider,
-                       std::remove_pointer_t<decltype(cloud_factory.http_)>>(
+    return AuthHandler<CloudProvider, typename CloudFactory::Http>(
         *cloud_factory.http_, std::move(auth_data));
   }
 };

@@ -8,7 +8,6 @@
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
 #include <coro/stdx/stop_token.h>
-#include <coro/util/event_loop.h>
 #include <coro/util/function_traits.h>
 #include <coro/util/make_pointer.h>
 #include <coro/util/type_list.h>
@@ -64,8 +63,8 @@ class Mega : public MegaAuth {
     std::string username;
   };
 
-  template <http::HttpClient HttpClient>
-  Mega(const coro::util::EventLoop& event_loop, HttpClient& http,
+  template <typename EventLoop, http::HttpClient HttpClient>
+  Mega(const EventLoop& event_loop, const HttpClient& http,
        AuthToken auth_token, const AuthData& auth_data)
       : auth_token_(std::move(auth_token)),
         d_(std::make_unique<Data>(event_loop, http, auth_data)) {}
@@ -84,9 +83,9 @@ class Mega : public MegaAuth {
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         coro::stdx::stop_token);
 
-  template <http::HttpClient HttpClient>
+  template <typename EventLoop, http::HttpClient HttpClient>
   static Task<std::string> GetSession(
-      const coro::util::EventLoop& event_loop, const HttpClient& http,
+      const EventLoop& event_loop, const HttpClient& http,
       UserCredential credential, AuthData auth_data,
       stdx::stop_token stop_token = stdx::stop_token()) {
     Data d(event_loop, http, auth_data);
@@ -178,7 +177,7 @@ class Mega : public MegaAuth {
 
     Task<> Retry(::mega::dstime time, bool abortbackoff = true) {
       std::cerr << "[MEGA] RETRYING IN " << time * 100 << "\n";
-      co_await d->event_loop->Wait(100 * time, d->stop_source.get_token());
+      co_await d->wait_(100 * time, d->stop_source.get_token());
       if (abortbackoff) {
         d->mega_client.abortbackoff();
       }
@@ -213,7 +212,7 @@ class Mega : public MegaAuth {
 
   struct Data {
     stdx::stop_source stop_source;
-    const coro::util::EventLoop* event_loop;
+    std::function<Task<>(int ms, stdx::stop_token)> wait_;
     App mega_app;
     std::unique_ptr<::mega::HttpIO> http_io;
     mega::FileSystemAccess fs;
@@ -225,11 +224,14 @@ class Mega : public MegaAuth {
 
     void OnEvent();
 
-    template <http::HttpClient HttpClient>
-    Data(const coro::util::EventLoop& event_loop, const HttpClient& http,
+    template <typename EventLoop, http::HttpClient HttpClient>
+    Data(const EventLoop& event_loop, const HttpClient& http,
          const AuthData& auth_data)
         : stop_source(),
-          event_loop(&event_loop),
+          wait_([event_loop = &event_loop](
+                    int ms, stdx::stop_token stop_token) -> Task<> {
+            co_await event_loop->Wait(ms, std::move(stop_token));
+          }),
           mega_app(this),
           http_io(std::make_unique<mega::HttpIO<HttpClient>>(
               http, [this] { OnEvent(); })),
@@ -257,7 +259,7 @@ class Mega : public MegaAuth {
       auto& semaphore_ref = *semaphore;
       co_await semaphore_ref;
       if (stop_token.stop_requested()) {
-        throw coro::util::InterruptedException();
+        throw InterruptedException();
       }
       co_return std::any_cast<std::tuple<std::remove_cvref_t<Result>...>>(
           d.mega_app.last_result);
@@ -273,8 +275,8 @@ class Mega : public MegaAuth {
 
   static const char* GetErrorDescription(::mega::error e);
 
-  Task<> CoCheck(::mega::error e) {
-    co_await d_->event_loop->Wait(0);
+  Task<> CoCheck(::mega::error e, stdx::stop_token stop_token) {
+    co_await d_->wait_(0, stop_token);
     Check(e);
   }
 
@@ -321,11 +323,11 @@ inline auto ToAuthToken<Mega::AuthToken>(const nlohmann::json& json) {
       .session = http::FromBase64(std::string(json.at("session")))};
 }
 
-template <coro::http::HttpClient HttpClient>
-class AuthHandler<Mega, HttpClient> {
+template <typename EventLoop, http::HttpClient HttpClient>
+class MegaAuthHandler {
  public:
-  AuthHandler(const coro::util::EventLoop& event_loop, const HttpClient& http,
-              Mega::AuthData auth_data)
+  MegaAuthHandler(const EventLoop& event_loop, const HttpClient& http,
+                  Mega::AuthData auth_data)
       : event_loop_(&event_loop),
         http_(&http),
         auth_data_(std::move(auth_data)) {}
@@ -381,7 +383,7 @@ class AuthHandler<Mega, HttpClient> {
     )";
   }
 
-  const coro::util::EventLoop* event_loop_;
+  const EventLoop* event_loop_;
   const HttpClient* http_;
   Mega::AuthData auth_data_;
 };
@@ -391,9 +393,8 @@ struct CreateAuthHandler<Mega> {
   template <typename CloudFactory>
   auto operator()(const CloudFactory& cloud_factory,
                   Mega::Auth::AuthData auth_data) const {
-    return AuthHandler<Mega,
-                       std::remove_pointer_t<decltype(cloud_factory.http_)>>(
-        *cloud_factory.event_loop_, *cloud_factory.http_, std::move(auth_data));
+    return MegaAuthHandler(*cloud_factory.event_loop_, *cloud_factory.http_,
+                           std::move(auth_data));
   }
 };
 
