@@ -30,12 +30,14 @@ constexpr std::string_view kTokenFile = "access-token.json";
 template <typename CloudFactory>
 class HttpHandler {
  public:
-  explicit HttpHandler(const CloudFactory& factory)
+  HttpHandler(const CloudFactory& factory, Semaphore* quit)
       : auth_handler_(factory, AccountListener{},
                       coro::cloudstorage::util::AuthTokenManager{
-                          .token_file = std::string(kTokenFile)}) {}
+                          .token_file = std::string(kTokenFile)}),
+        quit_(quit) {}
 
-  auto operator()(Request<> request, coro::stdx::stop_token stop_token) {
+  Task<Response<>> operator()(Request<> request,
+                              coro::stdx::stop_token stop_token) {
     auto range_str = coro::http::GetHeader(request.headers, "Range");
     std::cerr << coro::http::MethodToString(request.method) << " "
               << request.url;
@@ -43,7 +45,11 @@ class HttpHandler {
       std::cerr << " " << *range_str;
     }
     std::cerr << "\n";
-    return auth_handler_(std::move(request), stop_token);
+    if (request.url == "/quit") {
+      quit_->resume();
+      co_return Response<>{.status = 200};
+    }
+    co_return co_await auth_handler_(std::move(request), stop_token);
   }
 
  private:
@@ -60,6 +66,7 @@ class HttpHandler {
 
   AccountManagerHandler<CloudProviders, CloudFactory, AccountListener>
       auth_handler_;
+  Semaphore* quit_;
 };
 
 Task<> CoMain(event_base* event_loop) noexcept {
@@ -69,11 +76,10 @@ Task<> CoMain(event_base* event_loop) noexcept {
     coro::cloudstorage::CloudFactory cloud_factory(
         coro::util::EventLoop(event_loop), http);
 
-    Semaphore semaphore;
     HttpServer http_server(event_loop, {.address = "0.0.0.0", .port = 12345},
-                           HttpHandler(cloud_factory),
-                           [&] { semaphore.resume(); });
-    co_await semaphore;
+                           HttpHandler(cloud_factory, &quit));
+    co_await quit;
+    co_await http_server.Quit();
   } catch (const std::exception& exception) {
     std::cerr << "EXCEPTION: " << exception.what() << "\n";
   }
