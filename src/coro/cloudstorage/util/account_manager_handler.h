@@ -286,6 +286,17 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   std::unique_ptr<Data> d_;
 };
 
+template <typename CloudProviderTypeList, typename CloudFactory,
+          typename AccountListener,
+          typename AuthTokenManagerT = AuthTokenManager>
+auto MakeAccountManagerHandler(
+    const CloudFactory& factory, AccountListener account_listener,
+    AuthTokenManagerT auth_token_manager = AuthTokenManagerT()) {
+  return AccountManagerHandler<CloudProviderTypeList, CloudFactory,
+                               AccountListener, AuthTokenManagerT>(
+      factory, std::move(account_listener), std::move(auth_token_manager));
+}
+
 }  // namespace coro::cloudstorage::util
 
 #endif  // CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
