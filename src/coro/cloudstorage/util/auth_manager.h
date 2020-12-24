@@ -49,10 +49,13 @@ class AuthManager {
     }
   }
 
-  template <typename... Args>
-  Task<nlohmann::json> FetchJson(Args&&... args) {
+  template <typename Request>
+  Task<nlohmann::json> FetchJson(Request request, stdx::stop_token stop_token) {
+    if (!http::HasHeader(request.headers, "Allow", "application/json")) {
+      request.headers.emplace_back("Allow", "application/json");
+    }
     http::ResponseLike auto response =
-        co_await Fetch(std::forward<Args>(args)...);
+        co_await Fetch(std::move(request), std::move(stop_token));
     std::string body = co_await http::GetBody(std::move(response.body));
     co_return nlohmann::json::parse(std::move(body));
   }
@@ -67,8 +70,7 @@ class AuthManager {
             auto stop_token = stop_source_.get_token();
             auto d = this;
             auto auth_token = co_await Auth::RefreshAccessToken(
-                *d->http_, d->auth_data_, d->auth_token_,
-                stop_token);
+                *d->http_, d->auth_data_, d->auth_token_, stop_token);
             if (!stop_token.stop_requested()) {
               d->current_auth_refresh_ = nullptr;
               d->auth_token_ = auth_token;
