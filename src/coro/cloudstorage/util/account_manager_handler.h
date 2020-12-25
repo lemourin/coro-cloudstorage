@@ -11,6 +11,8 @@
 #include <coro/stdx/any_invocable.h>
 #include <coro/util/type_list.h>
 
+#include <list>
+
 namespace coro::cloudstorage::util {
 
 template <typename CloudProviderTypeList, typename CloudFactory,
