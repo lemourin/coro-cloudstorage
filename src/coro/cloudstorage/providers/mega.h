@@ -172,7 +172,7 @@ class Mega : public MegaAuth {
     }
 
     void notify_retry(::mega::dstime time, ::mega::retryreason_t reason) final {
-      Retry(time, /*abortbackoff=*/false);
+      ::coro::Invoke(Retry(time, /*abortbackoff=*/false));
     }
 
     Task<> Retry(::mega::dstime time, bool abortbackoff = true) {

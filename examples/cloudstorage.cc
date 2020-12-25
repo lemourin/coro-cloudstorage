@@ -98,6 +98,6 @@ int main() {
 #endif
 
   auto base = MakePointer(event_base_new(), event_base_free);
-  CoMain(base.get());
+  Invoke(CoMain(base.get()));
   return event_base_dispatch(base.get());
 }
