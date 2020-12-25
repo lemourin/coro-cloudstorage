@@ -148,7 +148,7 @@ class CloudProvider {
     stdx::stop_callback callback_nd(stop_source_.get_token(),
                                     [&] { stop_source.request_stop(); });
     stop_token = stop_source.get_token();
-    FOR_CO_AWAIT(auto entry, (impl_.*Method)(std::move(args)..., stop_token), {
+    FOR_CO_AWAIT(auto& entry, (impl_.*Method)(std::move(args)..., stop_token), {
       if (stop_token.stop_requested()) {
         throw InterruptedException();
       }
