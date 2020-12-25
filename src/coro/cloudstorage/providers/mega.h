@@ -148,7 +148,7 @@ class Mega : public MegaAuth {
         it->second->semaphore.resume();
         return ~static_cast<::mega::dstime>(0);
       } else {
-        Retry(1 << (retry / 2));
+        ::coro::Invoke(Retry(1 << (retry / 2)));
         return 1 << (retry / 2);
       }
     }
