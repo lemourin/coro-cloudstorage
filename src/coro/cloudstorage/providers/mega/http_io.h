@@ -22,7 +22,7 @@ class HttpIO : public ::mega::HttpIO {
       : http_(http), on_event_(std::move(on_event)) {}
 
   void post(::mega::HttpReq* r, const char* data, unsigned size) final {
-    DoRequest(r, data, size);
+    Invoke(DoRequest(r, data, size));
   }
   void cancel(::mega::HttpReq* r) final {
     auto stop_source =
