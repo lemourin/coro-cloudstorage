@@ -101,7 +101,7 @@ class DropboxImpl : public Dropbox {
   }
 
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token) {
-    auto task1 = util::FetchJson(
+    Task<json> task1 = util::FetchJson(
         *http_,
         Request{.url = GetEndpoint("/users/get_current_account"),
                 .method = http::Method::kPost,
@@ -109,7 +109,7 @@ class DropboxImpl : public Dropbox {
                             {"Authorization",
                              "Bearer " + auth_token_.access_token}}},
         stop_token);
-    auto task2 = util::FetchJson(
+    Task<json> task2 = util::FetchJson(
         *http_,
         Request{.url = GetEndpoint("/users/get_space_usage"),
                 .method = http::Method::kPost,
@@ -117,8 +117,7 @@ class DropboxImpl : public Dropbox {
                             {"Authorization",
                              "Bearer " + auth_token_.access_token}}},
         stop_token);
-    json json1 = co_await task1;
-    json json2 = co_await task2;
+    auto [json1, json2] = co_await WhenAll(std::move(task1), std::move(task2));
     co_return GeneralData{.username = json1["email"],
                           .space_used = json2["used"],
                           .space_total = json2["allocation"]["allocated"]};

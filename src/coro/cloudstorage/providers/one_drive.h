@@ -128,12 +128,11 @@ struct OneDriveImpl : OneDrive {
   }
 
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token) {
-    auto task1 =
+    Task<json> task1 =
         auth_manager_.FetchJson(Request{.url = GetEndpoint("/me")}, stop_token);
-    auto task2 = auth_manager_.FetchJson(
+    Task<json> task2 = auth_manager_.FetchJson(
         Request{.url = GetEndpoint("/me/drive")}, stop_token);
-    auto json1 = co_await task1;
-    auto json2 = co_await task2;
+    auto [json1, json2] = co_await WhenAll(std::move(task1), std::move(task2));
     co_return GeneralData{.username = json1["userPrincipalName"],
                           .space_used = json2["quota"]["used"],
                           .space_total = json2["quota"]["total"]};
