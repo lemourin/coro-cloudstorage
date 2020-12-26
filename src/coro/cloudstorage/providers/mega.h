@@ -45,6 +45,7 @@ class Mega : public MegaAuth {
   struct Directory {
     ::mega::handle id;
     std::string name;
+    int64_t timestamp;
   };
 
   struct File : Directory {

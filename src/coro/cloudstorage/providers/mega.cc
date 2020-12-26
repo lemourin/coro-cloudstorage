@@ -12,6 +12,7 @@ Type ToItemImpl(::mega::Node* node) {
   Type type;
   type.name = node->displayname();
   type.id = node->nodehandle;
+  type.timestamp = node->mtime ? node->mtime : node->ctime;
   if constexpr (std::is_same_v<Type, Mega::File>) {
     type.size = node->size;
   }

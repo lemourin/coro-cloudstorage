@@ -29,6 +29,7 @@ struct Dropbox {
   struct File : Directory {
     std::optional<std::string> mime_type;
     std::optional<int64_t> size;
+    int64_t timestamp;
   };
 
   using Item = std::variant<File, Directory>;
@@ -199,6 +200,7 @@ class DropboxImpl : public Dropbox {
       if (json.contains("size")) {
         result.size = json["size"];
       }
+      result.timestamp = http::ParseTime(json["client_modified"]);
     }
     return result;
   }

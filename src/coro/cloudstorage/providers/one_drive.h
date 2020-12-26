@@ -99,6 +99,7 @@ struct OneDrive {
   struct Directory {
     std::string id;
     std::string name;
+    int64_t timestamp;
   };
 
   struct File : Directory {
@@ -208,6 +209,7 @@ struct OneDriveImpl : OneDrive {
     T result = {};
     result.id = json["id"];
     result.name = json["name"];
+    result.timestamp = http::ParseTime(json["lastModifiedDateTime"]);
     if constexpr (std::is_same_v<T, File>) {
       if (json.contains("size")) {
         result.size = json["size"];
