@@ -20,6 +20,12 @@ concept CloudProviderImpl = requires(http::HttpStub& http, std::string code,
   ->Awaitable;
 };
 
+template <typename T>
+concept HasTimestamp = requires(T v) {
+  { v.timestamp }
+  ->stdx::convertible_to<int64_t>;
+};
+
 template <typename Impl>
 class CloudProvider {
  public:

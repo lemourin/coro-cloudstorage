@@ -99,10 +99,20 @@ class ProxyHandler {
       FOR_CO_AWAIT(const auto& page, page_data, {
         for (const auto& item : page.items) {
           auto name = std::visit([](auto item) { return item.name; }, item);
+          auto timestamp = std::visit(
+              [](auto item) -> std::optional<int64_t> {
+                if constexpr (HasTimestamp<decltype(item)>) {
+                  return item.timestamp;
+                } else {
+                  return std::nullopt;
+                }
+              },
+              item);
           ElementData element_data(
               {.path = path + name,
                .name = name,
-               .is_directory = std::holds_alternative<Directory>(item)});
+               .is_directory = std::holds_alternative<Directory>(item),
+               .timestamp = timestamp});
           if (std::holds_alternative<File>(item)) {
             const File& file = std::get<File>(item);
             element_data.mime_type = file.mime_type.value_or(

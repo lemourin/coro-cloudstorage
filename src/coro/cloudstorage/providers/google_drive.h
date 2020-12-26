@@ -223,7 +223,7 @@ struct GoogleDriveImpl : GoogleDrive {
     T result = {};
     result.id = json["id"];
     result.name = json["name"];
-    result.timestamp = http::ParseTime(json["modifiedTime"]);
+    result.timestamp = http::ParseTime(std::string(json["modifiedTime"]));
     if constexpr (std::is_same_v<T, File>) {
       if (json.contains("size")) {
         result.size = std::stoll(std::string(json["size"]));

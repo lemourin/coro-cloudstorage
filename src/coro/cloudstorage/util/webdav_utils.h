@@ -15,6 +15,7 @@ struct ElementData {
   bool is_directory;
   std::optional<int64_t> size;
   std::optional<std::string> mime_type;
+  std::optional<int64_t> timestamp;
 };
 
 std::string GetMultiStatusResponse(std::span<const std::string> responses);

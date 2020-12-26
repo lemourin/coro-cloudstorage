@@ -200,7 +200,7 @@ class DropboxImpl : public Dropbox {
       if (json.contains("size")) {
         result.size = json["size"];
       }
-      result.timestamp = http::ParseTime(json["client_modified"]);
+      result.timestamp = http::ParseTime(std::string(json["client_modified"]));
     }
     return result;
   }
