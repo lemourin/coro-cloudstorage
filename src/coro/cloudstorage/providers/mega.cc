@@ -200,6 +200,7 @@ Task<Mega::Directory> Mega::GetRoot(coro::stdx::stop_token stop_token) {
 
 Task<Mega::GeneralData> Mega::GetGeneralData(
     coro::stdx::stop_token stop_token) {
+  co_await EnsureLoggedIn(stop_token);
   auto tag = d_->mega_client.nextreqtag();
   d_->mega_client.getaccountdetails(new ::mega::AccountDetails, true, false,
                                     false, false, false, false);
