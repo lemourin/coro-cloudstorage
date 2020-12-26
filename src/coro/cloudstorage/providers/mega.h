@@ -71,10 +71,9 @@ class Mega : public MegaAuth {
       : auth_token_(std::move(auth_token)),
         d_(std::make_unique<Data>(event_loop, http, auth_data)) {}
 
-  template <auto Method, auto ResultMethod, typename... Args>
+  template <auto Method, typename... Args>
   auto Do(stdx::stop_token stop_token, Args&&... args) {
-    return Do<Method, ResultMethod>(*d_, std::move(stop_token),
-                                    std::forward<Args>(args)...);
+    return d_->Do<Method>(std::move(stop_token), std::forward<Args>(args)...);
   }
 
   Task<GeneralData> GetGeneralData(coro::stdx::stop_token);
@@ -91,7 +90,7 @@ class Mega : public MegaAuth {
       UserCredential credential, AuthData auth_data,
       stdx::stop_token stop_token = stdx::stop_token()) {
     Data d(event_loop, http, auth_data);
-    co_return co_await GetSession(d, credential, std::move(stop_token));
+    co_return co_await d.GetSession(credential, std::move(stop_token));
   }
 
  private:
@@ -121,17 +120,17 @@ class Mega : public MegaAuth {
 
     void prelogin_result(int version, std::string* email, std::string* salt,
                          ::mega::error e) final {
-      last_result = std::make_tuple(version, email, salt, e);
+      last_result = std::make_tuple(version, *email, *salt, e);
       Resume();
     }
 
     void login_result(::mega::error e) final {
-      last_result = std::make_tuple(e);
+      last_result = e;
       Resume();
     }
 
     void fetchnodes_result(const ::mega::Error& e) final {
-      last_result = std::make_tuple(e);
+      last_result = ::mega::error(e);
       Resume();
     }
 
@@ -240,6 +239,26 @@ class Mega : public MegaAuth {
 
     void OnEvent();
 
+    template <auto Method, typename... Args>
+    Task<std::any> Do(stdx::stop_token stop_token, Args... args) {
+      auto tag = mega_client.nextreqtag();
+      (mega_client.*Method)(args...);
+      OnEvent();
+      auto semaphore = mega_app.GetSemaphore(tag);
+      stdx::stop_callback callback(stop_token, [&] { semaphore->resume(); });
+      auto& semaphore_ref = *semaphore;
+      co_await semaphore_ref;
+      if (stop_token.stop_requested()) {
+        throw InterruptedException();
+      }
+      auto result = std::move(mega_app.last_result);
+      co_await wait_(0, std::move(stop_token));
+      co_return result;
+    }
+
+    Task<std::string> GetSession(UserCredential credentials,
+                                 stdx::stop_token stop_token);
+
     template <typename EventLoop, http::HttpClient HttpClient>
     Data(const EventLoop& event_loop, const HttpClient& http,
          const AuthData& auth_data)
@@ -259,42 +278,7 @@ class Mega : public MegaAuth {
     ~Data() { stop_source.request_stop(); }
   };
 
-  template <typename>
-  struct Invoke;
-
-  template <typename... Result>
-  struct Invoke<coro::util::TypeList<Result...>> {
-    template <auto Method, typename... Args>
-    static Task<std::tuple<std::remove_cvref_t<Result>...>> Call(
-        Data& d, stdx::stop_token stop_token, Args... args) {
-      auto tag = d.mega_client.nextreqtag();
-      (d.mega_client.*Method)(args...);
-      d.OnEvent();
-      auto semaphore = d.mega_app.GetSemaphore(tag);
-      stdx::stop_callback callback(stop_token, [&] { semaphore->resume(); });
-      auto& semaphore_ref = *semaphore;
-      co_await semaphore_ref;
-      if (stop_token.stop_requested()) {
-        throw InterruptedException();
-      }
-      co_return std::any_cast<std::tuple<std::remove_cvref_t<Result>...>>(
-          d.mega_app.last_result);
-    }
-  };
-
-  template <auto Method, auto ResultMethod, typename... Args>
-  static auto Do(Data& d, stdx::stop_token stop_token, Args&&... args) {
-    return Invoke<coro::util::ArgumentListTypeT<decltype(ResultMethod)>>::
-        template Call<Method>(d, std::move(stop_token),
-                              std::forward<Args>(args)...);
-  }
-
   static const char* GetErrorDescription(::mega::error e);
-
-  Task<> CoCheck(::mega::error e, stdx::stop_token stop_token) {
-    co_await d_->wait_(0, stop_token);
-    Check(e);
-  }
 
   static void Check(::mega::error e) {
     if (e != ::mega::API_OK) {
@@ -306,7 +290,6 @@ class Mega : public MegaAuth {
 
   Task<> EnsureLoggedIn(stdx::stop_token);
   Task<> LogIn();
-  static Task<std::string> GetSession(Data&, UserCredential, stdx::stop_token);
 
   AuthToken auth_token_;
   std::unique_ptr<Data> d_;

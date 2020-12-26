@@ -28,34 +28,29 @@ Mega::Item ToItem(::mega::Node* node) {
 
 }  // namespace
 
-Task<std::string> Mega::GetSession(Data& d, UserCredential credentials,
-                                   stdx::stop_token stop_token) {
-  auto [version, email, salt_ptr, prelogin_error] =
-      co_await Do<&::mega::MegaClient::prelogin,
-                  &::mega::MegaApp::prelogin_result>(d, stop_token,
-                                                     credentials.email.c_str());
-  std::string salt = *salt_ptr;
-  co_await d.wait_(0, stop_token);
+Task<std::string> Mega::Data::GetSession(UserCredential credentials,
+                                         stdx::stop_token stop_token) {
+  auto [version, email, salt, prelogin_error] =
+      std::any_cast<std::tuple<int, std::string, std::string, ::mega::error>>(
+          co_await Do<&::mega::MegaClient::prelogin>(
+              stop_token, credentials.email.c_str()));
   Check(prelogin_error);
   auto twofactor_ptr =
       credentials.twofactor ? credentials.twofactor->c_str() : nullptr;
   if (version == 1) {
     const int kHashLength = 128;
     ::mega::byte hashed_password[kHashLength];
-    Check(d.mega_client.pw_key(credentials.password.c_str(), hashed_password));
-    auto [login_error] = co_await Do<kLogin, &::mega::MegaApp::login_result>(
-        d, std::move(stop_token), credentials.email.c_str(), hashed_password,
-        twofactor_ptr);
-    co_await d.wait_(0, stop_token);
+    Check(mega_client.pw_key(credentials.password.c_str(), hashed_password));
+    auto login_error = std::any_cast<::mega::error>(
+        co_await Do<kLogin>(std::move(stop_token), credentials.email.c_str(),
+                            hashed_password, twofactor_ptr));
     if (login_error != ::mega::API_OK) {
       throw CloudException(CloudException::Type::kUnauthorized);
     }
   } else if (version == 2) {
-    auto [login_error] =
-        co_await Do<kLoginWithSalt, &::mega::MegaApp::login_result>(
-            d, std::move(stop_token), credentials.email.c_str(),
-            credentials.password.c_str(), &salt, twofactor_ptr);
-    co_await d.wait_(0, stop_token);
+    auto login_error = std::any_cast<::mega::error>(co_await Do<kLoginWithSalt>(
+        std::move(stop_token), credentials.email.c_str(),
+        credentials.password.c_str(), &salt, twofactor_ptr));
     if (login_error != ::mega::API_OK) {
       throw CloudException(CloudException::Type::kUnauthorized);
     }
@@ -65,25 +60,23 @@ Task<std::string> Mega::GetSession(Data& d, UserCredential credentials,
 
   const int kHashBufferSize = 128;
   ::mega::byte buffer[kHashBufferSize];
-  int length = d.mega_client.dumpsession(buffer, kHashBufferSize);
+  int length = mega_client.dumpsession(buffer, kHashBufferSize);
   co_return std::string(reinterpret_cast<const char*>(buffer), length);
 }
 
 Task<> Mega::LogIn() {
   auto stop_token = d_->stop_source.get_token();
-  auto [login_error] =
-      co_await Do<kSessionLogin, &::mega::MegaApp::login_result>(
-          stop_token,
-          reinterpret_cast<const ::mega::byte*>(auth_token_.session.c_str()),
-          static_cast<int>(auth_token_.session.size()));
-  co_await d_->wait_(0, stop_token);
+  auto login_error = std::any_cast<::mega::error>(co_await Do<kSessionLogin>(
+      stop_token,
+      reinterpret_cast<const ::mega::byte*>(auth_token_.session.c_str()),
+      static_cast<int>(auth_token_.session.size())));
   if (login_error != ::mega::API_OK) {
     throw CloudException(CloudException::Type::kUnauthorized);
   }
-  auto [fetch_error] = co_await Do<&::mega::MegaClient::fetchnodes,
-                                   &::mega::MegaApp::fetchnodes_result>(
-      stop_token, /*nocache=*/false);
-  co_await CoCheck(fetch_error, stop_token);
+  auto fetch_error =
+      std::any_cast<::mega::error>(co_await Do<&::mega::MegaClient::fetchnodes>(
+          stop_token, /*nocache=*/false));
+  Check(fetch_error);
 }
 
 Task<> Mega::EnsureLoggedIn(stdx::stop_token stop_token) {
@@ -201,24 +194,14 @@ Task<Mega::Directory> Mega::GetRoot(coro::stdx::stop_token stop_token) {
 Task<Mega::GeneralData> Mega::GetGeneralData(
     coro::stdx::stop_token stop_token) {
   co_await EnsureLoggedIn(stop_token);
-  auto tag = d_->mega_client.nextreqtag();
-  d_->mega_client.getaccountdetails(new ::mega::AccountDetails, true, false,
-                                    false, false, false, false);
-  d_->OnEvent();
-  auto semaphore = d_->mega_app.GetSemaphore(tag);
-  stdx::stop_callback callback(stop_token, [&] { semaphore->resume(); });
-  auto& semaphore_ref = *semaphore;
-  co_await semaphore_ref;
-  if (stop_token.stop_requested()) {
-    throw InterruptedException();
+  std::any result = co_await Do<&::mega::MegaClient::getaccountdetails>(
+      stop_token, new ::mega::AccountDetails, true, false, false, false, false,
+      false, -1);
+  if (result.type() == typeid(::mega::error)) {
+    throw CloudException(
+        GetErrorDescription(std::any_cast<::mega::error>(result)));
   }
-  if (d_->mega_app.last_result.type() == typeid(::mega::error)) {
-    co_await d_->wait_(0, stop_token);
-    throw CloudException(GetErrorDescription(
-        std::any_cast<::mega::error>(d_->mega_app.last_result)));
-  }
-  const auto& account_details =
-      std::any_cast<::mega::AccountDetails>(d_->mega_app.last_result);
+  const auto& account_details = std::any_cast<::mega::AccountDetails>(result);
   co_return GeneralData{.username = auth_token_.email,
                         .space_used = account_details.storage_used,
                         .space_total = account_details.storage_max};
