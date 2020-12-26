@@ -95,6 +95,8 @@ struct GoogleDrive {
 
   struct GeneralData {
     std::string username;
+    int64_t space_used;
+    std::optional<int64_t> space_total;
   };
 
   struct Directory {
@@ -160,7 +162,15 @@ struct GoogleDriveImpl : GoogleDrive {
         Request{.url = GetEndpoint("/about?fields=user,storageQuota")};
     json json = co_await auth_manager_.FetchJson(std::move(request),
                                                  std::move(stop_token));
-    co_return GeneralData{.username = json["user"]["emailAddress"]};
+    co_return GeneralData{
+        .username = json["user"].contains("emailAddress")
+                        ? json["user"]["emailAddress"]
+                        : json["user"]["displayName"],
+        .space_used = std::stoll(std::string(json["storageQuota"]["usage"])),
+        .space_total = json["storageQuota"].contains("limit")
+                           ? std::make_optional(std::stoll(
+                                 std::string(json["storageQuota"]["limit"])))
+                           : std::nullopt};
   }
 
   Task<Item> GetItem(std::string id, stdx::stop_token stop_token) {

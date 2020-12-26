@@ -92,6 +92,8 @@ struct OneDrive {
 
   struct GeneralData {
     std::string username;
+    int64_t space_used;
+    int64_t space_total;
   };
 
   struct Directory {
@@ -126,10 +128,15 @@ struct OneDriveImpl : OneDrive {
   }
 
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token) {
-    auto request = Request{.url = GetEndpoint("/me")};
-    json json = co_await auth_manager_.FetchJson(std::move(request),
-                                                 std::move(stop_token));
-    co_return GeneralData{.username = json["userPrincipalName"]};
+    auto task1 =
+        auth_manager_.FetchJson(Request{.url = GetEndpoint("/me")}, stop_token);
+    auto task2 = auth_manager_.FetchJson(
+        Request{.url = GetEndpoint("/me/drive")}, stop_token);
+    auto json1 = co_await task1;
+    auto json2 = co_await task2;
+    co_return GeneralData{.username = json1["userPrincipalName"],
+                          .space_used = json2["quota"]["used"],
+                          .space_total = json2["quota"]["total"]};
   }
 
   Task<PageData> ListDirectoryPage(Directory directory,

@@ -61,6 +61,8 @@ class Mega : public MegaAuth {
 
   struct GeneralData {
     std::string username;
+    int64_t space_used;
+    int64_t space_total;
   };
 
   template <typename EventLoop, http::HttpClient HttpClient>
@@ -130,6 +132,20 @@ class Mega : public MegaAuth {
 
     void fetchnodes_result(const ::mega::Error& e) final {
       last_result = std::make_tuple(e);
+      Resume();
+    }
+
+    void account_details(::mega::AccountDetails* details, bool, bool, bool,
+                         bool, bool, bool) final {
+      last_result = std::move(*details);
+      delete details;
+      Resume();
+    }
+
+    void account_details(::mega::AccountDetails* details,
+                         ::mega::error e) final {
+      last_result = e;
+      delete details;
       Resume();
     }
 

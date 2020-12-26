@@ -198,8 +198,29 @@ Task<Mega::Directory> Mega::GetRoot(coro::stdx::stop_token stop_token) {
   co_return Directory{.id = d_->mega_client.rootnodes[0]};
 }
 
-Task<Mega::GeneralData> Mega::GetGeneralData(coro::stdx::stop_token) {
-  co_return GeneralData{.username = auth_token_.email};
+Task<Mega::GeneralData> Mega::GetGeneralData(
+    coro::stdx::stop_token stop_token) {
+  auto tag = d_->mega_client.nextreqtag();
+  d_->mega_client.getaccountdetails(new ::mega::AccountDetails, true, false,
+                                    false, false, false, false);
+  d_->OnEvent();
+  auto semaphore = d_->mega_app.GetSemaphore(tag);
+  stdx::stop_callback callback(stop_token, [&] { semaphore->resume(); });
+  auto& semaphore_ref = *semaphore;
+  co_await semaphore_ref;
+  if (stop_token.stop_requested()) {
+    throw InterruptedException();
+  }
+  if (d_->mega_app.last_result.type() == typeid(::mega::error)) {
+    co_await d_->wait_(0, stop_token);
+    throw CloudException(GetErrorDescription(
+        std::any_cast<::mega::error>(d_->mega_app.last_result)));
+  }
+  const auto& account_details =
+      std::any_cast<::mega::AccountDetails>(d_->mega_app.last_result);
+  co_return GeneralData{.username = auth_token_.email,
+                        .space_used = account_details.storage_used,
+                        .space_total = account_details.storage_max};
 }
 
 Generator<std::string> Mega::GetFileContent(File file, http::Range range,

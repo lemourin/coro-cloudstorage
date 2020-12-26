@@ -22,6 +22,8 @@ struct Dropbox {
 
   struct GeneralData {
     std::string username;
+    int64_t space_used;
+    int64_t space_total;
   };
 
   struct File : Directory {
@@ -99,14 +101,27 @@ class DropboxImpl : public Dropbox {
   }
 
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token) {
-    Request request = {
-        .url = GetEndpoint("/users/get_current_account"),
-        .method = http::Method::kPost,
-        .headers = {{"Content-Type", ""},
-                    {"Authorization", "Bearer " + auth_token_.access_token}}};
-    json json = co_await util::FetchJson(*http_, std::move(request),
-                                         std::move(stop_token));
-    co_return GeneralData{.username = json["email"]};
+    auto task1 = util::FetchJson(
+        *http_,
+        Request{.url = GetEndpoint("/users/get_current_account"),
+                .method = http::Method::kPost,
+                .headers = {{"Content-Type", ""},
+                            {"Authorization",
+                             "Bearer " + auth_token_.access_token}}},
+        stop_token);
+    auto task2 = util::FetchJson(
+        *http_,
+        Request{.url = GetEndpoint("/users/get_space_usage"),
+                .method = http::Method::kPost,
+                .headers = {{"Content-Type", ""},
+                            {"Authorization",
+                             "Bearer " + auth_token_.access_token}}},
+        stop_token);
+    json json1 = co_await task1;
+    json json2 = co_await task2;
+    co_return GeneralData{.username = json1["email"],
+                          .space_used = json2["used"],
+                          .space_total = json2["allocation"]["allocated"]};
   }
 
   Task<PageData> ListDirectoryPage(Directory directory,
