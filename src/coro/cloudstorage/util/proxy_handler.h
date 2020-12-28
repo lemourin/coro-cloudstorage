@@ -27,9 +27,9 @@ class ProxyHandler {
 
   Task<Response> operator()(Request request,
                             coro::stdx::stop_token stop_token) {
-    std::string path =
+    std::string path = GetEffectivePath(
         http::DecodeUri(http::ParseUri(request.url).path.value_or(""))
-            .substr(path_prefix_.length());
+            .substr(path_prefix_.length()));
     if (path.empty() || path.front() != '/') {
       path = '/' + path;
     }
@@ -135,9 +135,12 @@ class ProxyHandler {
         auto name = std::visit([](auto item) { return item.name; }, item);
         std::string type =
             std::holds_alternative<Directory>(item) ? "DIR" : "FILE";
-        co_yield "<tr><td>[" + type + "]</td><td><a href='" +
-            coro::http::EncodeUriPath(path + name) + "'>" + name +
-            "</a></td></tr>";
+        std::string file_link = coro::http::EncodeUriPath(path + name);
+        if (name.ends_with(".mpd")) {
+          file_link = "/dash" + file_link;
+        }
+        co_yield "<tr><td>[" + type + "]</td><td><a href='" + file_link + "'>" +
+            name + "</a></td></tr>";
       }
     });
     co_yield "</table></body></html>";
@@ -154,6 +157,37 @@ class ProxyHandler {
       return "";
     }
     return std::string(path.begin(), path.begin() + it + 1);
+  }
+
+  static std::string GetEffectivePath(std::string_view path) {
+    std::vector<std::string> components;
+    std::string current;
+    size_t it = 0;
+    while (it < path.size()) {
+      if (path[it] == '/') {
+        if (current == "..") {
+          if (components.empty()) {
+            throw std::invalid_argument("invalid path");
+          } else {
+            components.pop_back();
+          }
+        } else if (current != "." && current != "") {
+          components.emplace_back(std::move(current));
+        }
+        current.clear();
+      } else {
+        current += path[it];
+      }
+      it++;
+    }
+    std::string result;
+    for (std::string& component : components) {
+      result += "/" + std::move(component);
+    }
+    if (!current.empty()) {
+      result += "/" + std::move(current);
+    }
+    return result;
   }
 
   struct GetItem {

@@ -203,6 +203,42 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           },
           any_token);
     }
+    d_->handlers.emplace_back(Handler{
+        .prefix = "/dash",
+        .handler = [](Request request, stdx::stop_token) -> Task<Response> {
+          std::string path =
+              http::DecodeUri(request.url).substr(strlen("/dash"));
+          co_return Response{.status = 200, .body = GetDashPlayer(path)};
+        }});
+  }
+
+  static Generator<std::string> GetDashPlayer(std::string path) {
+    std::stringstream page;
+    page << "<!DOCTYPE html><html><head><meta charset='UTF-8'>";
+    page << "<meta name='viewport' content='width=device-width'>";
+    page << "<script "
+            "src=\"https://cdnjs.cloudflare.com/ajax/libs/shaka-player/3.0.6/"
+            "shaka-player.ui.min.js\" "
+            "integrity=\"sha512-"
+            "2oRLIguQ4Pb7pTcl65mpc0CDyZYtyhNUUBlIXSzwIMfPdeGuyekr0TpBwjTpFKyuS3"
+            "QNWnQnlaFzXj7VCamGSA==\" crossorigin=\"anonymous\"></script>";
+    page
+        << "<link rel=\"stylesheet\" "
+           "href=\"https://cdnjs.cloudflare.com/ajax/libs/shaka-player/3.0.6/"
+           "controls.min.css\" "
+           "integrity=\"sha512-UBpZwbEsFcjXjrXeDOl0841+"
+           "bdZTRX0g5msnfQJsaftSlLeZ/QuKMWw2MfEbOslDyngzBOcFmpiNYCAvb+oLCA==\" "
+           "crossorigin=\"anonymous\" />";
+    page << "</head>";
+    page << "<body data-shaka-player-container style='background-color:black; "
+            "height:95vh; display: flex; justify-content: center; align-items: "
+            "center;'>";
+    page << "<video autoplay data-shaka-player id='video' "
+            "style='margin: auto; max-height: 100%; max-width: 100%;' src='"
+         << http::EncodeUriPath(path) << "'></video>";
+    page << "</body></html>";
+
+    co_yield page.str();
   }
 
   Task<Response> operator()(Request request,

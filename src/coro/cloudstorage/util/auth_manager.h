@@ -10,11 +10,12 @@
 
 namespace coro::cloudstorage::util {
 
-template <http::HttpClient Http, typename Auth, typename OnAuthTokenUpdated>
+template <http::HttpClient HttpT, typename Auth, typename OnAuthTokenUpdated>
 class AuthManager {
  public:
   using AuthToken = typename Auth::AuthToken;
   using AuthData = typename Auth::AuthData;
+  using Http = HttpT;
 
   AuthManager(const Http& http, AuthToken auth_token, AuthData auth_data,
               OnAuthTokenUpdated on_auth_token_updated)
@@ -61,6 +62,7 @@ class AuthManager {
   }
 
   const AuthToken& GetAuthToken() const { return auth_token_; }
+  const Http& GetHttp() const { return *http_; }
 
  private:
   Task<> RefreshAuthToken(stdx::stop_token stop_token) {
