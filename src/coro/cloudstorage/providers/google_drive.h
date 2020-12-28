@@ -195,8 +195,9 @@ struct GoogleDriveImpl : GoogleDrive {
                 .headers = {{"Range", std::move(range_header).str()}}};
     auto response =
         co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
-    FOR_CO_AWAIT(std::string & body, response.body,
-                 { co_yield std::move(body); });
+    FOR_CO_AWAIT(std::string & body, response.body) {
+      co_yield std::move(body);
+    }
   }
 
  private:

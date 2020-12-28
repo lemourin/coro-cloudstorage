@@ -163,8 +163,9 @@ class DropboxImpl : public Dropbox {
                     {"Authorization", "Bearer " + auth_token_.access_token}}};
     auto response =
         co_await http_->Fetch(std::move(request), std::move(stop_token));
-    FOR_CO_AWAIT(std::string & body, response.body,
-                 { co_yield std::move(body); });
+    FOR_CO_AWAIT(std::string & body, response.body) {
+      co_yield std::move(body);
+    }
   }
 
  private:

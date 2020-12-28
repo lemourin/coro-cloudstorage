@@ -179,8 +179,9 @@ struct OneDriveImpl : OneDrive {
       response = co_await auth_manager_.Fetch(std::move(redirect_request),
                                               std::move(stop_token));
     }
-    FOR_CO_AWAIT(std::string & body, response.body,
-                 { co_yield std::move(body); });
+    FOR_CO_AWAIT(std::string & body, response.body) {
+      co_yield std::move(body);
+    }
   }
 
  private:

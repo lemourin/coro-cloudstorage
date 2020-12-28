@@ -96,7 +96,7 @@ class ProxyHandler {
         .path = path, .name = directory.name, .is_directory = true};
     co_yield GetElement(std::move(current_element_data));
     if (::coro::http::GetHeader(request.headers, "Depth") == "1") {
-      FOR_CO_AWAIT(const auto& page, page_data, {
+      FOR_CO_AWAIT(const auto& page, page_data) {
         for (const auto& item : page.items) {
           auto name = std::visit([](auto item) { return item.name; }, item);
           auto timestamp = std::visit(
@@ -121,7 +121,7 @@ class ProxyHandler {
           }
           co_yield GetElement(std::move(element_data));
         }
-      });
+      }
     }
     co_yield "</d:multistatus>";
   }
@@ -130,7 +130,7 @@ class ProxyHandler {
       Generator<typename CloudProvider::PageData> page_data, std::string path) {
     co_yield R"(<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body><table><tr><td>[DIR]</td><td><a href=')" +
         GetDirectoryPath(path) + "'>..</a></td></tr>";
-    FOR_CO_AWAIT(const auto& page, page_data, {
+    FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
         auto name = std::visit([](auto item) { return item.name; }, item);
         std::string type =
@@ -142,7 +142,7 @@ class ProxyHandler {
         co_yield "<tr><td>[" + type + "]</td><td><a href='" + file_link + "'>" +
             name + "</a></td></tr>";
       }
-    });
+    }
     co_yield "</table></body></html>";
   }
 

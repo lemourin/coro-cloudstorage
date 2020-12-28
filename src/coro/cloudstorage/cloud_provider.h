@@ -101,24 +101,24 @@ class CloudProvider {
                                    ? path.end()
                                    : path.begin() + delimiter_index,
                                path.end());
-    FOR_CO_AWAIT(const auto& page, ListDirectory(current_directory, stop_token),
-                 {
-                   for (const auto& item : page.items) {
-                     if (std::holds_alternative<Directory>(item)) {
-                       const auto& directory = std::get<Directory>(item);
-                       if (directory.name == path_component) {
-                         co_return co_await GetItemByPath(
-                             directory, rest_component, stop_token);
-                       }
-                     } else if (rest_component.empty() &&
-                                std::holds_alternative<File>(item)) {
-                       const auto& file = std::get<File>(item);
-                       if (file.name == path_component) {
-                         co_return file;
-                       }
-                     }
-                   }
-                 });
+    FOR_CO_AWAIT(const auto& page,
+                     ListDirectory(current_directory, stop_token)) {
+      for (const auto& item : page.items) {
+        if (std::holds_alternative<Directory>(item)) {
+          const auto& directory = std::get<Directory>(item);
+          if (directory.name == path_component) {
+            co_return co_await GetItemByPath(directory, rest_component,
+                                             stop_token);
+          }
+        } else if (rest_component.empty() &&
+                   std::holds_alternative<File>(item)) {
+          const auto& file = std::get<File>(item);
+          if (file.name == path_component) {
+            co_return file;
+          }
+        }
+      }
+    }
 
     throw CloudException(CloudException::Type::kNotFound);
   }
@@ -154,12 +154,13 @@ class CloudProvider {
     stdx::stop_callback callback_nd(stop_source_.get_token(),
                                     [&] { stop_source.request_stop(); });
     stop_token = stop_source.get_token();
-    FOR_CO_AWAIT(auto& entry, (impl_.*Method)(std::move(args)..., stop_token), {
+    FOR_CO_AWAIT(auto& entry,
+                     (impl_.*Method)(std::move(args)..., stop_token)) {
       if (stop_token.stop_requested()) {
         throw InterruptedException();
       }
       co_yield std::move(entry);
-    });
+    }
     if (stop_token.stop_requested()) {
       throw InterruptedException();
     }

@@ -68,7 +68,7 @@ class HttpIO : public ::mega::HttpIO {
           throw http::HttpException(http::HttpException::kMalformedResponse);
         }
         int64_t response_size = 0;
-        FOR_CO_AWAIT(const std::string& chunk, response.body, {
+        FOR_CO_AWAIT(const std::string& chunk, response.body) {
           if (stop_source.get_token().stop_requested()) {
             throw InterruptedException();
           }
@@ -79,7 +79,7 @@ class HttpIO : public ::mega::HttpIO {
           io_ready_ = true;
           on_event_();
           response_size += static_cast<int64_t>(chunk.size());
-        });
+        }
         if (*content_length != response_size) {
           throw http::HttpException(http::HttpException::kMalformedResponse);
         }
