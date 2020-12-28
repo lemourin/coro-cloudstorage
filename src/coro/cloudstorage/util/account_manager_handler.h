@@ -231,10 +231,10 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
            "crossorigin=\"anonymous\" />";
     page << "</head>";
     page << "<body data-shaka-player-container style='background-color:black; "
-            "height:95vh; display: flex; justify-content: center; align-items: "
-            "center;'>";
+            "overflow: hidden; margin: auto; display: flex; justify-content: "
+            "center; align-items: center; height:100vh;'>";
     page << "<video autoplay data-shaka-player id='video' "
-            "style='margin: auto; max-height: 100%; max-width: 100%;' src='"
+            "style='margin: auto; height: 100%; width: 100%;' src='"
          << http::EncodeUriPath(path) << "'></video>";
     page << "</body></html>";
 
