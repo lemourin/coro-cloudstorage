@@ -72,14 +72,14 @@ class HttpHandler {
   Semaphore* quit_;
 };
 
-Task<> CoMain(event_base* event_loop) noexcept {
+Task<> CoMain(event_base* event_base) noexcept {
   try {
-    CacheHttp<CurlHttp> http{CurlHttp(event_loop)};
-    Semaphore quit;
-    coro::cloudstorage::CloudFactory cloud_factory(
-        coro::util::EventLoop(event_loop), http);
+    CacheHttp<CurlHttp> http{CurlHttp(event_base)};
+    coro::util::EventLoop event_loop(event_base);
+    coro::cloudstorage::CloudFactory cloud_factory(event_loop, http);
 
-    HttpServer http_server(event_loop, {.address = "0.0.0.0", .port = 12345},
+    Semaphore quit;
+    HttpServer http_server(event_base, {.address = "0.0.0.0", .port = 12345},
                            HttpHandler(cloud_factory, &quit));
     co_await quit;
     co_await http_server.Quit();
