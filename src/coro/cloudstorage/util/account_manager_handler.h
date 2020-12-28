@@ -247,7 +247,9 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       co_return Response{
           .status = 204,
           .headers = {{"Allow", "OPTIONS, GET, HEAD, POST, PROPFIND"},
-                      {"DAV", "1"}}};
+                      {"DAV", "1"},
+                      {"Access-Control-Allow-Origin", "*"},
+                      {"Access-Control-Allow-Headers", "*"}}};
     }
     auto path_opt = http::ParseUri(request.url).path;
     if (!path_opt) {

@@ -41,11 +41,6 @@ class HttpHandler {
 
   Task<Response> operator()(Request request,
                             coro::stdx::stop_token stop_token) {
-    if (request.method == coro::http::Method::kOptions) {
-      co_return Response{.status = 204,
-                         .headers = {{"Access-Control-Allow-Origin", "*"},
-                                     {"Access-Control-Allow-Headers", "*"}}};
-    }
     auto range_str = coro::http::GetHeader(request.headers, "Range");
     std::cerr << coro::http::MethodToString(request.method) << " "
               << request.url;
