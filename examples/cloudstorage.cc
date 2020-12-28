@@ -4,6 +4,7 @@
 #include <coro/cloudstorage/providers/mega.h>
 #include <coro/cloudstorage/providers/one_drive.h>
 #include <coro/cloudstorage/util/account_manager_handler.h>
+#include <coro/http/cache_http.h>
 #include <coro/http/curl_http.h>
 #include <coro/http/http_server.h>
 #include <coro/stdx/coroutine.h>
@@ -15,10 +16,9 @@
 using ::coro::Semaphore;
 using ::coro::Task;
 using ::coro::cloudstorage::util::AccountManagerHandler;
+using ::coro::http::CacheHttp;
 using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
-using ::coro::http::Request;
-using ::coro::http::Response;
 using ::coro::util::MakePointer;
 
 using CloudProviders = ::coro::util::TypeList<
@@ -30,14 +30,22 @@ constexpr std::string_view kTokenFile = "access-token.json";
 template <typename CloudFactory>
 class HttpHandler {
  public:
+  using Request = coro::http::Request<>;
+  using Response = coro::http::Response<>;
+
   HttpHandler(const CloudFactory& factory, Semaphore* quit)
       : auth_handler_(factory, AccountListener{},
                       coro::cloudstorage::util::AuthTokenManager{
                           .token_file = std::string(kTokenFile)}),
         quit_(quit) {}
 
-  Task<Response<>> operator()(Request<> request,
-                              coro::stdx::stop_token stop_token) {
+  Task<Response> operator()(Request request,
+                            coro::stdx::stop_token stop_token) {
+    if (request.method == coro::http::Method::kOptions) {
+      co_return Response{.status = 204,
+                         .headers = {{"Access-Control-Allow-Origin", "*"},
+                                     {"Access-Control-Allow-Headers", "*"}}};
+    }
     auto range_str = coro::http::GetHeader(request.headers, "Range");
     std::cerr << coro::http::MethodToString(request.method) << " "
               << request.url;
@@ -47,7 +55,7 @@ class HttpHandler {
     std::cerr << "\n";
     if (request.url == "/quit") {
       quit_->resume();
-      co_return Response<>{.status = 200};
+      co_return Response{.status = 200};
     }
     co_return co_await auth_handler_(std::move(request), stop_token);
   }
@@ -71,7 +79,7 @@ class HttpHandler {
 
 Task<> CoMain(event_base* event_loop) noexcept {
   try {
-    CurlHttp http(event_loop);
+    CacheHttp<CurlHttp> http{CurlHttp(event_loop)};
     Semaphore quit;
     coro::cloudstorage::CloudFactory cloud_factory(
         coro::util::EventLoop(event_loop), http);
