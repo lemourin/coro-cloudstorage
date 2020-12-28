@@ -99,6 +99,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
     coro/cloudstorage/cloud_factory.cc
+    coro/cloudstorage/providers/youtube.h
     coro/cloudstorage/providers/google_drive.h
     coro/cloudstorage/providers/google_drive.cc
     coro/cloudstorage/providers/one_drive.h
@@ -135,8 +136,10 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/crypto_utils.cc
     coro/cloudstorage/util/recursive_visit.h 
     coro/cloudstorage/util/on_auth_token_updated.h 
-    coro/cloudstorage/util/thumbnail_quality.h)
-target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR} ../contrib/)
+    coro/cloudstorage/util/thumbnail_quality.h
+    coro/cloudstorage/util/recursive_visit.h
+    coro/cloudstorage/providers/youtube.cc)
+target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR} ../contrib)
 if(WIN32)
     target_precompile_headers(coro-cloudstorage
         PUBLIC
