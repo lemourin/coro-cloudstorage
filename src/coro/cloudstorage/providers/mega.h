@@ -236,7 +236,7 @@ class Mega : public MegaAuth {
     bool exec_pending = false;
     bool recursive_exec = false;
     AuthToken auth_token;
-    std::optional<Promise<int>> current_login;
+    std::optional<SharedPromise<int>> current_login;
 
     void OnEvent();
 

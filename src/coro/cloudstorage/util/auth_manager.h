@@ -3,7 +3,7 @@
 
 #include <coro/cloudstorage/cloud_exception.h>
 #include <coro/http/http.h>
-#include <coro/promise.h>
+#include <coro/shared_promise.h>
 #include <coro/stdx/stop_source.h>
 
 #include <nlohmann/json.hpp>
@@ -68,13 +68,13 @@ class AuthManager {
   Task<> RefreshAuthToken(stdx::stop_token stop_token) {
     if (!current_auth_refresh_) {
       current_auth_refresh_ =
-          std::make_unique<Promise<AuthToken>>([this]() -> Task<AuthToken> {
+          SharedPromise<AuthToken>([this]() -> Task<AuthToken> {
             auto stop_token = stop_source_.get_token();
             auto d = this;
             auto auth_token = co_await Auth::RefreshAccessToken(
                 *d->http_, d->auth_data_, d->auth_token_, stop_token);
             if (!stop_token.stop_requested()) {
-              d->current_auth_refresh_ = nullptr;
+              d->current_auth_refresh_ = std::nullopt;
               d->auth_token_ = auth_token;
               d->on_auth_token_updated_(d->auth_token_);
             }
@@ -94,7 +94,7 @@ class AuthManager {
   const Http* http_;
   AuthToken auth_token_;
   AuthData auth_data_;
-  std::unique_ptr<Promise<AuthToken>> current_auth_refresh_;
+  std::optional<SharedPromise<AuthToken>> current_auth_refresh_;
   OnAuthTokenUpdated on_auth_token_updated_;
   stdx::stop_source stop_source_;
 };

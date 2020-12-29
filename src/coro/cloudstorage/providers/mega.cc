@@ -82,7 +82,7 @@ Task<> Mega::LogIn() {
 
 Task<> Mega::EnsureLoggedIn(stdx::stop_token stop_token) {
   if (!d_->current_login) {
-    d_->current_login = Promise<int>([this]() -> Task<int> {
+    d_->current_login = SharedPromise<int>([this]() -> Task<int> {
       co_await LogIn();
       co_return 0;
     });

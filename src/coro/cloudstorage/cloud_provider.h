@@ -4,8 +4,8 @@
 #include <coro/cloudstorage/util/auth_manager.h>
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
-#include <coro/promise.h>
 #include <coro/semaphore.h>
+#include <coro/shared_promise.h>
 #include <coro/stdx/stop_callback.h>
 #include <coro/stdx/stop_source.h>
 #include <coro/util/make_pointer.h>
