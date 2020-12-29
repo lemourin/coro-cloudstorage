@@ -2,10 +2,14 @@
 #define CORO_CLOUDSTORAGE_AUTH_TOKEN_MANAGER_H
 
 #include <coro/cloudstorage/util/serialize_utils.h>
+#include <coro/util/type_list.h>
 
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <string>
+#include <variant>
+#include <vector>
 
 namespace coro::cloudstorage::util {
 
@@ -62,15 +66,19 @@ struct LoadToken<coro::util::TypeList<CloudProviders...>> {
 
 }  // namespace internal
 
+std::string GetConfigFilePath(std::string_view app_name = "coro-cloudstorage",
+                              std::string_view file_name = "config.json");
+
 struct AuthTokenManager {
   template <typename CloudProviderList>
   auto LoadTokenData() const {
-    return internal::LoadToken<CloudProviderList>{}(token_file);
+    return internal::LoadToken<CloudProviderList>{}(GetConfigFilePath());
   }
 
   template <typename CloudProvider>
   void SaveToken(typename CloudProvider::Auth::AuthToken token,
                  std::string_view id) const {
+    auto token_file = GetConfigFilePath();
     nlohmann::json json;
     {
       std::ifstream input_token_file{token_file};
@@ -100,24 +108,11 @@ struct AuthTokenManager {
 
   template <typename CloudProvider>
   void RemoveToken(std::string_view id) const {
-    nlohmann::json json;
-    {
-      std::ifstream input_token_file{token_file};
-      if (input_token_file) {
-        input_token_file >> json;
-      }
-    }
-    nlohmann::json result;
-    for (auto token : json["auth_token"]) {
-      if (token["type"] != std::string(GetCloudProviderId<CloudProvider>()) ||
-          token["id"] != std::string(id)) {
-        result["auth_token"].emplace_back(std::move(token));
-      }
-    }
-    std::ofstream{token_file} << result;
+    RemoveToken(id, GetCloudProviderId<CloudProvider>());
   }
 
-  std::string token_file;
+ private:
+  static void RemoveToken(std::string_view id, std::string_view provider_id);
 };
 
 }  // namespace coro::cloudstorage::util

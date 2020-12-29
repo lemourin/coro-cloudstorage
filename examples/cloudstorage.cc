@@ -25,8 +25,6 @@ using CloudProviders = ::coro::util::TypeList<
     coro::cloudstorage::GoogleDrive, coro::cloudstorage::Mega,
     coro::cloudstorage::OneDrive, coro::cloudstorage::Dropbox>;
 
-constexpr std::string_view kTokenFile = "access-token.json";
-
 template <typename CloudFactory>
 class HttpHandler {
  public:
@@ -34,10 +32,7 @@ class HttpHandler {
   using Response = coro::http::Response<>;
 
   HttpHandler(const CloudFactory& factory, Promise<void>* quit)
-      : auth_handler_(factory, AccountListener{},
-                      coro::cloudstorage::util::AuthTokenManager{
-                          .token_file = std::string(kTokenFile)}),
-        quit_(quit) {}
+      : auth_handler_(factory, AccountListener{}), quit_(quit) {}
 
   Task<Response> operator()(Request request,
                             coro::stdx::stop_token stop_token) {

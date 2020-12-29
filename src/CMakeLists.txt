@@ -22,6 +22,7 @@ set(coro-cloudstorage-HEADERS
 )
 set(coro-cloudstorage-SOURCES
     coro/cloudstorage/util/webdav_utils.cc
+    coro/cloudstorage/util/auth_token_manager.cc
     coro/cloudstorage/providers/mega.cc
 )
 

@@ -4,6 +4,8 @@
 #include <coro/http/http_parse.h>
 #include <coro/stdx/concepts.h>
 
+#include <nlohmann/json.hpp>
+
 namespace coro::cloudstorage::util {
 
 template <typename T>

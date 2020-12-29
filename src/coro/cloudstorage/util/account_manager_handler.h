@@ -182,9 +182,9 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     std::list<CloudProviderAccount> accounts;
   };
 
-  AccountManagerHandler(const CloudFactory& factory,
-                        AccountListener account_listener,
-                        AuthTokenManagerT auth_token_manager)
+  AccountManagerHandler(
+      const CloudFactory& factory, AccountListener account_listener,
+      AuthTokenManagerT auth_token_manager = AuthTokenManagerT{})
       : d_(std::make_unique<Data>(factory, std::move(account_listener),
                                   std::move(auth_token_manager))) {
     (d_->template AddAuthHandler<CloudProviders>(), ...);
