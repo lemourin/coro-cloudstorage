@@ -109,7 +109,7 @@ class Mega : public MegaAuth {
   struct ReadData {
     std::deque<std::string> buffer;
     std::exception_ptr exception;
-    Semaphore semaphore;
+    Promise<void> semaphore;
     bool paused = true;
     int size = 0;
   };
@@ -121,32 +121,25 @@ class Mega : public MegaAuth {
 
     void prelogin_result(int version, std::string* email, std::string* salt,
                          ::mega::error e) final {
-      last_result = std::make_tuple(version, *email, *salt, e);
-      Resume();
+      SetResult(std::make_tuple(version, *email, *salt, e));
     }
 
-    void login_result(::mega::error e) final {
-      last_result = e;
-      Resume();
-    }
+    void login_result(::mega::error e) final { SetResult(e); }
 
     void fetchnodes_result(const ::mega::Error& e) final {
-      last_result = ::mega::error(e);
-      Resume();
+      SetResult(::mega::error(e));
     }
 
     void account_details(::mega::AccountDetails* details, bool, bool, bool,
                          bool, bool, bool) final {
-      last_result = std::move(*details);
+      SetResult(std::move(*details));
       delete details;
-      Resume();
     }
 
     void account_details(::mega::AccountDetails* details,
                          ::mega::error e) final {
-      last_result = e;
       delete details;
-      Resume();
+      SetResult(e);
     }
 
     ::mega::dstime pread_failure(const ::mega::Error& e, int retry,
@@ -161,7 +154,7 @@ class Mega : public MegaAuth {
       if (retry >= kMaxRetryCount) {
         it->second->exception =
             std::make_exception_ptr(CloudException(GetErrorDescription(e)));
-        it->second->semaphore.resume();
+        it->second->semaphore.SetValue();
         return ~static_cast<::mega::dstime>(0);
       } else {
         ::coro::Invoke(Retry(1 << (retry / 2)));
@@ -180,10 +173,10 @@ class Mega : public MegaAuth {
       it->second->size += static_cast<int>(length);
       if (it->second->size >= kBufferSize) {
         it->second->paused = true;
-        it->second->semaphore.resume();
+        it->second->semaphore.SetValue();
         return false;
       }
-      it->second->semaphore.resume();
+      it->second->semaphore.SetValue();
       return true;
     }
 
@@ -201,27 +194,27 @@ class Mega : public MegaAuth {
       d->OnEvent();
     }
 
-    void Resume() {
+    template <typename T>
+    void SetResult(T result) {
       auto it = semaphore.find(client->restag);
       if (it != std::end(semaphore)) {
-        it->second->resume();
+        it->second->SetValue(std::move(result));
       }
     }
 
     auto GetSemaphore(int tag) {
-      auto result =
-          coro::util::MakePointer(new Semaphore, [this, tag](Semaphore* s) {
-            semaphore.erase(tag);
-            delete s;
-          });
+      auto result = coro::util::MakePointer(new Promise<std::any>,
+                                            [this, tag](Promise<std::any>* s) {
+                                              semaphore.erase(tag);
+                                              delete s;
+                                            });
       semaphore.insert({tag, result.get()});
       return result;
     }
 
     explicit App(Data* d) : d(d) {}
 
-    std::unordered_map<int, Semaphore*> semaphore;
-    std::any last_result;
+    std::unordered_map<int, Promise<std::any>*> semaphore;
     std::unordered_map<intptr_t, std::shared_ptr<ReadData>> read_data;
     Data* d;
   };
@@ -235,7 +228,7 @@ class Mega : public MegaAuth {
     ::mega::MegaClient mega_client;
     bool exec_pending = false;
     bool recursive_exec = false;
-    std::optional<SharedPromise<int>> current_login;
+    std::optional<SharedPromise<void>> current_login;
 
     void OnEvent();
 
@@ -245,13 +238,9 @@ class Mega : public MegaAuth {
       (mega_client.*Method)(args...);
       OnEvent();
       auto semaphore = mega_app.GetSemaphore(tag);
-      stdx::stop_callback callback(stop_token, [&] { semaphore->resume(); });
-      auto& semaphore_ref = *semaphore;
-      co_await semaphore_ref;
-      if (stop_token.stop_requested()) {
-        throw InterruptedException();
-      }
-      auto result = std::move(mega_app.last_result);
+      stdx::stop_callback callback(
+          stop_token, [&] { semaphore->SetException(InterruptedException()); });
+      std::any result = co_await * semaphore;
       co_await wait_(0, std::move(stop_token));
       co_return result;
     }

@@ -13,7 +13,7 @@
 #include <csignal>
 #include <iostream>
 
-using ::coro::Semaphore;
+using ::coro::Promise;
 using ::coro::Task;
 using ::coro::cloudstorage::util::AccountManagerHandler;
 using ::coro::http::CacheHttp;
@@ -33,7 +33,7 @@ class HttpHandler {
   using Request = coro::http::Request<>;
   using Response = coro::http::Response<>;
 
-  HttpHandler(const CloudFactory& factory, Semaphore* quit)
+  HttpHandler(const CloudFactory& factory, Promise<void>* quit)
       : auth_handler_(factory, AccountListener{},
                       coro::cloudstorage::util::AuthTokenManager{
                           .token_file = std::string(kTokenFile)}),
@@ -49,7 +49,7 @@ class HttpHandler {
     }
     std::cerr << "\n";
     if (request.url == "/quit") {
-      quit_->resume();
+      quit_->SetValue();
       co_return Response{.status = 200};
     }
     co_return co_await auth_handler_(std::move(request), stop_token);
@@ -69,7 +69,7 @@ class HttpHandler {
 
   AccountManagerHandler<CloudProviders, CloudFactory, AccountListener>
       auth_handler_;
-  Semaphore* quit_;
+  Promise<void>* quit_;
 };
 
 Task<> CoMain(event_base* event_base) noexcept {
@@ -78,7 +78,7 @@ Task<> CoMain(event_base* event_base) noexcept {
     coro::util::EventLoop event_loop(event_base);
     coro::cloudstorage::CloudFactory cloud_factory(event_loop, http);
 
-    Semaphore quit;
+    Promise<void> quit;
     HttpServer http_server(event_base, {.address = "0.0.0.0", .port = 12345},
                            HttpHandler(cloud_factory, &quit));
     co_await quit;

@@ -4,7 +4,7 @@
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
 #include <coro/interrupted_exception.h>
-#include <coro/semaphore.h>
+#include <coro/promise.h>
 #include <coro/stdx/stop_source.h>
 #include <mega.h>
 

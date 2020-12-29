@@ -83,9 +83,8 @@ Task<> Mega::Data::EnsureLoggedIn(std::string session,
                                   stdx::stop_token stop_token) {
   if (!current_login) {
     current_login =
-        SharedPromise<int>([this, session = std::move(session)]() -> Task<int> {
+        SharedPromise<void>([this, session = std::move(session)]() -> Task<> {
           co_await LogIn(std::move(session));
-          co_return 0;
         });
   }
   co_await current_login->Get(std::move(stop_token));
@@ -220,8 +219,9 @@ Generator<std::string> Mega::GetFileContent(File file, http::Range range,
   auto guard = coro::util::MakePointer(
       this, [tag](Mega* m) { m->d_->mega_app.read_data.erase(tag); });
 
-  stdx::stop_callback callback(stop_token,
-                               [data] { data->semaphore.resume(); });
+  stdx::stop_callback callback(stop_token, [data] {
+    data->semaphore.SetException(InterruptedException());
+  });
   while (!stop_token.stop_requested() && size > 0) {
     if (data->paused && 2 * data->size < App::kBufferSize) {
       data->paused = false;
@@ -242,12 +242,9 @@ Generator<std::string> Mega::GetFileContent(File file, http::Range range,
         co_await d_->wait_(0, stop_token);
         std::rethrow_exception(data->exception);
       }
-      data->semaphore = Semaphore();
+      data->semaphore = Promise<void>();
       co_await d_->wait_(0, stop_token);
     }
-  }
-  if (stop_token.stop_requested()) {
-    throw InterruptedException();
   }
 }
 
