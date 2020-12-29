@@ -83,7 +83,7 @@ Task<> Mega::Data::EnsureLoggedIn(std::string session,
                                   stdx::stop_token stop_token) {
   if (!current_login) {
     current_login =
-        SharedPromise(Mega::LogIn{.d = this, .session = std::move(session)});
+        SharedPromise(Mega::DoLogIn{.d = this, .session = std::move(session)});
   }
   co_await current_login->Get(std::move(stop_token));
 }

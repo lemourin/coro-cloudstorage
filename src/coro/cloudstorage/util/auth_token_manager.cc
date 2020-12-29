@@ -48,7 +48,7 @@ std::string GetConfigFilePath(std::string_view app_name,
     path = std::string(home) + "/.config/";
   }
   path += app_name;
-  if (mkdir(path.c_str(), 0644) != 0) {
+  if (mkdir(path.c_str(), 0777) != 0) {
     if (errno != EEXIST) {
       throw std::runtime_error("cannot initialize config file");
     }

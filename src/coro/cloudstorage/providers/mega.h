@@ -219,7 +219,7 @@ class Mega : public MegaAuth {
     Data* d;
   };
 
-  struct LogIn {
+  struct DoLogIn {
     Task<> operator()() const { co_await d->LogIn(std::move(session)); }
     Data* d;
     std::string session;
@@ -234,7 +234,7 @@ class Mega : public MegaAuth {
     ::mega::MegaClient mega_client;
     bool exec_pending = false;
     bool recursive_exec = false;
-    std::optional<SharedPromise<LogIn>> current_login;
+    std::optional<SharedPromise<DoLogIn>> current_login;
 
     void OnEvent();
 
