@@ -65,12 +65,11 @@ Task<std::string> Mega::Data::GetSession(UserCredential credentials,
   co_return std::string(reinterpret_cast<const char*>(buffer), length);
 }
 
-Task<> Mega::LogIn() {
-  auto stop_token = d_->stop_source.get_token();
+Task<> Mega::Data::LogIn(std::string session) {
+  auto stop_token = stop_source.get_token();
   auto login_error = std::any_cast<::mega::error>(co_await Do<kSessionLogin>(
-      stop_token,
-      reinterpret_cast<const ::mega::byte*>(auth_token_.session.c_str()),
-      static_cast<int>(auth_token_.session.size())));
+      stop_token, reinterpret_cast<const ::mega::byte*>(session.c_str()),
+      static_cast<int>(session.size())));
   if (login_error != ::mega::API_OK) {
     throw CloudException(CloudException::Type::kUnauthorized);
   }
@@ -80,14 +79,16 @@ Task<> Mega::LogIn() {
   Check(fetch_error);
 }
 
-Task<> Mega::EnsureLoggedIn(stdx::stop_token stop_token) {
-  if (!d_->current_login) {
-    d_->current_login = SharedPromise<int>([this]() -> Task<int> {
-      co_await LogIn();
-      co_return 0;
-    });
+Task<> Mega::Data::EnsureLoggedIn(std::string session,
+                                  stdx::stop_token stop_token) {
+  if (!current_login) {
+    current_login =
+        SharedPromise<int>([this, session = std::move(session)]() -> Task<int> {
+          co_await LogIn(std::move(session));
+          co_return 0;
+        });
   }
-  co_await d_->current_login->Get(std::move(stop_token));
+  co_await current_login->Get(std::move(stop_token));
 }
 
 const char* Mega::GetErrorDescription(::mega::error e) {
@@ -179,7 +180,7 @@ void Mega::Data::OnEvent() {
 Task<Mega::PageData> Mega::ListDirectoryPage(
     Directory directory, std::optional<std::string>,
     coro::stdx::stop_token stop_token) {
-  co_await EnsureLoggedIn(std::move(stop_token));
+  co_await d_->EnsureLoggedIn(auth_token_.session, std::move(stop_token));
   PageData result;
   for (auto c : GetNode(directory.id)->children) {
     result.items.emplace_back(ToItem(c));
@@ -188,13 +189,13 @@ Task<Mega::PageData> Mega::ListDirectoryPage(
 }
 
 Task<Mega::Directory> Mega::GetRoot(coro::stdx::stop_token stop_token) {
-  co_await EnsureLoggedIn(std::move(stop_token));
+  co_await d_->EnsureLoggedIn(auth_token_.session, std::move(stop_token));
   co_return Directory{.id = d_->mega_client.rootnodes[0]};
 }
 
 Task<Mega::GeneralData> Mega::GetGeneralData(
     coro::stdx::stop_token stop_token) {
-  co_await EnsureLoggedIn(stop_token);
+  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
   std::any result = co_await Do<&::mega::MegaClient::getaccountdetails>(
       stop_token, new ::mega::AccountDetails, true, false, false, false, false,
       false, -1);
@@ -210,7 +211,7 @@ Task<Mega::GeneralData> Mega::GetGeneralData(
 
 Generator<std::string> Mega::GetFileContent(File file, http::Range range,
                                             coro::stdx::stop_token stop_token) {
-  co_await EnsureLoggedIn(stop_token);
+  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
   auto node = GetNode(file.id);
   intptr_t tag = d_->mega_client.nextreqtag();
   auto size = range.end.value_or(node->size - 1) - range.start + 1;

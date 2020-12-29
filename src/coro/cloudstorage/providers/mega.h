@@ -235,7 +235,6 @@ class Mega : public MegaAuth {
     ::mega::MegaClient mega_client;
     bool exec_pending = false;
     bool recursive_exec = false;
-    AuthToken auth_token;
     std::optional<SharedPromise<int>> current_login;
 
     void OnEvent();
@@ -259,6 +258,8 @@ class Mega : public MegaAuth {
 
     Task<std::string> GetSession(UserCredential credentials,
                                  stdx::stop_token stop_token);
+    Task<> EnsureLoggedIn(std::string session, stdx::stop_token);
+    Task<> LogIn(std::string session);
 
     template <typename EventLoop, http::HttpClient HttpClient>
     Data(const EventLoop& event_loop, const HttpClient& http,
@@ -288,9 +289,6 @@ class Mega : public MegaAuth {
   }
 
   ::mega::Node* GetNode(::mega::handle) const;
-
-  Task<> EnsureLoggedIn(stdx::stop_token);
-  Task<> LogIn();
 
   AuthToken auth_token_;
   std::unique_ptr<Data> d_;
