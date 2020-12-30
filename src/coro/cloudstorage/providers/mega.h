@@ -198,13 +198,14 @@ class Mega : public MegaAuth {
     void SetResult(T result) {
       auto it = semaphore.find(client->restag);
       if (it != std::end(semaphore)) {
-        it->second->SetValue(std::move(result));
+        last_result = std::move(result);
+        it->second->SetValue();
       }
     }
 
     auto GetSemaphore(int tag) {
-      auto result = coro::util::MakePointer(new Promise<std::any>,
-                                            [this, tag](Promise<std::any>* s) {
+      auto result = coro::util::MakePointer(new Promise<void>,
+                                            [this, tag](Promise<void>* s) {
                                               semaphore.erase(tag);
                                               delete s;
                                             });
@@ -214,7 +215,8 @@ class Mega : public MegaAuth {
 
     explicit App(Data* d) : d(d) {}
 
-    std::unordered_map<int, Promise<std::any>*> semaphore;
+    std::unordered_map<int, Promise<void>*> semaphore;
+    std::any last_result;
     std::unordered_map<intptr_t, std::shared_ptr<ReadData>> read_data;
     Data* d;
   };
@@ -246,7 +248,9 @@ class Mega : public MegaAuth {
       auto semaphore = mega_app.GetSemaphore(tag);
       stdx::stop_callback callback(
           stop_token, [&] { semaphore->SetException(InterruptedException()); });
-      std::any result = co_await * semaphore;
+      auto& semaphore_ref = *semaphore;
+      co_await semaphore_ref;
+      auto result = std::move(mega_app.last_result);
       co_await wait_(0, std::move(stop_token));
       co_return result;
     }
