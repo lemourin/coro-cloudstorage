@@ -90,7 +90,7 @@ class HttpIO : public ::mega::HttpIO {
         lastdata = r->lastdata = ::mega::Waiter::ds;
         success_ = true;
       } catch (const http::HttpException&) {
-        if (stop_source.request_stop()) {
+        if (stop_source.get_token().stop_requested()) {
           throw InterruptedException();
         }
         io_ready_ = true;
