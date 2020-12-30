@@ -23,7 +23,7 @@ concept CloudProviderImpl = requires(http::HttpStub& http, std::string code,
 template <typename T>
 concept HasTimestamp = requires(T v) {
   { v.timestamp }
-  ->stdx::convertible_to<int64_t>;
+  ->stdx::convertible_to<std::optional<int64_t>>;
 };
 
 template <typename Impl>
@@ -102,7 +102,7 @@ class CloudProvider {
                                    : path.begin() + delimiter_index,
                                path.end());
     FOR_CO_AWAIT(const auto& page,
-                     ListDirectory(current_directory, stop_token)) {
+                 ListDirectory(current_directory, stop_token)) {
       for (const auto& item : page.items) {
         if (std::holds_alternative<Directory>(item)) {
           const auto& directory = std::get<Directory>(item);
@@ -154,8 +154,7 @@ class CloudProvider {
     stdx::stop_callback callback_nd(stop_source_.get_token(),
                                     [&] { stop_source.request_stop(); });
     stop_token = stop_source.get_token();
-    FOR_CO_AWAIT(auto& entry,
-                     (impl_.*Method)(std::move(args)..., stop_token)) {
+    FOR_CO_AWAIT(auto& entry, (impl_.*Method)(std::move(args)..., stop_token)) {
       if (stop_token.stop_requested()) {
         throw InterruptedException();
       }
