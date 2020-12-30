@@ -123,8 +123,7 @@ struct OneDriveImpl : OneDrive {
       : auth_manager_(std::move(auth_manager)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {
-    Directory d;
-    d.id = "root";
+    Directory d{.id = "root"};
     co_return d;
   }
 
