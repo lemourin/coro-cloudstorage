@@ -27,8 +27,9 @@ class HttpIO : public ::mega::HttpIO {
   void cancel(::mega::HttpReq* r) final {
     auto stop_source =
         reinterpret_cast<coro::stdx::stop_source*>(r->httpiohandle);
-    stop_source->request_stop();
-    delete stop_source;
+    if (stop_source) {
+      stop_source->request_stop();
+    }
   }
   m_off_t postpos(void*) final { return 0; }
   bool doio() final {
@@ -71,7 +72,7 @@ class HttpIO : public ::mega::HttpIO {
     try {
       try {
         r->status = ::mega::REQ_INFLIGHT;
-        r->httpiohandle = new coro::stdx::stop_source(stop_source);
+        r->httpiohandle = &stop_source;
         auto response =
             co_await http_.Fetch(std::move(request), stop_source.get_token());
         if (stop_source.get_token().stop_requested()) {
@@ -103,6 +104,7 @@ class HttpIO : public ::mega::HttpIO {
             http::GetHeader(response.headers, "Content-Type").value_or("");
         r->httpstatus = response.status;
         r->status = ::mega::REQ_SUCCESS;
+        r->httpiohandle = nullptr;
         r->httpio = nullptr;
         lastdata = r->lastdata = ::mega::Waiter::ds;
         success_ = true;
@@ -113,6 +115,7 @@ class HttpIO : public ::mega::HttpIO {
         io_ready_ = true;
         lastdata = r->lastdata = ::mega::Waiter::ds;
         r->status = ::mega::REQ_FAILURE;
+        r->httpiohandle = nullptr;
         r->httpio = nullptr;
       }
       on_event_();

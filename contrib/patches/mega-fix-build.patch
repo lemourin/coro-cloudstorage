@@ -1,21 +1,19 @@
-From f9dfae6f86d3046c6f0546c3f454e9d5ac7f8cc4 Mon Sep 17 00:00:00 2001
+From 302f3c541d6fac71fb73a36b2c2db73abc9ec4b7 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pawe=C5=82=20Wegner?= <pawel.wegner95@gmail.com>
-Date: Fri, 18 Dec 2020 00:58:28 +0100
+Date: Thu, 31 Dec 2020 17:04:13 +0100
 Subject: [PATCH] mega: fix build.
 
 ---
- contrib/cmake/CMakeLists.txt | 23 ++++++-----------------
- include/mega.h               |  1 -
- include/mega/posix/megafs.h  |  1 +
- include/mega/posix/megasys.h |  1 -
- src/win32/net.cpp            |  1 +
- 5 files changed, 8 insertions(+), 19 deletions(-)
+ contrib/cmake/CMakeLists.txt | 120 ++---------------------------------
+ include/mega.h               |   2 -
+ include/mega/posix/megasys.h |   1 -
+ 3 files changed, 7 insertions(+), 116 deletions(-)
 
 diff --git a/contrib/cmake/CMakeLists.txt b/contrib/cmake/CMakeLists.txt
-index 4fb13976b..5e10bb059 100644
+index 19ace102d..36df75949 100644
 --- a/contrib/cmake/CMakeLists.txt
 +++ b/contrib/cmake/CMakeLists.txt
-@@ -216,10 +216,6 @@ else(NOT CMAKE_BUILD_TYPE)
+@@ -73,34 +73,11 @@ else(NOT CMAKE_BUILD_TYPE)
      message("CMAKE_BUILD_TYPE is ${CMAKE_BUILD_TYPE}")
  endif(NOT CMAKE_BUILD_TYPE)
  
@@ -23,107 +21,186 @@ index 4fb13976b..5e10bb059 100644
 -set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -D_DEBUG -DDEBUG")
 -set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -D_DEBUG -DDEBUG")
 -
- if (WIN32)
-     # node deletion in debug under VC++ is pretty slow without this.  However libraries we depend on need to be built with the same setting or linking fails 
-     # (hence the build3rdParty script using the xNN-windows-static-uncheckediterators triplets)
-@@ -481,8 +477,7 @@ if(WIN32)
-     SET(Mega_PlatformSpecificFiles ${MegaDir}/src/win32/console.cpp
-     ${MegaDir}/src/win32/consolewaiter.cpp 
-     ${MegaDir}/src/win32/fs.cpp 
+-# node deletion in debug under VC++ is pretty slow without this.  However libraries we depend on need to be built with the same setting or linking fails 
+-# (hence the build3rdParty script using the xNN-windows-static-uncheckediterators triplets)
+-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -D_ITERATOR_DEBUG_LEVEL=0" )
+-
+-
+ # accurate __cplusplus macro for vc++, selecting c++17 here for windows builds though the MEGA SDK library must build for older c++ standards also
+ if(WIN32)
+-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /std:c++17")
+ add_definitions( -DNOMINMAX -DUSE_CPPTHREAD )  # also don't allow min and max macros from windows.h, use the std functions like on linux/g++
+ endif()
+ 
+-IF(WIN32)
+-    #Link against the static C/C++ libraries on windows
+-    foreach(flag_var
+-            CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE 
+-            CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+-            CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+-       if(${flag_var} MATCHES "/MD")
+-          string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+-       endif(${flag_var} MATCHES "/MD")
+-    endforeach(flag_var)
+-ENDIF(WIN32)
+-
+-
+ function(ImportStaticLibrary libName includeDir lib32debug lib32release lib64debug lib64release)
+     add_library(${libName} STATIC IMPORTED)
+     set_property(TARGET ${libName} PROPERTY INTERFACE_INCLUDE_DIRECTORIES ${includeDir})
+@@ -136,101 +113,20 @@ function(ImportHeaderLibrary libName includeDir)
+ endfunction(ImportHeaderLibrary)
+ 
+ IF(WIN32)
+-
+-    IF(USE_CRYPTOPP)
+-    ImportVcpkgLibrary(cryptopp        "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/cryptopp-static.lib"  "${vcpkg_dir}/lib/cryptopp-static.lib")
+-    ENDIF(USE_CRYPTOPP)
+-
+-    IF(USE_SODIUM)
+-        ImportVcpkgLibrary(sodium          "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/libsodium.lib"  "${vcpkg_dir}/lib/libsodium.lib")
+-    ENDIF(USE_SODIUM)
+-
+-    IF(USE_CURL)
+-        ImportVcpkgLibrary(curl        "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/libcurl.lib"  "${vcpkg_dir}/lib/libcurl.lib")
+-        ImportVcpkgLibrary(cares       "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/cares.lib" "${vcpkg_dir}/lib/cares.lib")
+-    ENDIF(USE_CURL)
+-
+-    IF(USE_OPENSSL)
+-        ImportVcpkgLibrary(ssl         "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/ssleay32.lib" "${vcpkg_dir}/lib/ssleay32.lib")
+-        ImportVcpkgLibrary(crypto      "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/libeay32.lib" "${vcpkg_dir}/lib/libeay32.lib")
+-    ENDIF(USE_OPENSSL)
+-    
+-    ImportVcpkgLibrary(z               "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/zlibd.lib" "${vcpkg_dir}/lib/zlib.lib") 
+-
+-    ImportVcpkgLibrary(gtest           "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/manual-link/gtestd.lib" "${vcpkg_dir}/lib/manual-link/gtest.lib") 
+-
+-    IF(USE_MEDIAINFO)
+-        ImportStaticLibrary(mediainfo   "${Mega3rdPartyDir}/MediaInfoLib-mw/Source"
+-                                        "${Mega3rdPartyDir}/MediaInfoLib-mw/Project/MSVC2017/Win32/Debug/MediaInfo-Static.lib" 
+-                                        "${Mega3rdPartyDir}/MediaInfoLib-mw/Project/MSVC2017/Win32/Release/MediaInfo-Static.lib"
+-                                        "${Mega3rdPartyDir}/MediaInfoLib-mw/Project/MSVC2017/x64/Debug/MediaInfo-Static.lib"
+-                                        "${Mega3rdPartyDir}/MediaInfoLib-mw/Project/MSVC2017/x64/Release/MediaInfo-Static.lib")
+-
+-        ImportStaticLibrary(zen         "${Mega3rdPartyDir}/ZenLib/Source"
+-                                        "${Mega3rdPartyDir}/MediaInfoLib-mw/Project/MSVC2017/Win32/Debug/ZenLib.lib"
+-                                        "${Mega3rdPartyDir}/MediaInfoLib-mw/Project/MSVC2017/Win32/Release/ZenLib.lib"
+-                                        "${Mega3rdPartyDir}/MediaInfoLib-mw/Project/MSVC2017/x64/Debug/ZenLib.lib"
+-                                        "${Mega3rdPartyDir}/MediaInfoLib-mw/Project/MSVC2017/x64/Release/ZenLib.lib")
+-    ENDIF(USE_MEDIAINFO)
+-
+-    IF(USE_FREEIMAGE)
+-        ImportVcpkgLibrary(freeimage    "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/FreeImaged.lib"  "${vcpkg_dir}/lib/FreeImaged.lib")
+-        ImportVcpkgLibrary(freeimage_Iex "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/Iex-2_2.lib"  "${vcpkg_dir}/lib/Iex-2_2.lib")
+-        ImportVcpkgLibrary(freeimage_IexMath "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/IexMath-2_2.lib"  "${vcpkg_dir}/lib/IexMath-2_2.lib")
+-        ImportVcpkgLibrary(freeimage_IlmImf "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/IlmImf-2_2.lib"  "${vcpkg_dir}/lib/IlmImf-2_2.lib")
+-        ImportVcpkgLibrary(freeimage_IlmImfUtil "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/IlmImfUtil-2_2.lib"  "${vcpkg_dir}/lib/IlmImfUtil-2_2.lib")
+-        ImportVcpkgLibrary(freeimage_IlmThread "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/IlmThread-2_2.lib"  "${vcpkg_dir}/lib/IlmThread-2_2.lib")
+-        ImportVcpkgLibrary(freeimage_jpeg "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/jpeg.lib"  "${vcpkg_dir}/lib/jpeg.lib")
+-        ImportVcpkgLibrary(freeimage_turbojpeg "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/turbojpeg.lib"  "${vcpkg_dir}/lib/turbojpeg.lib")
+-        ImportVcpkgLibrary(freeimage_jpegxr "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/jpegxrd.lib"  "${vcpkg_dir}/lib/jpegxr.lib")
+-        ImportVcpkgLibrary(freeimage_jxrglue "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/jxrglued.lib"  "${vcpkg_dir}/lib/jxrglue.lib")
+-        ImportVcpkgLibrary(freeimage_openjp2 "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/openjp2.lib"  "${vcpkg_dir}/lib/openjp2.lib")
+-        ImportVcpkgLibrary(freeimage_half "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/half.lib"  "${vcpkg_dir}/lib/half.lib")
+-        ImportVcpkgLibrary(freeimage_jasper "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/jasper.lib"  "${vcpkg_dir}/lib/jasper.lib")
+-        ImportVcpkgLibrary(freeimage_libpng "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/libpng16d.lib"  "${vcpkg_dir}/lib/libpng16.lib")
+-        ImportVcpkgLibrary(freeimage_lzma    "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/lzma.lib"  "${vcpkg_dir}/lib/lzma.lib")
+-        ImportVcpkgLibrary(freeimage_lcms2    "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/lcms2d.lib"  "${vcpkg_dir}/lib/lcms.lib")
+-        ImportVcpkgLibrary(freeimage_raw    "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/rawd.lib"  "${vcpkg_dir}/lib/raw.lib")
+-        ImportVcpkgLibrary(freeimage_swscale  "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/swscale.lib"  "${vcpkg_dir}/lib/swscale.lib")
+-        ImportVcpkgLibrary(freeimage_swresample "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/swresample.lib"  "${vcpkg_dir}/lib/swresample.lib")
+-        ImportVcpkgLibrary(freeimage_tiff    "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/tiffd.lib"  "${vcpkg_dir}/lib/tiff.lib")
+-        ImportVcpkgLibrary(freeimage_tiffxx    "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/tiffxxd.lib"  "${vcpkg_dir}/lib/tiffxx.lib")
+-        ImportVcpkgLibrary(freeimage_webp    "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/webpd.lib"  "${vcpkg_dir}/lib/webp.lib")
+-        ImportVcpkgLibrary(freeimage_webpdecoder    "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/webpdecoderd.lib"  "${vcpkg_dir}/lib/webpdecoder.lib")
+-        ImportVcpkgLibrary(freeimage_webpdemux    "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/webpdemuxd.lib"  "${vcpkg_dir}/lib/webpdemux.lib")
+-        ImportVcpkgLibrary(freeimage_webpmux    "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/webpmuxd.lib"  "${vcpkg_dir}/lib/webpmux.lib")
+-    ENDIF(USE_FREEIMAGE)
+-
+-    IF(HAVE_FFMPEG)
+-        ImportVcpkgLibrary(ffmpeg_avformat "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/avformat.lib" "${vcpkg_dir}/lib/avformat.lib")
+-        ImportVcpkgLibrary(ffmpeg_avutil "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/avutil.lib" "${vcpkg_dir}/lib/avutil.lib")
+-        ImportVcpkgLibrary(ffmpeg_avcodec "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/avcodec.lib" "${vcpkg_dir}/lib/avcodec.lib")
+-        ImportVcpkgLibrary(ffmpeg_avfilter "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/avfilter.lib" "${vcpkg_dir}/lib/avfilter.lib")
+-        ImportVcpkgLibrary(ffmpeg_avdevice "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/avdevice.lib" "${vcpkg_dir}/lib/avdevice.lib")
+-    ENDIF(HAVE_FFMPEG)
+-
+-    IF(USE_SQLITE)
+-        ImportVcpkgLibrary(sqlite3          "${vcpkg_dir}/include" "${vcpkg_dir}/debug/lib/sqlite3.lib" "${vcpkg_dir}/lib/sqlite3.lib")
+-    ENDIF(USE_SQLITE)
+-
+     add_definitions(-D_CRT_SECURE_NO_WARNINGS -DCURL_STATICLIB -DCARES_STATICLIB -DWIN32_LEAN_AND_MEAN -DUNICODE -DSODIUM_STATIC -DPCRE_STATICWIN32 -D_CONSOLE)
+     SET(Mega_PlatformSpecificIncludes ${MegaDir}/include/mega/$<IF:${USE_CURL},wincurl,win32>)
+     SET(Mega_PlatformSpecificLibs ws2_32 winhttp Shlwapi Secur32.lib)
+ 
+-    SET(Mega_PlatformSpecificFiles ${MegaDir}/src/win32/console.cpp 
+-    ${MegaDir}/src/win32/autocomplete.cpp 
+-    ${MegaDir}/src/win32/consolewaiter.cpp 
+-    ${MegaDir}/src/win32/fs.cpp 
 -    $<IF:${USE_CURL},${MegaDir}/src/posix/net.cpp,${MegaDir}/src/win32/net.cpp>
 -    ${MegaDir}/src/win32/waiter.cpp 
+-    ${MegaDir}/src/thread/cppthread.cpp   
++    SET(Mega_PlatformSpecificFiles
 +    ${MegaDir}/src/win32/waiter.cpp
-     $<${USE_CPPTHREAD}:${MegaDir}/src/thread/cppthread.cpp>
++    ${MegaDir}/src/thread/cppthread.cpp
      )
  
-@@ -497,18 +492,16 @@ ELSE(WIN32)
-         set(GLOB_H_FOUND 0)   #some versions on some platforms leave it undefined if not found
-     endif()
  
--    SET(Mega_PlatformSpecificFiles $<$<NOT:${GLOB_H_FOUND}>:${MegaDir}/src/mega_glob.c> ${MegaDir}/src/posix/console.cpp ${MegaDir}/src/posix/consolewaiter.cpp ${MegaDir}/src/posix/fs.cpp ${MegaDir}/src/posix/net.cpp ${MegaDir}/src/posix/waiter.cpp ${MegaDir}/src/thread/posixthread.cpp $<${USE_CPPTHREAD}:${MegaDir}/src/thread/cppthread.cpp> )
-+    SET(Mega_PlatformSpecificFiles $<$<NOT:${GLOB_H_FOUND}>:${MegaDir}/src/mega_glob.c> ${MegaDir}/src/posix/console.cpp ${MegaDir}/src/posix/consolewaiter.cpp ${MegaDir}/src/posix/fs.cpp ${MegaDir}/src/posix/waiter.cpp ${MegaDir}/src/thread/posixthread.cpp $<${USE_CPPTHREAD}:${MegaDir}/src/thread/cppthread.cpp> )
-     IF(APPLE)
-         SET(Mega_PlatformSpecificFiles ${Mega_PlatformSpecificFiles} ${MegaDir}/src/osx/osxutils.mm )
-     ENDIF()
+ ELSE(WIN32)
  
+     add_definitions(-DUSE_PTHREAD )
+-    SET(Mega_PlatformSpecificFiles ${MegaDir}/src/posix/console.cpp ${MegaDir}/src/posix/consolewaiter.cpp ${MegaDir}/src/posix/fs.cpp ${MegaDir}/src/posix/net.cpp ${MegaDir}/src/posix/waiter.cpp ${MegaDir}/src/thread/posixthread.cpp )
++    SET(Mega_PlatformSpecificFiles ${MegaDir}/src/posix/console.cpp ${MegaDir}/src/posix/consolewaiter.cpp ${MegaDir}/src/posix/waiter.cpp ${MegaDir}/src/thread/posixthread.cpp )
      SET(Mega_PlatformSpecificIncludes ${MegaDir}/include/mega/posix)
+     SET(Mega_PlatformSpecificLibs crypto pthread rt z dl termcap stdc++fs)
  
--    SET(Mega_PlatformSpecificLibs ${Mega_PlatformSpecificLibs} pthread z dl termcap)
-+    SET(Mega_PlatformSpecificLibs ${Mega_PlatformSpecificLibs} dl)
-     IF(APPLE)
-         SET(Mega_PlatformSpecificLibs ${Mega_PlatformSpecificLibs} "-framework Cocoa -framework SystemConfiguration -framework Security")
--    ELSE()
--        SET(Mega_PlatformSpecificLibs ${Mega_PlatformSpecificLibs} crypto rt stdc++fs)
-     ENDIF()
+@@ -244,7 +140,7 @@ check_include_file(uv.h HAVE_LIBUV)
+ check_function_exists(aio_write, HAVE_AIO_RT)
+ check_function_exists(fdopendir, HAVE_FDOPENDIR)
  
-     IF(USE_WEBRTC)
-@@ -517,7 +510,7 @@ ELSE(WIN32)
+-configure_file ("${MegaDir}/include/mega/config.h.in.cmake" "${MegaDir}/include/mega/config.h" )
++configure_file ("${MegaDir}/include/mega/config.h.in.cmake" "${CMAKE_BINARY_DIR}/include/mega/config.h" )
  
- ENDIF(WIN32)
  
--configure_file ("${MegaDir}/contrib/cmake/config.h.in" "${MegaDir}/include/mega/config.h" )
-+configure_file ("${MegaDir}/contrib/cmake/config.h.in" "${CMAKE_BINARY_DIR}/include/mega/config.h" )
- add_definitions( -DHAVE_CONFIG_H) #otherwise, it won't be included in Windows build!
  
- SET(Mega_CryptoFiles ${MegaDir}/src/crypto/cryptopp.cpp ${MegaDir}/src/crypto/sodium.cpp)
-@@ -525,8 +518,6 @@ SET(Mega_DbFiles ${MegaDir}/src/db/sqlite.cpp ${MegaDir}/src/db/sqlite.cpp )
- SET(Mega_GfxFiles ${MegaDir}/src/gfx/external.cpp ${MegaDir}/src/gfx/freeimage.cpp ) 
- 
- add_library(Mega STATIC
--            ${MegaDir}/include/megaapi.h
--            ${MegaDir}/include/megaapi_impl.h
-             ${MegaDir}/include/mega/osx/osxutils.h
-             ${MegaDir}/include/mega/transferslot.h
-             ${MegaDir}/include/mega/thread/qtthread.h
-@@ -535,7 +526,7 @@ add_library(Mega STATIC
-             ${MegaDir}/include/mega/thread/posixthread.h
-             ${MegaDir}/include/mega/thread/libuvthread.h
-             ${MegaDir}/include/mega/command.h
--            ${MegaDir}/include/mega/config.h
-+            ${CMAKE_BINARY_DIR}/include/mega/config.h
-             ${MegaDir}/include/mega/thread.h
-             ${MegaDir}/include/mega/json.h
-             ${MegaDir}/include/mega/base64.h
-@@ -635,9 +626,7 @@ add_library(Mega STATIC
+@@ -271,9 +167,7 @@ add_library(Mega STATIC
+             ${MegaDir}/src/mega_ccronexpr.cpp 
              ${MegaDir}/src/mega_http_parser.cpp 
              ${MegaDir}/src/mega_utf8proc.cpp 
-             ${MegaDir}/src/mega_zxcvbn.cpp 
+-            ${MegaDir}/src/mega_zxcvbn.cpp 
 -            ${MegaDir}/src/megaapi.cpp 
 -            ${MegaDir}/src/megaapi_impl.cpp 
--            ${MegaDir}/src/megaclient.cpp 
-+            ${MegaDir}/src/megaclient.cpp
++            ${MegaDir}/src/mega_zxcvbn.cpp
+             ${MegaDir}/src/megaclient.cpp 
              ${MegaDir}/src/node.cpp 
              ${MegaDir}/src/pendingcontactrequest.cpp 
-             ${MegaDir}/src/proxy.cpp 
+@@ -295,7 +189,7 @@ add_library(Mega STATIC
+ 
+ target_include_directories(Mega PRIVATE ${MegaDir}/include ${Mega_PlatformSpecificIncludes})
+ target_include_directories(Mega PUBLIC ${MegaDir}/include ${Mega_PlatformSpecificIncludes})
+-target_link_libraries(Mega PUBLIC z 
++target_link_libraries(Mega PUBLIC
+                 $<${USE_CRYPTOPP}:cryptopp> 
+                 $<${USE_SODIUM}:sodium> 
+                 $<${USE_OPENSSL}:ssl> $<${USE_OPENSSL}:crypto> 
 diff --git a/include/mega.h b/include/mega.h
-index 31ab29211..4b6763b66 100644
+index a8559c83f..7da7ecb20 100644
 --- a/include/mega.h
 +++ b/include/mega.h
-@@ -73,7 +73,6 @@
+@@ -73,8 +73,6 @@
  #include "mega/thread/cppthread.h"
  
  #include "megawaiter.h"
 -#include "meganet.h"
- #include "megafs.h"
+-#include "megafs.h"
  #include "megaconsole.h"
  #include "megaconsolewaiter.h"
-diff --git a/include/mega/posix/megafs.h b/include/mega/posix/megafs.h
-index f212e27d0..b0f02011b 100644
---- a/include/mega/posix/megafs.h
-+++ b/include/mega/posix/megafs.h
-@@ -32,6 +32,7 @@
- #include <sys/mount.h>
- #else
- #include <sys/vfs.h>
-+#include <dirent.h>
- #endif
  
- #ifdef HAVE_AIO_RT
 diff --git a/include/mega/posix/megasys.h b/include/mega/posix/megasys.h
-index de50ffc2e..c0a78d025 100644
+index 7b6b9fb4b..58d6bb961 100644
 --- a/include/mega/posix/megasys.h
 +++ b/include/mega/posix/megasys.h
-@@ -113,7 +113,6 @@
+@@ -112,7 +112,6 @@
  
  #include <sys/select.h>
  
@@ -131,18 +208,6 @@ index de50ffc2e..c0a78d025 100644
  #include <stdexcept>
  
  #ifndef FD_COPY
-diff --git a/src/win32/net.cpp b/src/win32/net.cpp
-index 9014dc1e8..4c71df7ee 100644
---- a/src/win32/net.cpp
-+++ b/src/win32/net.cpp
-@@ -24,6 +24,7 @@
- 
- #include "meganet.h"
- #include <winhttp.h>
-+#include <wincrypt.h>
- 
- namespace mega {
- 
 -- 
 2.25.1
 

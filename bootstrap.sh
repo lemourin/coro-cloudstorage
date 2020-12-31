@@ -10,11 +10,6 @@ sed -i 's/\\\"winapifamily\.h\\\"/winapifamily\.h/g' contrib/cryptopp/CMakeLists
 curl https://raw.githubusercontent.com/noloader/cryptopp-cmake/master/cryptopp-config.cmake \
   -s -o contrib/cryptopp/cryptopp-config.cmake
 
-curl https://raw.githubusercontent.com/microsoft/vcpkg/2020.11/ports/libsodium/CMakeLists.txt \
-  -s -o contrib/libsodium/CMakeLists.txt
-curl https://raw.githubusercontent.com/microsoft/vcpkg/2020.11/ports/libsodium/sodiumConfig.cmake.in \
-  -s -o contrib/libsodium/sodiumConfig.cmake.in
-
 git checkout contrib/megasdk
 cd contrib/megasdk
 git apply ../patches/mega-fix-build.patch

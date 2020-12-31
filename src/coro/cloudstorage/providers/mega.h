@@ -96,14 +96,13 @@ class Mega : public MegaAuth {
 
  private:
   static constexpr auto kLogin = static_cast<void (::mega::MegaClient::*)(
-      const char*, const ::mega::byte*, const char*)>(
-      &::mega::MegaClient::login);
+      const char*, const uint8_t*, const char*)>(&::mega::MegaClient::login);
   static constexpr auto kLoginWithSalt =
       static_cast<void (::mega::MegaClient::*)(const char*, const char*,
                                                std::string*, const char*)>(
           &::mega::MegaClient::login2);
   static constexpr auto kSessionLogin =
-      static_cast<void (::mega::MegaClient::*)(const ::mega::byte*, int)>(
+      static_cast<void (::mega::MegaClient::*)(const uint8_t*, int)>(
           &::mega::MegaClient::login);
 
   struct ReadData {
@@ -126,7 +125,7 @@ class Mega : public MegaAuth {
 
     void login_result(::mega::error e) final { SetResult(e); }
 
-    void fetchnodes_result(const ::mega::Error& e) final {
+    void fetchnodes_result(::mega::error e) final {
       SetResult(::mega::error(e));
     }
 
@@ -142,8 +141,8 @@ class Mega : public MegaAuth {
       SetResult(e);
     }
 
-    ::mega::dstime pread_failure(const ::mega::Error& e, int retry,
-                                 void* user_data, ::mega::dstime) final {
+    ::mega::dstime pread_failure(::mega::error e, int retry, void* user_data,
+                                 ::mega::dstime) final {
       const int kMaxRetryCount = 14;
       std::cerr << "[MEGA] PREAD FAILURE " << GetErrorDescription(e) << " "
                 << retry << "\n";
@@ -162,8 +161,8 @@ class Mega : public MegaAuth {
       }
     }
 
-    bool pread_data(::mega::byte* data, m_off_t length, m_off_t, m_off_t,
-                    m_off_t, void* user_data) final {
+    bool pread_data(uint8_t* data, m_off_t length, m_off_t, m_off_t, m_off_t,
+                    void* user_data) final {
       auto it = read_data.find(reinterpret_cast<intptr_t>(user_data));
       if (it == std::end(read_data)) {
         return false;
@@ -274,7 +273,7 @@ class Mega : public MegaAuth {
           mega_client(&mega_app, /*waiter=*/nullptr, /*http_io=*/http_io.get(),
                       /*fs=*/&fs, /*db_access=*/nullptr,
                       /*gfx_proc=*/nullptr, auth_data.api_key.c_str(),
-                      auth_data.app_name.c_str(), 0) {}
+                      auth_data.app_name.c_str()) {}
 
     ~Data() { stop_source.request_stop(); }
   };

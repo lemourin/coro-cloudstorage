@@ -1,6 +1,3 @@
-set(ZLIB_COMPAT 1 CACHE STRING "" FORCE)
-add_subdirectory(zlib EXCLUDE_FROM_ALL)
-add_library(z ALIAS zlib)
 add_subdirectory(coro-http EXCLUDE_FROM_ALL)
 add_subdirectory(json EXCLUDE_FROM_ALL)
 add_subdirectory(cryptopp EXCLUDE_FROM_ALL)
@@ -8,19 +5,16 @@ add_library(cryptopp ALIAS cryptopp-static)
 if(ANDROID)
     target_include_directories(cryptopp-object PRIVATE ${CMAKE_ANDROID_NDK}/sources/android/cpufeatures)
 endif()
-add_subdirectory(libsodium EXCLUDE_FROM_ALL)
-add_subdirectory(sqlite EXCLUDE_FROM_ALL)
-add_library(sqlite3 ALIAS SQLite3)
 
 set(USE_CRYPTOPP 1 CACHE STRING "" FORCE)
 set(USE_OPENSSL 0 CACHE STRING "" FORCE)
 set(USE_THIRDPARTY_FROM_VCPKG 0 CACHE STRING "" FORCE)
 set(USE_ASIO 0 CACHE STRING "" FORCE)
 set(USE_CURL 0 CACHE STRING "" FORCE)
-set(USE_SQLITE 1 CACHE STRING "" FORCE)
+set(USE_SQLITE 0 CACHE STRING "" FORCE)
 set(USE_MEDIAINFO 0 CACHE STRING "" FORCE)
 set(USE_FREEIMAGE 0 CACHE STRING "" FORCE)
-set(USE_SODIUM 1 CACHE STRING "" FORCE)
+set(USE_SODIUM 0 CACHE STRING "" FORCE)
 set(ENABLE_SYNC 0 CACHE STRING "" FORCE)
 set(ENABLE_CHAT 0 CACHE STRING "" FORCE)
 set(ENABLE_LOG_PERFORMANCE 0 CACHE STRING "" FORCE)
@@ -34,10 +28,6 @@ add_subdirectory(megasdk/contrib/cmake EXCLUDE_FROM_ALL)
 
 target_include_directories(Mega PUBLIC
     .
-    libsodium/src/libsodium/include
-    libsodium/src/libsodium/include/sodium
-    zlib
-    sqlite
     ${CMAKE_BINARY_DIR}
     ${CMAKE_BINARY_DIR}/include
     ${CMAKE_BINARY_DIR}/contrib/zlib

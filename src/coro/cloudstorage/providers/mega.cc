@@ -40,7 +40,7 @@ Task<std::string> Mega::Data::GetSession(UserCredential credentials,
       credentials.twofactor ? credentials.twofactor->c_str() : nullptr;
   if (version == 1) {
     const int kHashLength = 128;
-    ::mega::byte hashed_password[kHashLength];
+    uint8_t hashed_password[kHashLength];
     Check(mega_client.pw_key(credentials.password.c_str(), hashed_password));
     auto login_error = std::any_cast<::mega::error>(
         co_await Do<kLogin>(std::move(stop_token), credentials.email.c_str(),
@@ -60,7 +60,7 @@ Task<std::string> Mega::Data::GetSession(UserCredential credentials,
   }
 
   const int kHashBufferSize = 128;
-  ::mega::byte buffer[kHashBufferSize];
+  uint8_t buffer[kHashBufferSize];
   int length = mega_client.dumpsession(buffer, kHashBufferSize);
   co_return std::string(reinterpret_cast<const char*>(buffer), length);
 }
@@ -68,7 +68,7 @@ Task<std::string> Mega::Data::GetSession(UserCredential credentials,
 Task<> Mega::Data::LogIn(std::string session) {
   auto stop_token = stop_source.get_token();
   auto login_error = std::any_cast<::mega::error>(co_await Do<kSessionLogin>(
-      stop_token, reinterpret_cast<const ::mega::byte*>(session.c_str()),
+      stop_token, reinterpret_cast<const uint8_t*>(session.c_str()),
       static_cast<int>(session.size())));
   if (login_error != ::mega::API_OK) {
     throw CloudException(CloudException::Type::kUnauthorized);
@@ -195,7 +195,7 @@ Task<Mega::GeneralData> Mega::GetGeneralData(
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
   std::any result = co_await Do<&::mega::MegaClient::getaccountdetails>(
       stop_token, new ::mega::AccountDetails, true, false, false, false, false,
-      false, -1);
+      false);
   if (result.type() == typeid(::mega::error)) {
     throw CloudException(
         GetErrorDescription(std::any_cast<::mega::error>(result)));
