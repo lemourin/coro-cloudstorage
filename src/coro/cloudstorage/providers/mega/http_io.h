@@ -38,21 +38,35 @@ class HttpIO : public ::mega::HttpIO {
     }
     return io_ready;
   }
-  void setuseragent(std::string*) final {}
+  void setuseragent(std::string* useragent) final {
+    if (useragent) {
+      useragent_ = *useragent;
+    }
+  }
   void addevents(::mega::Waiter*, int) final {}
 
  private:
   friend class ::coro::cloudstorage::Mega;
 
   Task<> DoRequest(::mega::HttpReq* r, const char* data, unsigned size) {
-    auto request = http::Request<std::string>{
+    http::Request<std::string> request{
         .url = r->posturl,
         .method = r->method == ::mega::METHOD_POST ? http::Method::kPost
-                                                   : http::Method::kGet,
-        .headers = {{"Content-Type", r->type == ::mega::REQ_JSON
-                                         ? "application/json"
-                                         : "application/octet-stream"}},
-        .body = data ? std::string(data, size) : *r->out};
+                                                   : http::Method::kGet};
+    if (useragent_) {
+      request.headers.emplace_back("User-Agent", *useragent_);
+    }
+    if (r->type == ::mega::REQ_JSON) {
+      request.headers.emplace_back("Content-Type", "application/json");
+    } else if (r->type == ::mega::REQ_BINARY &&
+               ((data && size > 0) || !r->out->empty())) {
+      request.headers.emplace_back("Content-Type", "application/octet-stream");
+    }
+    if (data && size > 0) {
+      request.body = data;
+    } else if (!r->out->empty()) {
+      request.body = *r->out;
+    }
     coro::stdx::stop_source stop_source;
     try {
       try {
@@ -85,8 +99,11 @@ class HttpIO : public ::mega::HttpIO {
         }
         io_ready_ = true;
         r->contentlength = *content_length;
+        r->contenttype =
+            http::GetHeader(response.headers, "Content-Type").value_or("");
         r->httpstatus = response.status;
         r->status = ::mega::REQ_SUCCESS;
+        r->httpio = nullptr;
         lastdata = r->lastdata = ::mega::Waiter::ds;
         success_ = true;
       } catch (const http::HttpException&) {
@@ -96,6 +113,7 @@ class HttpIO : public ::mega::HttpIO {
         io_ready_ = true;
         lastdata = r->lastdata = ::mega::Waiter::ds;
         r->status = ::mega::REQ_FAILURE;
+        r->httpio = nullptr;
       }
       on_event_();
     } catch (const InterruptedException&) {
@@ -119,6 +137,7 @@ class HttpIO : public ::mega::HttpIO {
   const HttpClient& http_;
   bool io_ready_ = false;
   bool success_ = false;
+  std::optional<std::string> useragent_;
   std::function<void()> on_event_;
 };
 
