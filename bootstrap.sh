@@ -10,6 +10,8 @@ sed -i 's/\\\"winapifamily\.h\\\"/winapifamily\.h/g' contrib/cryptopp/CMakeLists
 curl https://raw.githubusercontent.com/noloader/cryptopp-cmake/master/cryptopp-config.cmake \
   -s -o contrib/cryptopp/cryptopp-config.cmake
 
+./contrib/coro-http/bootstrap.sh
+
 git checkout contrib/megasdk
 cd contrib/megasdk
 git apply ../patches/mega-fix-build.patch
