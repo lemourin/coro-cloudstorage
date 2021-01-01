@@ -2,6 +2,8 @@
 
 set -e
 
+cd $(dirname $0)
+
 git submodule update --init --checkout --recursive -f
 
 curl https://raw.githubusercontent.com/noloader/cryptopp-cmake/CRYPTOPP_8_2_0/CMakeLists.txt \
