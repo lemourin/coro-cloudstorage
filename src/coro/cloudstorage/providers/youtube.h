@@ -54,30 +54,43 @@ struct YouTube {
   template <typename AuthManager>
   using Impl = YouTubeImpl<AuthManager>;
 
+  enum class Presentation { kDash, kStream };
+
   struct ItemData {
     std::string id;
     std::string name;
     std::string path;
     std::optional<int64_t> timestamp;
-    enum Type { kStream = 1 << 0, kVideo = 1 << 1, kPlaylist = 1 << 2 } type;
   };
 
-  struct Directory : ItemData {};
+  struct RootDirectory : ItemData {
+    Presentation presentation;
+  };
 
-  struct File : ItemData {
+  struct StreamDirectory : ItemData {};
+
+  struct Playlist : ItemData {
+    Presentation presentation;
+  };
+
+  struct Stream : ItemData {
     std::optional<std::string> mime_type;
     std::optional<int64_t> size;
     std::optional<int64_t> itag;
   };
 
-  static_assert(HasTimestamp<Directory>);
+  struct DashManifest : ItemData {
+    std::optional<std::string> mime_type = "application/dash+xml";
+    static constexpr std::optional<int64_t> size = 8096;
+  };
 
   struct StreamData {
     json data;
     std::optional<std::function<std::string(std::string_view)>> descrambler;
   };
 
-  using Item = std::variant<File, Directory>;
+  using Item = std::variant<DashManifest, RootDirectory, Stream,
+                            StreamDirectory, Playlist>;
 
   struct PageData {
     std::vector<Item> items;
@@ -99,10 +112,11 @@ struct YouTubeImpl : YouTube {
       : auth_manager_(std::move(auth_manager)),
         stream_cache_(32, GetStreamData{auth_manager_.GetHttp()}) {}
 
-  Task<Directory> GetRoot(stdx::stop_token) {
-    Directory d = {};
+  Task<RootDirectory> GetRoot(stdx::stop_token) {
+    RootDirectory d = {};
     d.id = "root";
     d.path = "/";
+    d.presentation = Presentation::kDash;
     co_return d;
   }
 
@@ -110,153 +124,159 @@ struct YouTubeImpl : YouTube {
     json json = co_await auth_manager_.FetchJson(
         Request{.url = "https://openidconnect.googleapis.com/v1/userinfo"},
         std::move(stop_token));
-    co_return GeneralData{.username = json["email"]};
+    GeneralData result{.username = json["email"]};
+    co_return result;
   }
 
-  Task<PageData> ListDirectoryPage(Directory directory,
+  Task<PageData> ListDirectoryPage(StreamDirectory directory,
                                    std::optional<std::string> page_token,
                                    stdx::stop_token stop_token) {
     PageData result;
-    if (directory.id == "root") {
-      Request request = {
-          .url = GetEndpoint("/channels") + "?" +
-                 http::FormDataToString({{"mine", "true"},
-                                         {"part", "contentDetails,snippet"},
-                                         {"maxResults", "50"}})};
-      auto response = co_await auth_manager_.FetchJson(std::move(request),
-                                                       std::move(stop_token));
-      for (const auto& [key, value] :
-           response["items"][0]["contentDetails"]["relatedPlaylists"].items()) {
-        result.items.emplace_back(Directory{
-            {.id = value,
-             .name = key,
-             .path = directory.path + key + "/",
-             .type = Directory::Type(directory.type | Directory::kPlaylist)}});
+    StreamData data = co_await stream_cache_.Get(directory.id, stop_token);
+    for (const auto& d : data.data) {
+      if (!d.contains("contentLength")) {
+        continue;
       }
-      if (!(directory.type & Directory::kStream)) {
-        result.items.emplace_back(Directory{{.id = "root",
-                                             .name = "streams",
-                                             .path = "/",
-                                             .type = Directory::kStream}});
-      }
-    } else {
-      if (directory.type & Directory::kVideo) {
-        StreamData data = co_await stream_cache_.Get(directory.id, stop_token);
-        for (const auto& d : data.data) {
-          if (!d.contains("contentLength")) {
-            continue;
-          }
-          std::string quality_label =
-              (d.contains("qualityLabel") ? d["qualityLabel"]
-                                          : d["audioQuality"]);
-          std::string mime_type = d["mimeType"];
-          std::string extension(mime_type.begin() + mime_type.find('/') + 1,
-                                mime_type.begin() + mime_type.find(';'));
-          File file;
-          file.id = directory.id;
-          file.name = "[" + quality_label + "] stream." + extension;
-          file.type = File::kStream;
-          file.mime_type = std::move(mime_type);
-          file.size = std::stoll(std::string(d["contentLength"]));
-          file.path = directory.path + file.name;
-          file.itag = d["itag"];
-          result.items.emplace_back(std::move(file));
-        }
-        co_return result;
-      } else {
-        std::vector<std::pair<std::string, std::string>> headers{
-            {"part", "snippet"},
-            {"playlistId", directory.id},
-            {"maxResults", "50"}};
-        if (page_token) {
-          headers.emplace_back("pageToken", *page_token);
-        }
-        Request request = {.url = GetEndpoint("/playlistItems") + "?" +
-                                  http::FormDataToString(std::move(headers))};
-        auto response = co_await auth_manager_.FetchJson(std::move(request),
-                                                         std::move(stop_token));
-        for (const auto& item : response["items"]) {
-          if (directory.type & Directory::kStream) {
-            Directory streams;
-            streams.id = item["snippet"]["resourceId"]["videoId"];
-            streams.timestamp =
-                http::ParseTime(std::string(item["snippet"]["publishedAt"]));
-            streams.name = std::string(item["snippet"]["title"]);
-            streams.type = Directory::kVideo;
-            streams.path = directory.path + streams.name + "/";
-            result.items.emplace_back(std::move(streams));
-          } else {
-            File file;
-            file.id = item["snippet"]["resourceId"]["videoId"];
-            file.timestamp =
-                http::ParseTime(std::string(item["snippet"]["publishedAt"]));
-            file.name = std::string(item["snippet"]["title"]) + ".mpd";
-            file.path = directory.path + file.name;
-            file.type = File::kVideo;
-            file.size = kDashManifestSize;
-            result.items.emplace_back(std::move(file));
-          }
-        }
-        if (response.contains("nextPageToken")) {
-          result.next_page_token = response["nextPageToken"];
-        }
-      }
+      std::string quality_label =
+          (d.contains("qualityLabel") ? d["qualityLabel"] : d["audioQuality"]);
+      std::string mime_type = d["mimeType"];
+      std::string extension(mime_type.begin() + mime_type.find('/') + 1,
+                            mime_type.begin() + mime_type.find(';'));
+      Stream file;
+      file.id = directory.id;
+      file.name = "[" + quality_label + "] stream." + extension;
+      file.mime_type = std::move(mime_type);
+      file.size = std::stoll(std::string(d["contentLength"]));
+      file.path = directory.path + file.name;
+      file.itag = d["itag"];
+      result.items.emplace_back(std::move(file));
     }
     co_return result;
   }
 
-  Generator<std::string> GetFileContent(File file, http::Range range,
-                                        stdx::stop_token stop_token) {
-    if (file.type & File::kVideo) {
-      StreamData data =
-          co_await stream_cache_.Get(file.id, std::move(stop_token));
-      std::string dash_manifest = GenerateDashManifest(
-          "../streams" + file.path.substr(0, file.path.size() - 4), data.data);
-      if ((range.end && range.end >= kDashManifestSize) ||
-          range.start >= kDashManifestSize) {
-        throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
-      }
-      dash_manifest.resize(kDashManifestSize, ' ');
-      co_yield std::move(dash_manifest)
-          .substr(range.start,
-                  range.end.value_or(kDashManifestSize - 1) - range.start + 1);
-    } else {
-      std::stringstream range_header;
-      range_header << "bytes=" << range.start << "-";
-      if (range.end) {
-        range_header << *range.end;
-      }
-      std::string video_url =
-          co_await GetVideoUrl(file.id, *file.itag, stop_token);
-      Request request{.url = std::move(video_url),
-                      .headers = {{"Range", range_header.str()}}};
-      auto response = co_await auth_manager_.GetHttp().Fetch(std::move(request),
-                                                             stop_token);
-      if (response.status / 100 == 4) {
-        stream_cache_.Invalidate(file.id);
-        video_url = co_await GetVideoUrl(file.id, *file.itag, stop_token);
-        Request retry_request{.url = std::move(video_url),
-                              .headers = {{"Range", range_header.str()}}};
-        response = co_await auth_manager_.GetHttp().Fetch(
-            std::move(retry_request), stop_token);
-      }
-
-      int max_redirect_count = 8;
-      while (response.status == 302 && max_redirect_count-- > 0) {
-        auto redirect_request = Request{
-            .url = coro::http::GetHeader(response.headers, "Location").value(),
-            .headers = {{"Range", std::move(range_header).str()}}};
-        response = co_await auth_manager_.GetHttp().Fetch(
-            std::move(redirect_request), std::move(stop_token));
-      }
-      if (response.status / 100 != 2) {
-        throw http::HttpException(response.status);
-      }
-
-      FOR_CO_AWAIT(std::string & body, response.body) {
-        co_yield std::move(body);
+  Task<PageData> ListDirectoryPage(Playlist directory,
+                                   std::optional<std::string> page_token,
+                                   stdx::stop_token stop_token) {
+    PageData result;
+    std::vector<std::pair<std::string, std::string>> headers{
+        {"part", "snippet"},
+        {"playlistId", directory.id},
+        {"maxResults", "50"}};
+    if (page_token) {
+      headers.emplace_back("pageToken", *page_token);
+    }
+    Request request = {.url = GetEndpoint("/playlistItems") + "?" +
+                              http::FormDataToString(std::move(headers))};
+    auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                     std::move(stop_token));
+    for (const auto& item : response["items"]) {
+      switch (directory.presentation) {
+        case Presentation::kStream: {
+          StreamDirectory streams;
+          streams.id = item["snippet"]["resourceId"]["videoId"];
+          streams.timestamp =
+              http::ParseTime(std::string(item["snippet"]["publishedAt"]));
+          streams.name = std::string(item["snippet"]["title"]);
+          streams.path = directory.path + streams.name + "/";
+          result.items.emplace_back(std::move(streams));
+          break;
+        }
+        case Presentation::kDash: {
+          DashManifest file;
+          file.id = item["snippet"]["resourceId"]["videoId"];
+          file.timestamp =
+              http::ParseTime(std::string(item["snippet"]["publishedAt"]));
+          file.name = std::string(item["snippet"]["title"]) + ".mpd";
+          file.path = directory.path + file.name;
+          result.items.emplace_back(std::move(file));
+          break;
+        }
       }
     }
+    if (response.contains("nextPageToken")) {
+      result.next_page_token = response["nextPageToken"];
+    }
+    co_return result;
+  }
+
+  Task<PageData> ListDirectoryPage(RootDirectory directory,
+                                   std::optional<std::string> page_token,
+                                   stdx::stop_token stop_token) {
+    PageData result;
+    Request request = {
+        .url = GetEndpoint("/channels") + "?" +
+               http::FormDataToString({{"mine", "true"},
+                                       {"part", "contentDetails,snippet"},
+                                       {"maxResults", "50"}})};
+    auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                     std::move(stop_token));
+    for (const auto& [key, value] :
+         response["items"][0]["contentDetails"]["relatedPlaylists"].items()) {
+      result.items.emplace_back(Playlist{
+          {.id = value, .name = key, .path = directory.path + key + "/"},
+          directory.presentation});
+    }
+    if (directory.presentation == Presentation::kDash) {
+      result.items.emplace_back(
+          RootDirectory{{.id = "root", .name = "streams", .path = "/"},
+                        Presentation::kStream});
+    }
+    co_return result;
+  }
+
+  Generator<std::string> GetFileContent(Stream file, http::Range range,
+                                        stdx::stop_token stop_token) {
+    std::stringstream range_header;
+    range_header << "bytes=" << range.start << "-";
+    if (range.end) {
+      range_header << *range.end;
+    }
+    std::string video_url =
+        co_await GetVideoUrl(file.id, *file.itag, stop_token);
+    Request request{.url = std::move(video_url),
+                    .headers = {{"Range", range_header.str()}}};
+    auto response =
+        co_await auth_manager_.GetHttp().Fetch(std::move(request), stop_token);
+    if (response.status / 100 == 4) {
+      stream_cache_.Invalidate(file.id);
+      video_url = co_await GetVideoUrl(file.id, *file.itag, stop_token);
+      Request retry_request{.url = std::move(video_url),
+                            .headers = {{"Range", range_header.str()}}};
+      response = co_await auth_manager_.GetHttp().Fetch(
+          std::move(retry_request), stop_token);
+    }
+
+    int max_redirect_count = 8;
+    while (response.status == 302 && max_redirect_count-- > 0) {
+      auto redirect_request = Request{
+          .url = coro::http::GetHeader(response.headers, "Location").value(),
+          .headers = {{"Range", std::move(range_header).str()}}};
+      response = co_await auth_manager_.GetHttp().Fetch(
+          std::move(redirect_request), std::move(stop_token));
+    }
+    if (response.status / 100 != 2) {
+      throw http::HttpException(response.status);
+    }
+
+    FOR_CO_AWAIT(std::string & body, response.body) {
+      co_yield std::move(body);
+    }
+  }
+
+  Generator<std::string> GetFileContent(DashManifest file, http::Range range,
+                                        stdx::stop_token stop_token) {
+    StreamData data =
+        co_await stream_cache_.Get(file.id, std::move(stop_token));
+    std::string dash_manifest = GenerateDashManifest(
+        "../streams" + file.path.substr(0, file.path.size() - 4), data.data);
+    if ((range.end && range.end >= kDashManifestSize) ||
+        range.start >= kDashManifestSize) {
+      throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
+    }
+    dash_manifest.resize(kDashManifestSize, ' ');
+    co_yield std::move(dash_manifest)
+        .substr(range.start,
+                range.end.value_or(kDashManifestSize - 1) - range.start + 1);
   }
 
  private:
