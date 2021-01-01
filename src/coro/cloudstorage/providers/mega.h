@@ -42,13 +42,15 @@ class Mega : public MegaAuth {
 
   static constexpr std::string_view kId = "mega";
 
-  struct Directory {
+  struct ItemData {
     ::mega::handle id;
     std::string name;
     int64_t timestamp;
   };
 
-  struct File : Directory {
+  struct Directory : ItemData {};
+
+  struct File : ItemData {
     std::optional<int64_t> size;
     std::optional<std::string> mime_type;
   };

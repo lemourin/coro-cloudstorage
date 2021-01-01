@@ -96,13 +96,15 @@ struct OneDrive {
     int64_t space_total;
   };
 
-  struct Directory {
+  struct ItemData {
     std::string id;
     std::string name;
     int64_t timestamp;
   };
 
-  struct File : Directory {
+  struct Directory : ItemData {};
+
+  struct File : ItemData {
     std::optional<std::string> mime_type;
     std::optional<int64_t> size;
   };
@@ -123,7 +125,7 @@ struct OneDriveImpl : OneDrive {
       : auth_manager_(std::move(auth_manager)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {
-    Directory d{.id = "root"};
+    Directory d{{.id = "root"}};
     co_return d;
   }
 

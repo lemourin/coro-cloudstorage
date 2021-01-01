@@ -26,6 +26,12 @@ concept HasTimestamp = requires(T v) {
   ->stdx::convertible_to<std::optional<int64_t>>;
 };
 
+template <typename T, typename CloudProvider>
+concept IsDirectory = requires(CloudProvider provider, T v,
+                               stdx::stop_token stop_token) {
+  provider.ListDirectory(v, stop_token);
+};
+
 template <typename Impl>
 class CloudProvider {
  public:

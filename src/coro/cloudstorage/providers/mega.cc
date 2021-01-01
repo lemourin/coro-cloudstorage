@@ -187,7 +187,7 @@ Task<Mega::PageData> Mega::ListDirectoryPage(
 
 Task<Mega::Directory> Mega::GetRoot(coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, std::move(stop_token));
-  co_return Directory{.id = d_->mega_client.rootnodes[0]};
+  co_return Directory{{.id = d_->mega_client.rootnodes[0]}};
 }
 
 Task<Mega::GeneralData> Mega::GetGeneralData(

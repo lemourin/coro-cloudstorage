@@ -12,9 +12,6 @@ namespace coro::cloudstorage::util {
 template <typename CloudProvider>
 class ProxyHandler {
  public:
-  using File = typename CloudProvider::File;
-  using Item = typename CloudProvider::Item;
-  using Directory = typename CloudProvider::Directory;
   using Request = http::Request<>;
   using Response = http::Response<>;
 
@@ -33,60 +30,62 @@ class ProxyHandler {
     if (path.empty() || path.front() != '/') {
       path = '/' + path;
     }
-    auto item = co_await item_cache_.Get(path, stop_token);
-    if (std::holds_alternative<File>(item)) {
-      auto file = std::get<File>(item);
-      std::vector<std::pair<std::string, std::string>> headers = {
-          {"Content-Type", file.mime_type.value_or(coro::http::GetMimeType(
-                               coro::http::GetExtension(file.name)))},
-          {"Content-Disposition", "inline; filename=\"" + file.name + "\""},
-          {"Access-Control-Allow-Origin", "*"},
-          {"Access-Control-Allow-Headers", "*"}};
-      auto range_str = coro::http::GetHeader(request.headers, "Range");
-      coro::http::Range range =
-          coro::http::ParseRange(range_str.value_or("bytes=0-"));
-      if (file.size) {
-        if (!range.end) {
-          range.end = *file.size - 1;
-        }
-        headers.emplace_back("Accept-Ranges", "bytes");
-        headers.emplace_back("Content-Length",
-                             std::to_string(*range.end - range.start + 1));
-        if (range_str) {
-          std::stringstream stream;
-          stream << "bytes " << range.start << "-" << *range.end << "/"
-                 << *file.size;
-          headers.emplace_back("Content-Range", std::move(stream).str());
-        }
-      }
-      co_return Response{
-          .status = !range_str || !file.size ? 200 : 206,
-          .headers = std::move(headers),
-          .body = provider_->GetFileContent(file, range, stop_token)};
-    } else {
-      auto directory = std::get<Directory>(item);
-      if (!path.empty() && path.back() != '/') {
-        path += '/';
-      }
-      if (request.method == http::Method::kPropfind) {
-        co_return Response{
-            .status = 207,
-            .headers = {{"Content-Type", "text/xml"}},
-            .body = GetWebDavResponse(
-                directory,
-                provider_->ListDirectory(directory, std::move(stop_token)),
-                std::move(request), path_prefix_ + path)};
-      } else {
-        co_return Response{
-            .status = 200,
-            .headers = {{"Content-Type", "text/html"}},
-            .body = GetDirectoryContent(
-                provider_->ListDirectory(directory, std::move(stop_token)),
-                path_prefix_ + path)};
-      }
-    }
+    co_return std::visit(
+        [&](const auto& d) {
+          if constexpr (IsDirectory<decltype(d), CloudProvider>) {
+            if (!path.empty() && path.back() != '/') {
+              path += '/';
+            }
+            if (request.method == http::Method::kPropfind) {
+              return Response{
+                  .status = 207,
+                  .headers = {{"Content-Type", "text/xml"}},
+                  .body = GetWebDavResponse(
+                      d, provider_->ListDirectory(d, std::move(stop_token)),
+                      std::move(request), path_prefix_ + path)};
+            } else {
+              return Response{
+                  .status = 200,
+                  .headers = {{"Content-Type", "text/html"}},
+                  .body = GetDirectoryContent(
+                      provider_->ListDirectory(d, std::move(stop_token)),
+                      path_prefix_ + path)};
+            }
+          } else {
+            std::vector<std::pair<std::string, std::string>> headers = {
+                {"Content-Type", d.mime_type.value_or(coro::http::GetMimeType(
+                                     coro::http::GetExtension(d.name)))},
+                {"Content-Disposition", "inline; filename=\"" + d.name + "\""},
+                {"Access-Control-Allow-Origin", "*"},
+                {"Access-Control-Allow-Headers", "*"}};
+            auto range_str = coro::http::GetHeader(request.headers, "Range");
+            coro::http::Range range =
+                coro::http::ParseRange(range_str.value_or("bytes=0-"));
+            if (d.size) {
+              if (!range.end) {
+                range.end = *d.size - 1;
+              }
+              headers.emplace_back("Accept-Ranges", "bytes");
+              headers.emplace_back(
+                  "Content-Length",
+                  std::to_string(*range.end - range.start + 1));
+              if (range_str) {
+                std::stringstream stream;
+                stream << "bytes " << range.start << "-" << *range.end << "/"
+                       << *d.size;
+                headers.emplace_back("Content-Range", std::move(stream).str());
+              }
+            }
+            return Response{
+                .status = !range_str || !d.size ? 200 : 206,
+                .headers = std::move(headers),
+                .body = provider_->GetFileContent(d, range, stop_token)};
+          }
+        },
+        co_await item_cache_.Get(path, stop_token));
   }
 
+  template <IsDirectory<CloudProvider> Directory>
   static Generator<std::string> GetWebDavResponse(
       Directory directory,
       Generator<typename CloudProvider::PageData> page_data, Request request,
@@ -113,12 +112,16 @@ class ProxyHandler {
                .name = name,
                .is_directory = std::holds_alternative<Directory>(item),
                .timestamp = timestamp});
-          if (std::holds_alternative<File>(item)) {
-            const File& file = std::get<File>(item);
-            element_data.mime_type = file.mime_type.value_or(
-                coro::http::GetMimeType(coro::http::GetExtension(file.name)));
-            element_data.size = file.size;
-          }
+          std::visit(
+              [&](const auto& item) {
+                if constexpr (!IsDirectory<decltype(item), CloudProvider>) {
+                  element_data.mime_type =
+                      item.mime_type.value_or(coro::http::GetMimeType(
+                          coro::http::GetExtension(item.name)));
+                  element_data.size = item.size;
+                }
+              },
+              item);
           co_yield GetElement(std::move(element_data));
         }
       }
@@ -132,9 +135,17 @@ class ProxyHandler {
         GetDirectoryPath(path) + "'>..</a></td></tr>";
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
-        auto name = std::visit([](auto item) { return item.name; }, item);
-        std::string type =
-            std::holds_alternative<Directory>(item) ? "DIR" : "FILE";
+        auto name =
+            std::visit([](const auto& item) { return item.name; }, item);
+        std::string type = std::visit(
+            [](const auto& item) {
+              if constexpr (IsDirectory<decltype(item), CloudProvider>) {
+                return "DIR";
+              } else {
+                return "FILE";
+              }
+            },
+            item);
         std::string file_link = coro::http::EncodeUriPath(path + name);
         if (name.ends_with(".mpd")) {
           file_link = "/dash" + file_link;
@@ -191,7 +202,7 @@ class ProxyHandler {
   }
 
   struct GetItem {
-    Task<Item> operator()(std::string path, stdx::stop_token stop_token) {
+    auto operator()(std::string path, stdx::stop_token stop_token) {
       return provider->GetItemByPath(std::move(path), stop_token);
     }
     CloudProvider* provider;

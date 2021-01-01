@@ -15,18 +15,20 @@ template <http::HttpClient Http>
 class DropboxImpl;
 
 struct Dropbox {
-  struct Directory {
-    std::string id;
-    std::string name;
-  };
-
   struct GeneralData {
     std::string username;
     int64_t space_used;
     int64_t space_total;
   };
 
-  struct File : Directory {
+  struct ItemData {
+    std::string id;
+    std::string name;
+  };
+
+  struct Directory : ItemData {};
+
+  struct File : ItemData {
     std::optional<std::string> mime_type;
     std::optional<int64_t> size;
     int64_t timestamp;
