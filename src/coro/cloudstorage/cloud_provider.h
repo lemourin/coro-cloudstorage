@@ -26,17 +26,31 @@ concept HasTimestamp = requires(T v) {
   ->stdx::convertible_to<std::optional<int64_t>>;
 };
 
-template <typename T, typename CloudProvider>
-concept IsDirectory = requires(CloudProvider provider, T v,
-                               stdx::stop_token stop_token) {
-  provider.ListDirectory(v, stop_token);
+template <typename T>
+concept HasSize = requires(T v) {
+  { v.size }
+  ->stdx::convertible_to<std::optional<int64_t>>;
 };
 
-template <typename Impl>
+template <typename T, typename CloudProvider>
+concept IsDirectory = requires(typename CloudProvider::Impl provider, T v,
+                               std::optional<std::string> page_token,
+                               stdx::stop_token stop_token) {
+  { provider.ListDirectoryPage(v, page_token, stop_token).await_resume() }
+  ->std::convertible_to<typename CloudProvider::PageData>;
+};
+
+template <typename T, typename CloudProvider>
+concept IsFile = requires(typename CloudProvider::Impl provider, T v,
+                          http::Range range, stdx::stop_token stop_token) {
+  { provider.GetFileContent(v, range, stop_token) }
+  ->GeneratorLike;
+};
+
+template <typename ImplT>
 class CloudProvider {
  public:
-  using Directory = typename Impl::Directory;
-  using File = typename Impl::File;
+  using Impl = ImplT;
   using Item = typename Impl::Item;
   using PageData = typename Impl::PageData;
 
@@ -68,12 +82,14 @@ class CloudProvider {
                                      std::move(path), stop_token);
   }
 
+  template <typename File>
   auto GetFileContent(File file, http::Range range = http::Range{},
                       stdx::stop_token stop_token = stdx::stop_token()) {
     return Do<&Impl::GetFileContent>(std::move(stop_token), std::move(file),
                                      range);
   }
 
+  template <typename Directory>
   Generator<PageData> ListDirectory(
       Directory directory, stdx::stop_token stop_token = stdx::stop_token()) {
     std::optional<std::string> current_page_token;
@@ -85,6 +101,7 @@ class CloudProvider {
     } while (current_page_token);
   }
 
+  template <typename Directory>
   auto ListDirectoryPage(Directory directory,
                          std::optional<std::string> page_token = std::nullopt,
                          stdx::stop_token stop_token = stdx::stop_token()) {
@@ -93,6 +110,7 @@ class CloudProvider {
   }
 
  private:
+  template <typename Directory>
   Task<Item> GetItemByPath(Directory current_directory, std::string path,
                            stdx::stop_token stop_token) {
     if (path.empty() || path == "/") {
@@ -107,21 +125,26 @@ class CloudProvider {
                                    ? path.end()
                                    : path.begin() + delimiter_index,
                                path.end());
-    FOR_CO_AWAIT(const auto& page,
-                 ListDirectory(current_directory, stop_token)) {
-      for (const auto& item : page.items) {
-        if (std::holds_alternative<Directory>(item)) {
-          const auto& directory = std::get<Directory>(item);
-          if (directory.name == path_component) {
-            co_return co_await GetItemByPath(directory, rest_component,
-                                             stop_token);
-          }
-        } else if (rest_component.empty() &&
-                   std::holds_alternative<File>(item)) {
-          const auto& file = std::get<File>(item);
-          if (file.name == path_component) {
-            co_return file;
-          }
+    FOR_CO_AWAIT(auto& page, ListDirectory(current_directory, stop_token)) {
+      for (auto& item : page.items) {
+        auto r = std::visit(
+            [&](auto& d) -> std::variant<std::monostate, Task<Item>, Item> {
+              if constexpr (IsDirectory<decltype(d), CloudProvider>) {
+                if (d.name == path_component) {
+                  return GetItemByPath(d, rest_component, stop_token);
+                }
+              } else {
+                if (d.name == path_component) {
+                  return std::move(d);
+                }
+              }
+              return std::monostate();
+            },
+            item);
+        if (std::holds_alternative<Task<Item>>(r)) {
+          co_return co_await std::get<Task<Item>>(r);
+        } else if (std::holds_alternative<Item>(r)) {
+          co_return std::move(std::get<Item>(r));
         }
       }
     }
@@ -131,8 +154,7 @@ class CloudProvider {
 
   template <auto Method, typename... Args>
   auto Do(stdx::stop_token stop_token, Args... args)
-      -> Task<decltype((std::declval<Impl>().*Method)(
-                           std::forward<Args>(args)..., std::move(stop_token))
+      -> Task<decltype((std::declval<Impl>().*Method)(args..., stop_token)
                            .await_resume())> {
     stdx::stop_source stop_source;
     stdx::stop_callback callback_fst(stop_token,
@@ -150,8 +172,7 @@ class CloudProvider {
   template <auto Method, typename... Args>
   auto Do(stdx::stop_token stop_token, Args... args)
       -> Generator<std::remove_reference_t<
-          decltype(*(std::declval<Impl>().*Method)(std::forward<Args>(args)...,
-                                                   std::move(stop_token))
+          decltype(*(std::declval<Impl>().*Method)(args..., stop_token)
                         .begin()
                         .await_resume())>> {
     stdx::stop_source stop_source;
