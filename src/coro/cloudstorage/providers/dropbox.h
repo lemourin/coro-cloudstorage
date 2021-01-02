@@ -29,8 +29,7 @@ struct Dropbox {
   struct Directory : ItemData {};
 
   struct File : ItemData {
-    std::optional<std::string> mime_type;
-    std::optional<int64_t> size;
+    int64_t size;
     int64_t timestamp;
   };
 
@@ -200,9 +199,7 @@ class DropboxImpl : public Dropbox {
     result.id = json["path_display"];
     result.name = json["name"];
     if constexpr (std::is_same_v<T, File>) {
-      if (json.contains("size")) {
-        result.size = json["size"];
-      }
+      result.size = json.at("size");
       result.timestamp = http::ParseTime(std::string(json["client_modified"]));
     }
     return result;

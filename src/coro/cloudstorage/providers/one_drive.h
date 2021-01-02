@@ -106,7 +106,7 @@ struct OneDrive {
 
   struct File : ItemData {
     std::optional<std::string> mime_type;
-    std::optional<int64_t> size;
+    int64_t size;
   };
 
   using Item = std::variant<File, Directory>;
@@ -214,9 +214,7 @@ struct OneDriveImpl : OneDrive {
     result.timestamp =
         http::ParseTime(std::string(json["lastModifiedDateTime"]));
     if constexpr (std::is_same_v<T, File>) {
-      if (json.contains("size")) {
-        result.size = json["size"];
-      }
+      result.size = json.at("size");
       if (json.contains("mimeType")) {
         result.mime_type = json["mimeType"];
       }

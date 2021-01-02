@@ -32,6 +32,12 @@ concept HasSize = requires(T v) {
   ->stdx::convertible_to<std::optional<int64_t>>;
 };
 
+template <typename T>
+concept HasMimeType = requires(T v) {
+  { v.mime_type }
+  ->stdx::convertible_to<std::optional<std::string_view>>;
+};
+
 template <typename T, typename CloudProvider>
 concept IsDirectory = requires(typename CloudProvider::Impl provider, T v,
                                std::optional<std::string> page_token,
@@ -130,6 +136,34 @@ class CloudProvider {
                                          std::move(stop_token));
         },
         stop_token);
+  }
+
+  template <typename T>
+  static std::string GetMimeType(const T& d) {
+    static_assert(IsFile<T, CloudProvider>);
+    if constexpr (HasMimeType<T>) {
+      if constexpr (std::is_convertible_v<decltype(d.mime_type), std::string>) {
+        return d.mime_type;
+      } else if constexpr (std::is_constructible_v<std::string,
+                                                   decltype(d.mime_type)>) {
+        return std::string(d.mime_type);
+      } else {
+        return d.mime_type.value_or(
+            coro::http::GetMimeType(coro::http::GetExtension(d.name)));
+      }
+    } else {
+      return coro::http::GetMimeType(coro::http::GetExtension(d.name));
+    }
+  }
+
+  template <typename T>
+  static std::optional<int64_t> GetSize(const T& d) {
+    static_assert(IsFile<T, CloudProvider>);
+    if constexpr (HasSize<T>) {
+      return d.size;
+    } else {
+      return std::nullopt;
+    }
   }
 
  private:

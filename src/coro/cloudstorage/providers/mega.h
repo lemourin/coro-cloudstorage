@@ -51,8 +51,7 @@ class Mega : public MegaAuth {
   struct Directory : ItemData {};
 
   struct File : ItemData {
-    std::optional<int64_t> size;
-    std::optional<std::string> mime_type;
+    int64_t size;
   };
 
   using Item = std::variant<File, Directory>;

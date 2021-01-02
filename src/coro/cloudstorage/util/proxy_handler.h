@@ -53,17 +53,17 @@ class ProxyHandler {
             }
           } else {
             std::vector<std::pair<std::string, std::string>> headers = {
-                {"Content-Type", d.mime_type.value_or(coro::http::GetMimeType(
-                                     coro::http::GetExtension(d.name)))},
+                {"Content-Type", CloudProvider::GetMimeType(d)},
                 {"Content-Disposition", "inline; filename=\"" + d.name + "\""},
                 {"Access-Control-Allow-Origin", "*"},
                 {"Access-Control-Allow-Headers", "*"}};
             auto range_str = coro::http::GetHeader(request.headers, "Range");
             coro::http::Range range =
                 coro::http::ParseRange(range_str.value_or("bytes=0-"));
-            if (d.size) {
+            auto size = CloudProvider::GetSize(d);
+            if (size) {
               if (!range.end) {
-                range.end = *d.size - 1;
+                range.end = *size - 1;
               }
               headers.emplace_back("Accept-Ranges", "bytes");
               headers.emplace_back(
@@ -72,12 +72,12 @@ class ProxyHandler {
               if (range_str) {
                 std::stringstream stream;
                 stream << "bytes " << range.start << "-" << *range.end << "/"
-                       << *d.size;
+                       << *size;
                 headers.emplace_back("Content-Range", std::move(stream).str());
               }
             }
             return Response{
-                .status = !range_str || !d.size ? 200 : 206,
+                .status = !range_str || !size ? 200 : 206,
                 .headers = std::move(headers),
                 .body = provider_->GetFileContent(d, range, stop_token)};
           }
@@ -114,10 +114,8 @@ class ProxyHandler {
                .timestamp = timestamp});
           std::visit(
               [&](const auto& item) {
-                if constexpr (!IsDirectory<decltype(item), CloudProvider>) {
-                  element_data.mime_type =
-                      item.mime_type.value_or(coro::http::GetMimeType(
-                          coro::http::GetExtension(item.name)));
+                if constexpr (IsFile<decltype(item), CloudProvider>) {
+                  element_data.mime_type = CloudProvider::GetMimeType(item);
                   element_data.size = item.size;
                 }
               },
