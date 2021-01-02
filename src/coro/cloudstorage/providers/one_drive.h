@@ -5,9 +5,6 @@
 
 namespace coro::cloudstorage {
 
-template <typename Auth>
-struct OneDriveImpl;
-
 struct OneDrive {
   using json = nlohmann::json;
 
@@ -88,7 +85,7 @@ struct OneDrive {
   };
 
   template <typename AuthManager>
-  using Impl = OneDriveImpl<AuthManager>;
+  struct CloudProvider;
 
   struct GeneralData {
     std::string username;
@@ -118,10 +115,10 @@ struct OneDrive {
 };
 
 template <typename AuthManager>
-struct OneDriveImpl : OneDrive {
+struct OneDrive::CloudProvider : OneDrive {
   using Request = http::Request<std::string>;
 
-  explicit OneDriveImpl(AuthManager auth_manager)
+  explicit CloudProvider(AuthManager auth_manager)
       : auth_manager_(std::move(auth_manager)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {

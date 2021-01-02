@@ -263,10 +263,9 @@ struct CreateCloudProvider {
         auth_manager(*factory.http_, std::move(auth_token),
                      factory.auth_data_.template operator()<CloudProvider>(),
                      std::move(on_token_updated));
-    using InternalImpl =
-        typename CloudProvider::template Impl<decltype(auth_manager)>;
-    return ::coro::cloudstorage::CloudProvider(
-        InternalImpl(std::move(auth_manager)));
+    using Impl =
+        typename CloudProvider::template CloudProvider<decltype(auth_manager)>;
+    return ::coro::cloudstorage::CloudProvider(Impl(std::move(auth_manager)));
   }
 };
 

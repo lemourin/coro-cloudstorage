@@ -11,9 +11,6 @@
 
 namespace coro::cloudstorage {
 
-template <http::HttpClient Http>
-class DropboxImpl;
-
 struct Dropbox {
   struct GeneralData {
     std::string username;
@@ -83,18 +80,18 @@ struct Dropbox {
   };
 
   template <http::HttpClient Http>
-  using Impl = DropboxImpl<Http>;
+  class CloudProvider;
 
   static constexpr std::string_view kId = "dropbox";
 };
 
 template <http::HttpClient Http>
-class DropboxImpl : public Dropbox {
+class Dropbox::CloudProvider : public Dropbox {
  public:
   using json = nlohmann::json;
   using Request = http::Request<std::string>;
 
-  DropboxImpl(const Http& http, Dropbox::Auth::AuthToken auth_token)
+  CloudProvider(const Http& http, Dropbox::Auth::AuthToken auth_token)
       : http_(&http), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {
@@ -214,7 +211,8 @@ struct CreateCloudProvider<Dropbox> {
   template <typename CloudFactory, typename... Args>
   auto operator()(const CloudFactory& factory,
                   Dropbox::Auth::AuthToken auth_token, Args&&...) const {
-    return CloudProvider(DropboxImpl(*factory.http_, std::move(auth_token)));
+    return CloudProvider(
+        Dropbox::CloudProvider(*factory.http_, std::move(auth_token)));
   }
 };
 

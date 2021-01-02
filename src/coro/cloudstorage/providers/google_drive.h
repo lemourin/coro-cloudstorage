@@ -18,9 +18,6 @@
 
 namespace coro::cloudstorage {
 
-template <typename Auth>
-struct GoogleDriveImpl;
-
 struct GoogleDrive {
   using json = nlohmann::json;
 
@@ -91,7 +88,7 @@ struct GoogleDrive {
   };
 
   template <typename AuthManager>
-  using Impl = GoogleDriveImpl<AuthManager>;
+  struct CloudProvider;
 
   struct GeneralData {
     std::string username;
@@ -123,9 +120,9 @@ struct GoogleDrive {
 };
 
 template <typename AuthManager>
-struct GoogleDriveImpl : GoogleDrive {
+struct GoogleDrive::CloudProvider : GoogleDrive {
   using Request = http::Request<std::string>;
-  explicit GoogleDriveImpl(AuthManager auth_manager)
+  explicit CloudProvider(AuthManager auth_manager)
       : auth_manager_(std::move(auth_manager)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {
