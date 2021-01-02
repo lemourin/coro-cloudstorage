@@ -14,9 +14,6 @@
 
 namespace coro::cloudstorage {
 
-template <typename Auth>
-struct YouTubeImpl;
-
 struct YouTube {
   using json = nlohmann::json;
   using Request = http::Request<>;
@@ -52,7 +49,7 @@ struct YouTube {
   };
 
   template <typename AuthManager>
-  using Impl = YouTubeImpl<AuthManager>;
+  struct CloudProvider;
 
   enum class Presentation { kDash, kStream };
 
@@ -108,10 +105,10 @@ struct YouTube {
 };
 
 template <typename AuthManager>
-struct YouTubeImpl : YouTube {
+struct YouTube::CloudProvider : YouTube {
   using Request = http::Request<std::string>;
 
-  explicit YouTubeImpl(AuthManager auth_manager)
+  explicit CloudProvider(AuthManager auth_manager)
       : auth_manager_(std::move(auth_manager)),
         stream_cache_(32, GetStreamData{auth_manager_.GetHttp()}) {}
 
