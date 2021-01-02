@@ -60,28 +60,31 @@ struct YouTube {
     std::string id;
     std::string name;
     std::string path;
-    std::optional<int64_t> timestamp;
   };
 
   struct RootDirectory : ItemData {
     Presentation presentation;
   };
 
-  struct StreamDirectory : ItemData {};
+  struct StreamDirectory : ItemData {
+    int64_t timestamp;
+  };
 
   struct Playlist : ItemData {
     Presentation presentation;
   };
 
   struct Stream : ItemData {
-    std::optional<std::string> mime_type;
-    std::optional<int64_t> size;
-    std::optional<int64_t> itag;
+    std::string mime_type;
+    int64_t timestamp;
+    int64_t size;
+    int64_t itag;
   };
 
   struct DashManifest : ItemData {
-    std::optional<std::string> mime_type = "application/dash+xml";
-    static constexpr std::optional<int64_t> size = 8096;
+    static constexpr std::string_view mime_type = "application/dash+xml";
+    static constexpr int64_t size = 8096;
+    int64_t timestamp;
   };
 
   struct StreamData {
@@ -232,14 +235,14 @@ struct YouTubeImpl : YouTube {
       range_header << *range.end;
     }
     std::string video_url =
-        co_await GetVideoUrl(file.id, *file.itag, stop_token);
+        co_await GetVideoUrl(file.id, file.itag, stop_token);
     Request request{.url = std::move(video_url),
                     .headers = {{"Range", range_header.str()}}};
     auto response =
         co_await auth_manager_.GetHttp().Fetch(std::move(request), stop_token);
     if (response.status / 100 == 4) {
       stream_cache_.Invalidate(file.id);
-      video_url = co_await GetVideoUrl(file.id, *file.itag, stop_token);
+      video_url = co_await GetVideoUrl(file.id, file.itag, stop_token);
       Request retry_request{.url = std::move(video_url),
                             .headers = {{"Range", range_header.str()}}};
       response = co_await auth_manager_.GetHttp().Fetch(
