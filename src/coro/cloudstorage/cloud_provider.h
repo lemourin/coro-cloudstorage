@@ -158,7 +158,6 @@ class CloudProvider {
 
   template <typename T>
   static std::optional<int64_t> GetSize(const T& d) {
-    static_assert(IsFile<T, CloudProvider>);
     if constexpr (HasSize<T>) {
       return d.size;
     } else {
