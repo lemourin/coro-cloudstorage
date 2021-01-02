@@ -165,6 +165,15 @@ class CloudProvider {
     }
   }
 
+  template <typename T>
+  static std::optional<int64_t> GetTimestamp(const T& d) {
+    if constexpr (HasTimestamp<T>) {
+      return d.timestamp;
+    } else {
+      return std::nullopt;
+    }
+  }
+
  private:
   template <typename Directory>
   Task<Item> GetItemByPath(Directory current_directory, std::string path,
