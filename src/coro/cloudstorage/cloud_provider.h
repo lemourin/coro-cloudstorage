@@ -96,9 +96,8 @@ class CloudProvider {
   auto GetFileContent(File file, http::Range range = http::Range{},
                       stdx::stop_token stop_token = stdx::stop_token()) {
     return Do(
-        [this, file = std::move(file), range = std::move(range),
-         stop_token]() mutable {
-          return impl_.GetFileContent(std::move(file), std::move(range),
+        [this, file = std::move(file), range, stop_token]() mutable {
+          return impl_.GetFileContent(std::move(file), range,
                                       std::move(stop_token));
         },
         stop_token);
@@ -122,7 +121,7 @@ class CloudProvider {
                          stdx::stop_token stop_token = stdx::stop_token()) {
     return Do(
         [this, directory = std::move(directory),
-         page_token = std::move(page_token), stop_token] {
+         page_token = std::move(page_token), stop_token]() mutable {
           return impl_.ListDirectoryPage(std::move(directory),
                                          std::move(page_token),
                                          std::move(stop_token));
