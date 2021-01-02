@@ -211,8 +211,7 @@ struct CreateCloudProvider<Dropbox> {
   template <typename CloudFactory, typename... Args>
   auto operator()(const CloudFactory& factory,
                   Dropbox::Auth::AuthToken auth_token, Args&&...) const {
-    return CloudProvider(
-        Dropbox::CloudProvider(*factory.http_, std::move(auth_token)));
+    return Dropbox::CloudProvider(*factory.http_, std::move(auth_token));
   }
 };
 

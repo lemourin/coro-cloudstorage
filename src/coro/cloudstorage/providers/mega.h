@@ -298,9 +298,8 @@ struct CreateCloudProvider<Mega> {
   template <typename CloudFactory, typename... Args>
   auto operator()(const CloudFactory& factory, Mega::AuthToken auth_token,
                   Args&&...) const {
-    return CloudProvider(Mega(*factory.event_loop_, *factory.http_,
-                              std::move(auth_token),
-                              factory.auth_data_.template operator()<Mega>()));
+    return Mega(*factory.event_loop_, *factory.http_, std::move(auth_token),
+                factory.auth_data_.template operator()<Mega>());
   }
 };
 

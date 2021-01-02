@@ -264,7 +264,7 @@ struct CreateCloudProvider {
                      std::move(on_token_updated));
     using Impl =
         typename CloudProvider::template CloudProvider<decltype(auth_manager)>;
-    return ::coro::cloudstorage::CloudProvider(Impl(std::move(auth_manager)));
+    return Impl(std::move(auth_manager));
   }
 };
 
