@@ -1,5 +1,6 @@
 add_subdirectory(coro-http EXCLUDE_FROM_ALL)
 add_subdirectory(json EXCLUDE_FROM_ALL)
+set(BUILD_TESTING 0)
 add_subdirectory(cryptopp EXCLUDE_FROM_ALL)
 add_library(cryptopp ALIAS cryptopp-static)
 if(ANDROID)
