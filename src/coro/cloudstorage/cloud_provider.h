@@ -13,14 +13,6 @@
 namespace coro::cloudstorage {
 
 template <typename T>
-concept CloudProviderImpl = requires(http::HttpStub& http, std::string code,
-                                     typename T::AuthData auth_data,
-                                     stdx::stop_token stop_token) {
-  { T::ExchangeAuthorizationCode(http, auth_data, code, stop_token) }
-  ->Awaitable;
-};
-
-template <typename T>
 concept HasTimestamp = requires(T v) {
   { v.timestamp }
   ->stdx::convertible_to<std::optional<int64_t>>;
@@ -43,14 +35,14 @@ concept IsDirectory = requires(typename CloudProvider::Impl provider, T v,
                                std::optional<std::string> page_token,
                                stdx::stop_token stop_token) {
   { provider.ListDirectoryPage(v, page_token, stop_token).await_resume() }
-  ->std::convertible_to<typename CloudProvider::PageData>;
+  ->stdx::convertible_to<typename CloudProvider::PageData>;
 };
 
 template <typename T, typename CloudProvider>
 concept IsFile = requires(typename CloudProvider::Impl provider, T v,
                           http::Range range, stdx::stop_token stop_token) {
   { provider.GetFileContent(v, range, stop_token) }
-  ->GeneratorLike;
+  ->GeneratorLike<std::string_view>;
 };
 
 template <typename ImplT>
