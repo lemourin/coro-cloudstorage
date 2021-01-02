@@ -20,8 +20,6 @@ class ProxyHandler {
         path_prefix_(std::move(path_prefix)),
         item_cache_(32, GetItem{provider_}) {}
 
-  ProxyHandler(ProxyHandler&& handler) = default;
-
   Task<Response> operator()(Request request,
                             coro::stdx::stop_token stop_token) {
     std::string path = GetEffectivePath(
