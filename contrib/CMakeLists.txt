@@ -31,7 +31,6 @@ target_include_directories(Mega PUBLIC
     .
     ${CMAKE_BINARY_DIR}
     ${CMAKE_BINARY_DIR}/include
-    ${CMAKE_BINARY_DIR}/contrib/zlib
 )
 
 if(ANDROID)
