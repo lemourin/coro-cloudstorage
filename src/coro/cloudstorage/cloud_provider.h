@@ -77,15 +77,6 @@ class CloudProvider {
         stop_token);
   }
 
-  auto GetItem(std::string id,
-               stdx::stop_token stop_token = stdx::stop_token()) {
-    return Do(
-        [this, id = std::move(id), stop_token]() mutable {
-          return impl_.GetItem(std::move(id), std::move(stop_token));
-        },
-        stop_token);
-  }
-
   Task<Item> GetItemByPath(std::string path,
                            stdx::stop_token stop_token = stdx::stop_token()) {
     co_return co_await GetItemByPath(co_await GetRoot(stop_token),
