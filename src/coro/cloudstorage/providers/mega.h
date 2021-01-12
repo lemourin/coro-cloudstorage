@@ -78,6 +78,8 @@ class Mega : public MegaAuth {
     return d_->Do<Method>(std::move(stop_token), std::forward<Args>(args)...);
   }
 
+  Task<Item> RenameItem(Item item, std::string new_name,
+                        coro::stdx::stop_token);
   Task<GeneralData> GetGeneralData(coro::stdx::stop_token);
   Task<Directory> GetRoot(coro::stdx::stop_token);
   Task<PageData> ListDirectoryPage(Directory directory,
@@ -140,6 +142,10 @@ class Mega : public MegaAuth {
                          ::mega::error e) final {
       delete details;
       SetResult(e);
+    }
+
+    void setattr_result(::mega::handle handle, ::mega::error e) final {
+      SetResult(std::make_tuple(handle, e));
     }
 
     ::mega::dstime pread_failure(::mega::error e, int retry, void* user_data,

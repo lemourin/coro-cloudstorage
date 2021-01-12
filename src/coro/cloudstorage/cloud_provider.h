@@ -77,6 +77,17 @@ class CloudProvider {
         stop_token);
   }
 
+  auto RenameItem(Item item, std::string new_name,
+                  stdx::stop_token stop_token = stdx::stop_token()) {
+    return Do(
+        [this, item = std::move(item), new_name = std::move(new_name),
+         stop_token]() mutable {
+          return impl_.RenameItem(std::move(item), std::move(new_name),
+                                  std::move(stop_token));
+        },
+        stop_token);
+  }
+
   Task<Item> GetItemByPath(std::string path,
                            stdx::stop_token stop_token = stdx::stop_token()) {
     co_return co_await GetItemByPath(co_await GetRoot(stop_token),

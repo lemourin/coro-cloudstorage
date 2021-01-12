@@ -197,6 +197,22 @@ struct GoogleDrive::CloudProvider : GoogleDrive {
     }
   }
 
+  Task<Item> RenameItem(Item item, std::string new_name,
+                        stdx::stop_token stop_token) {
+    auto id = std::visit([](auto d) { return d.id; }, item);
+    auto request =
+        Request{.url = GetEndpoint("/files/" + std::move(id)) + "?" +
+                       http::FormDataToString({{"fields", kFileProperties}}),
+                .method = http::Method::kPatch,
+                .headers = {{"Content-Type", "application/json"}}};
+    json json;
+    json["name"] = std::move(new_name);
+    request.body = json.dump();
+    auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                     std::move(stop_token));
+    co_return ToItem(response);
+  }
+
  private:
   static constexpr std::string_view kEndpoint =
       "https://www.googleapis.com/drive/v3";

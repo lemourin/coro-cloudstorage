@@ -133,7 +133,8 @@ class Dropbox::CloudProvider : public Dropbox {
       request = {.url = GetEndpoint("/files/list_folder"),
                  .body = R"({"path":")" + directory.id + R"("})"};
     }
-    auto response = co_await FetchJson(request, std::move(stop_token));
+    auto response =
+        co_await FetchJson(std::move(request), std::move(stop_token));
 
     PageData page_data;
     for (const json& entry : response["entries"]) {
@@ -166,8 +167,31 @@ class Dropbox::CloudProvider : public Dropbox {
     }
   }
 
+  Task<Item> RenameItem(Item item, std::string new_name,
+                        stdx::stop_token stop_token) {
+    auto id = std::visit([](auto d) { return d.id; }, item);
+    auto request = Request{.url = GetEndpoint("/files/move_v2"),
+                           .method = http::Method::kPost};
+    json json;
+    json["from_path"] = id;
+    json["to_path"] = GetDirectoryPath(id) + "/" + new_name;
+    request.body = json.dump();
+    auto response =
+        co_await FetchJson(std::move(request), std::move(stop_token));
+    co_return ToItem(response["metadata"]);
+  }
+
  private:
   static constexpr std::string_view kEndpoint = "https://api.dropboxapi.com/2";
+
+  static std::string GetDirectoryPath(std::string_view path) {
+    auto it = path.find_last_of('/');
+    if (it == std::string::npos) {
+      throw CloudException("invalid path");
+    } else {
+      return std::string(path.begin(), path.begin() + it);
+    }
+  }
 
   static std::string GetEndpoint(std::string_view path) {
     return std::string(kEndpoint) + std::string(path);

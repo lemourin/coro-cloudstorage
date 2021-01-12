@@ -190,6 +190,20 @@ Task<Mega::Directory> Mega::GetRoot(coro::stdx::stop_token stop_token) {
   co_return Directory{{.id = d_->mega_client.rootnodes[0]}};
 }
 
+Task<Mega::Item> Mega::RenameItem(Item item, std::string new_name,
+                                  coro::stdx::stop_token stop_token) {
+  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
+  auto node =
+      GetNode(std::visit([](const auto& d) { return std::cref(d.id); }, item));
+  node->attrs.map['n'] = std::move(new_name);
+  std::any result = co_await Do<&::mega::MegaClient::setattr>(
+      std::move(stop_token), node, nullptr);
+  const auto& [handle, error] = std::move(
+      std::any_cast<std::tuple<::mega::handle, ::mega::error>>(result));
+  Check(error);
+  co_return ToItem(GetNode(handle));
+}
+
 Task<Mega::GeneralData> Mega::GetGeneralData(
     coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
