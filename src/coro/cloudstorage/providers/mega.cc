@@ -204,6 +204,53 @@ Task<Mega::Item> Mega::RenameItem(Item item, std::string new_name,
   co_return ToItem(GetNode(handle));
 }
 
+Task<Mega::Directory> Mega::CreateDirectory(Directory parent, std::string name,
+                                            coro::stdx::stop_token stop_token) {
+  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
+
+  ::mega::NewNode folder;
+  folder.source = ::mega::NEW_NODE;
+  folder.type = ::mega::FOLDERNODE;
+  folder.nodehandle = 0;
+  folder.parenthandle = ::mega::UNDEF;
+
+  ::mega::SymmCipher key;
+  uint8_t buf[::mega::FOLDERNODEKEYLENGTH];
+  std::uniform_int_distribution<uint32_t> dist(0, UINT8_MAX);
+  for (int i = 0; i < ::mega::FOLDERNODEKEYLENGTH; i++)
+    buf[i] = dist(d_->random_engine);
+  folder.nodekey.assign(reinterpret_cast<char*>(buf),
+                        ::mega::FOLDERNODEKEYLENGTH);
+  key.setkey(buf);
+
+  ::mega::AttrMap attrs;
+  attrs.map['n'] = name;
+  std::string attr_str;
+  attrs.getjson(&attr_str);
+  folder.attrstring = new std::string;
+  d_->mega_client.makeattr(&key, folder.attrstring, attr_str.c_str());
+
+  std::any result =
+      co_await Do<kPutNodes>(stop_token, parent.id, &folder, 1, nullptr);
+  if (result.type() == typeid(::mega::error)) {
+    throw CloudException(
+        GetErrorDescription(std::any_cast<::mega::error>(result)));
+  }
+  co_return std::get<Directory>(
+      ToItem(GetNode(std::any_cast<::mega::handle>(result))));
+}
+
+Task<> Mega::RemoveItem(Item item, coro::stdx::stop_token stop_token) {
+  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
+
+  std::any result = co_await Do<&::mega::MegaClient::unlink>(
+      stop_token, GetNode(std::visit([](const auto& d) { return d.id; }, item)),
+      false);
+  auto [handle, error] = std::move(
+      std::any_cast<std::tuple<::mega::handle, ::mega::error>>(result));
+  Check(error);
+}
+
 Task<Mega::GeneralData> Mega::GetGeneralData(
     coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);

@@ -131,6 +131,26 @@ class CloudProvider {
         stop_token);
   }
 
+  template <typename Directory>
+  auto CreateDirectory(Directory parent, std::string name,
+                       stdx::stop_token stop_token = stdx::stop_token()) {
+    return Do(
+        [this, parent = std::move(parent), name = std::move(name),
+         stop_token]() mutable {
+          return impl_.CreateDirectory(std::move(parent), std::move(name),
+                                       std::move(stop_token));
+        },
+        stop_token);
+  }
+
+  auto RemoveItem(Item item, stdx::stop_token stop_token = stdx::stop_token()) {
+    return Do(
+        [this, item = std::move(item), stop_token]() mutable {
+          return impl_.RemoveItem(std::move(item), std::move(stop_token));
+        },
+        stop_token);
+  }
+
   template <typename T>
   static std::string GetMimeType(const T& d) {
     static_assert(IsFile<T, CloudProvider>);
@@ -212,7 +232,24 @@ class CloudProvider {
 
   template <typename F>
   auto Do(F func, stdx::stop_token stop_token)
-      -> Task<decltype(func().await_resume())> {
+      -> std::enable_if_t<std::is_same_v<void, decltype(func().await_resume())>,
+                          Task<>> {
+    stdx::stop_source stop_source;
+    stdx::stop_callback callback_fst(stop_token,
+                                     [&] { stop_source.request_stop(); });
+    stdx::stop_callback callback_nd(stop_source_.get_token(),
+                                    [&] { stop_source.request_stop(); });
+    stop_token = stop_source.get_token();
+    co_await func();
+    if (stop_token.stop_requested()) {
+      throw InterruptedException();
+    }
+  }
+
+  template <typename F>
+  auto Do(F func, stdx::stop_token stop_token)
+      -> std::enable_if_t<!std::is_same_v<void, decltype(func().await_resume())>,
+                          Task<decltype(func().await_resume())>> {
     stdx::stop_source stop_source;
     stdx::stop_callback callback_fst(stop_token,
                                      [&] { stop_source.request_stop(); });

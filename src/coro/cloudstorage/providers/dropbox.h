@@ -181,6 +181,27 @@ class Dropbox::CloudProvider : public Dropbox {
     co_return ToItem(response["metadata"]);
   }
 
+  Task<Directory> CreateDirectory(Directory parent, std::string name,
+                                  stdx::stop_token stop_token) {
+    auto request = Request{.url = GetEndpoint("/files/create_folder_v2"),
+                           .method = http::Method::kPost};
+    json json;
+    json["path"] = parent.id + "/" + std::move(name);
+    request.body = json.dump();
+    auto response =
+        co_await FetchJson(std::move(request), std::move(stop_token));
+    co_return ToItemImpl<Directory>(response["metadata"]);
+  }
+
+  Task<> RemoveItem(Item item, stdx::stop_token stop_token) {
+    auto request = Request{.url = GetEndpoint("/files/delete"),
+                           .method = http::Method::kPost};
+    json json;
+    json["path"] = std::visit([](const auto& d) { return d.id; }, item);
+    request.body = json.dump();
+    co_await FetchJson(std::move(request), std::move(stop_token));
+  }
+
  private:
   static constexpr std::string_view kEndpoint = "https://api.dropboxapi.com/2";
 

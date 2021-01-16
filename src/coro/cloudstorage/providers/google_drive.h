@@ -213,6 +213,31 @@ struct GoogleDrive::CloudProvider : GoogleDrive {
     co_return ToItem(response);
   }
 
+  Task<Directory> CreateDirectory(Directory parent, std::string name,
+                                  stdx::stop_token stop_token) {
+    auto request =
+        Request{.url = GetEndpoint("/files/") + "?" +
+                       http::FormDataToString({{"fields", kFileProperties}}),
+                .method = http::Method::kPost,
+                .headers = {{"Content-Type", "application/json"}}};
+    json json;
+    json["mimeType"] = "application/vnd.google-apps.folder";
+    json["name"] = std::move(name);
+    json["parents"] = {std::move(parent.id)};
+    request.body = json.dump();
+    auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                     std::move(stop_token));
+    co_return std::get<Directory>(ToItem(response));
+  }
+
+  Task<> RemoveItem(Item item, stdx::stop_token stop_token) {
+    auto request =
+        Request{.url = GetEndpoint("/files/") +
+                       std::visit([](const auto& d) { return d.id; }, item),
+                .method = http::Method::kDelete};
+    co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
+  }
+
  private:
   static constexpr std::string_view kEndpoint =
       "https://www.googleapis.com/drive/v3";

@@ -15,6 +15,7 @@
 
 #include <any>
 #include <optional>
+#include <random>
 
 namespace coro::cloudstorage {
 
@@ -85,6 +86,9 @@ class Mega : public MegaAuth {
   Task<PageData> ListDirectoryPage(Directory directory,
                                    std::optional<std::string> page_token,
                                    coro::stdx::stop_token);
+  Task<Directory> CreateDirectory(Directory parent, std::string name,
+                                  coro::stdx::stop_token);
+  Task<> RemoveItem(Item item, coro::stdx::stop_token);
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         coro::stdx::stop_token);
 
@@ -107,6 +111,9 @@ class Mega : public MegaAuth {
   static constexpr auto kSessionLogin =
       static_cast<void (::mega::MegaClient::*)(const uint8_t*, int)>(
           &::mega::MegaClient::login);
+  static constexpr auto kPutNodes = static_cast<void (::mega::MegaClient::*)(
+      ::mega::handle, ::mega::NewNode*, int, const char*)>(
+      &::mega::MegaClient::putnodes);
 
   struct ReadData {
     std::deque<std::string> buffer;
@@ -145,6 +152,19 @@ class Mega : public MegaAuth {
     }
 
     void setattr_result(::mega::handle handle, ::mega::error e) final {
+      SetResult(std::make_tuple(handle, e));
+    }
+
+    void putnodes_result(::mega::error e, ::mega::targettype_t,
+                         ::mega::NewNode*) final {
+      if (e == ::mega::API_OK) {
+        SetResult(client->nodenotify.back()->nodehandle);
+      } else {
+        SetResult(e);
+      }
+    }
+
+    void unlink_result(::mega::handle handle, ::mega::error e) override {
       SetResult(std::make_tuple(handle, e));
     }
 
@@ -243,6 +263,7 @@ class Mega : public MegaAuth {
     bool exec_pending = false;
     bool recursive_exec = false;
     std::optional<SharedPromise<DoLogIn>> current_login;
+    std::default_random_engine random_engine;
 
     void OnEvent();
 
@@ -280,7 +301,8 @@ class Mega : public MegaAuth {
           mega_client(&mega_app, /*waiter=*/nullptr, /*http_io=*/http_io.get(),
                       /*fs=*/&fs, /*db_access=*/nullptr,
                       /*gfx_proc=*/nullptr, auth_data.api_key.c_str(),
-                      auth_data.app_name.c_str()) {}
+                      auth_data.app_name.c_str()),
+          random_engine(std::random_device()()) {}
 
     ~Data() { stop_source.request_stop(); }
   };
