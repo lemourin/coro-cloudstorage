@@ -8,10 +8,6 @@
 #include <coro/stdx/stop_source.h>
 #include <mega.h>
 
-namespace coro::cloudstorage {
-class Mega;
-}
-
 namespace coro::cloudstorage::mega {
 
 template <http::HttpClient HttpClient>
@@ -47,8 +43,6 @@ class HttpIO : public ::mega::HttpIO {
   void addevents(::mega::Waiter*, int) final {}
 
  private:
-  friend class ::coro::cloudstorage::Mega;
-
   Task<> DoRequest(::mega::HttpReq* r, const char* data, unsigned size) {
     http::Request<std::string> request{
         .url = r->posturl,

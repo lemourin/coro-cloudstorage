@@ -35,8 +35,8 @@ template <typename T, typename CloudProvider>
 concept IsDirectory = requires(
     typename CloudProvider::Impl provider, T v,
     std::optional<std::string> page_token, stdx::stop_token stop_token,
-    typename decltype(provider.ListDirectoryPage(v, page_token,
-                                                 stop_token))::type page_data) {
+    decltype(provider.ListDirectoryPage(v, page_token, stop_token)) page_data_promise,
+    typename decltype(page_data_promise)::type page_data) {
   { page_data }
   ->stdx::convertible_to<typename CloudProvider::PageData>;
 };

@@ -13,6 +13,10 @@
 #include <coro/util/type_list.h>
 #include <mega.h>
 
+#ifdef CreateDirectory
+#undef CreateDirectory
+#endif
+
 #include <any>
 #include <optional>
 #include <random>
@@ -63,7 +67,7 @@ struct Mega {
     int64_t space_total;
   };
 
-  struct CloudProvider;
+  class CloudProvider;
 
   static constexpr std::string_view kId = "mega";
 };

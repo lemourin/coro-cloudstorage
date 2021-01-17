@@ -234,7 +234,7 @@ Task<Mega::Directory> Mega::CloudProvider::CreateDirectory(
   uint8_t buf[::mega::FOLDERNODEKEYLENGTH];
   std::uniform_int_distribution<uint32_t> dist(0, UINT8_MAX);
   for (int i = 0; i < ::mega::FOLDERNODEKEYLENGTH; i++)
-    buf[i] = dist(d_->random_engine);
+    buf[i] = static_cast<uint8_t>(dist(d_->random_engine));
   folder.nodekey.assign(reinterpret_cast<char*>(buf),
                         ::mega::FOLDERNODEKEYLENGTH);
   key.setkey(buf);
