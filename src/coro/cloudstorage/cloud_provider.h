@@ -32,11 +32,12 @@ concept HasMimeType = requires(T v) {
 };
 
 template <typename T, typename CloudProvider>
-concept IsDirectory = requires(
-    typename CloudProvider::Impl provider, T v,
-    std::optional<std::string> page_token, stdx::stop_token stop_token,
-    decltype(provider.ListDirectoryPage(v, page_token, stop_token)) page_data_promise,
-    typename decltype(page_data_promise)::type page_data) {
+concept IsDirectory =
+    requires(typename CloudProvider::Impl provider, T v,
+             std::optional<std::string> page_token, stdx::stop_token stop_token,
+             decltype(provider.ListDirectoryPage(v, page_token,
+                                                 stop_token)) page_data_promise,
+             typename decltype(page_data_promise)::type page_data) {
   { page_data }
   ->stdx::convertible_to<typename CloudProvider::PageData>;
 };
@@ -46,6 +47,43 @@ concept IsFile = requires(typename CloudProvider::Impl provider, T v,
                           http::Range range, stdx::stop_token stop_token) {
   { provider.GetFileContent(v, range, stop_token) }
   ->GeneratorLike<std::string_view>;
+};
+
+template <typename T, typename CloudProvider>
+concept CanRename = requires(
+    typename CloudProvider::Impl provider, T v, std::string new_name,
+    stdx::stop_token stop_token,
+    decltype(provider.RenameItem(v, new_name, stop_token)) item_promise,
+    typename decltype(item_promise)::type item) {
+  { item }
+  ->stdx::convertible_to<typename CloudProvider::Item>;
+};
+
+template <typename T, typename CloudProvider>
+concept CanRemove = requires(typename CloudProvider::Impl provider, T v,
+                             stdx::stop_token stop_token) {
+  { provider.RemoveItem(v, stop_token) }
+  ->Awaitable<void>;
+};
+
+template <typename Source, typename Destination, typename CloudProvider>
+concept CanMove = requires(typename CloudProvider::Impl provider, Source source,
+                           Destination destination, stdx::stop_token stop_token,
+                           decltype(provider.MoveItem(source, destination,
+                                                      stop_token)) item_promise,
+                           typename decltype(item_promise)::type item) {
+  { item }
+  ->stdx::convertible_to<typename CloudProvider::Item>;
+};
+
+template <typename Parent, typename CloudProvider>
+concept CanCreateDirectory = requires(
+    typename CloudProvider::Impl provider, Parent v, std::string name,
+    stdx::stop_token stop_token,
+    decltype(provider.CreateDirectory(v, name, stop_token)) item_promise,
+    typename decltype(item_promise)::type item) {
+  { item }
+  ->stdx::convertible_to<typename CloudProvider::Item>;
 };
 
 template <typename CloudProviderT, typename ImplT = CloudProviderT>
