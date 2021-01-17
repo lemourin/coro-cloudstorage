@@ -100,6 +100,7 @@ struct GoogleDrive {
     std::string id;
     std::string name;
     int64_t timestamp;
+    std::vector<std::string> parents;
   };
 
   struct Directory : ItemData {};
@@ -240,6 +241,33 @@ struct GoogleDrive::CloudProvider
     co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
   }
 
+  Task<Item> MoveItem(Item source, Directory destination,
+                      stdx::stop_token stop_token) {
+    auto id = std::visit([](const auto& d) { return d.id; }, source);
+    auto remove_parents = std::visit(
+        [](const auto& d) {
+          std::string r;
+          for (auto& parent : d.parents) {
+            r += parent + ",";
+          }
+          r.pop_back();
+          return r;
+        },
+        source);
+    auto request =
+        Request{.url = GetEndpoint("/files/" + std::move(id)) + "?" +
+                       http::FormDataToString(
+                           {{"fields", kFileProperties},
+                            {"removeParents", std::move(remove_parents)},
+                            {"addParents", destination.id}}),
+                .method = http::Method::kPatch,
+                .headers = {{"Content-Type", "application/json"}}};
+    request.body = json::object().dump();
+    auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                     std::move(stop_token));
+    co_return ToItem(response);
+  }
+
  private:
   static constexpr std::string_view kEndpoint =
       "https://www.googleapis.com/drive/v3";
@@ -265,6 +293,9 @@ struct GoogleDrive::CloudProvider
     result.id = json["id"];
     result.name = json["name"];
     result.timestamp = http::ParseTime(std::string(json["modifiedTime"]));
+    for (std::string parents : json["parents"]) {
+      result.parents.emplace_back(std::move(parents));
+    }
     if constexpr (std::is_same_v<T, File>) {
       if (json.contains("size")) {
         result.size = std::stoll(std::string(json["size"]));

@@ -170,7 +170,7 @@ class Dropbox::CloudProvider
 
   Task<Item> RenameItem(Item item, std::string new_name,
                         stdx::stop_token stop_token) {
-    auto id = std::visit([](auto d) { return d.id; }, item);
+    auto id = std::visit([](const auto& d) { return d.id; }, item);
     auto request = Request{.url = GetEndpoint("/files/move_v2"),
                            .method = http::Method::kPost};
     json json;
@@ -201,6 +201,20 @@ class Dropbox::CloudProvider
     json["path"] = std::visit([](const auto& d) { return d.id; }, item);
     request.body = json.dump();
     co_await FetchJson(std::move(request), std::move(stop_token));
+  }
+
+  Task<Item> MoveItem(Item source, Directory destination,
+                      stdx::stop_token stop_token) {
+    auto request = Request{.url = GetEndpoint("/files/move_v2"),
+                           .method = http::Method::kPost};
+    json json;
+    json["from_path"] = std::visit([](const auto& d) { return d.id; }, source);
+    json["to_path"] = destination.id + "/" +
+                      std::visit([](const auto& d) { return d.name; }, source);
+    request.body = json.dump();
+    auto response =
+        co_await FetchJson(std::move(request), std::move(stop_token));
+    co_return ToItem(response["metadata"]);
   }
 
  private:

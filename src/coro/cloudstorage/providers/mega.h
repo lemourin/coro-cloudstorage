@@ -88,6 +88,8 @@ class Mega::CloudProvider
 
   Task<Item> RenameItem(Item item, std::string new_name,
                         coro::stdx::stop_token);
+  Task<Item> MoveItem(Item source, Directory destination,
+                      coro::stdx::stop_token);
   Task<GeneralData> GetGeneralData(coro::stdx::stop_token);
   Task<Directory> GetRoot(coro::stdx::stop_token);
   Task<PageData> ListDirectoryPage(Directory directory,
@@ -171,7 +173,11 @@ class Mega::CloudProvider
       }
     }
 
-    void unlink_result(::mega::handle handle, ::mega::error e) override {
+    void unlink_result(::mega::handle handle, ::mega::error e) final {
+      SetResult(std::make_tuple(handle, e));
+    }
+
+    void rename_result(::mega::handle handle, ::mega::error e) final {
       SetResult(std::make_tuple(handle, e));
     }
 

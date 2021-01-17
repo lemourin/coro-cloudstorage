@@ -205,6 +205,21 @@ Task<Mega::Item> Mega::CloudProvider::RenameItem(
   co_return ToItem(GetNode(handle));
 }
 
+Task<Mega::Item> Mega::CloudProvider::MoveItem(
+    Item source, Directory destination, coro::stdx::stop_token stop_token) {
+  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
+  auto source_node = GetNode(
+      std::visit([](const auto& d) { return std::cref(d.id); }, source));
+  auto destination_node = GetNode(destination.id);
+  std::any result = co_await Do<&::mega::MegaClient::rename>(
+      std::move(stop_token), source_node, destination_node,
+      ::mega::SYNCDEL_NONE, ::mega::UNDEF);
+  const auto& [handle, error] = std::move(
+      std::any_cast<std::tuple<::mega::handle, ::mega::error>>(result));
+  Check(error);
+  co_return ToItem(GetNode(handle));
+}
+
 Task<Mega::Directory> Mega::CloudProvider::CreateDirectory(
     Directory parent, std::string name, coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
