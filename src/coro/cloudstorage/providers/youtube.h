@@ -101,11 +101,17 @@ struct YouTube {
     std::string username;
   };
 
+  struct FileContent {
+    Generator<std::string> data;
+    int64_t size;
+  };
+
   static constexpr std::string_view kId = "youtube";
 };
 
 template <typename AuthManager>
-struct YouTube::CloudProvider : YouTube {
+struct YouTube::CloudProvider
+    : coro::cloudstorage::CloudProvider<YouTube, CloudProvider<AuthManager>> {
   using Request = http::Request<std::string>;
 
   explicit CloudProvider(AuthManager auth_manager)
