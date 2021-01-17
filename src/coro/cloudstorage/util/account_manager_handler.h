@@ -50,6 +50,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
     std::string id;
     std::variant<CloudProviderT<CloudProviders>...> provider;
+    stdx::stop_source stop_source;
   };
 
   struct Data {
@@ -69,6 +70,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     void RemoveCloudProvider(std::string id) {
       for (auto it = std::begin(accounts); it != std::end(accounts);) {
         if (it->id == id) {
+          it->stop_source.request_stop();
           account_listener.OnDestroy(&*it);
           it = accounts.erase(it);
         } else {
@@ -262,11 +264,26 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
     for (auto& handler : d_->handlers) {
       if (path.starts_with(handler.prefix)) {
-        co_return co_await std::visit(
-            [request = std::move(request), stop_token](auto& d) mutable {
-              return d(std::move(request), std::move(stop_token));
-            },
-            handler.handler);
+        if (auto account_it = std::find_if(
+                d_->accounts.begin(), d_->accounts.end(),
+                [&](const auto& account) { return account.id == handler.id; });
+            account_it != d_->accounts.end()) {
+          ::coro::util::StopTokenOr stop_token_or(
+              account_it->stop_source.get_token(), std::move(stop_token));
+          co_return co_await std::visit(
+              [request = std::move(request),
+               stop_token = stop_token_or.GetToken()](auto& d) mutable {
+                return d(std::move(request), std::move(stop_token));
+              },
+              handler.handler);
+        } else {
+          co_return co_await std::visit(
+              [request = std::move(request),
+               stop_token = std::move(stop_token)](auto& d) mutable {
+                return d(std::move(request), std::move(stop_token));
+              },
+              handler.handler);
+        }
       }
     }
     if (path.empty() || path == "/") {
