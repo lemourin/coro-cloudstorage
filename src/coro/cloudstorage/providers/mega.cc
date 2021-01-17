@@ -1,7 +1,7 @@
 #include "mega.h"
 
 #include <coro/http/http_parse.h>
-#include <coro/util/make_pointer.h>
+#include <coro/util/raii_utils.h>
 
 namespace coro::cloudstorage {
 

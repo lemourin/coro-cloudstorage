@@ -9,7 +9,7 @@
 #include <coro/cloudstorage/util/serialize_utils.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/util/function_traits.h>
-#include <coro/util/make_pointer.h>
+#include <coro/util/raii_utils.h>
 #include <coro/util/type_list.h>
 #include <mega.h>
 
