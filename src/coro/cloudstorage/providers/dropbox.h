@@ -86,7 +86,8 @@ struct Dropbox {
 };
 
 template <http::HttpClient Http>
-class Dropbox::CloudProvider : public Dropbox {
+class Dropbox::CloudProvider
+    : public coro::cloudstorage::CloudProvider<Dropbox, CloudProvider<Http>> {
  public:
   using json = nlohmann::json;
   using Request = http::Request<std::string>;

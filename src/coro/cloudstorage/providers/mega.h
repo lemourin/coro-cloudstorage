@@ -19,29 +19,24 @@
 
 namespace coro::cloudstorage {
 
-struct MegaAuth {
-  struct AuthToken {
-    std::string email;
-    std::string session;
+struct Mega {
+  struct Auth {
+    struct AuthToken {
+      std::string email;
+      std::string session;
+    };
+
+    struct AuthData {
+      std::string api_key;
+      std::string app_name;
+    };
+
+    struct UserCredential {
+      std::string email;
+      std::string password;
+      std::optional<std::string> twofactor;
+    };
   };
-
-  struct AuthData {
-    std::string api_key;
-    std::string app_name;
-  };
-
-  struct UserCredential {
-    std::string email;
-    std::string password;
-    std::optional<std::string> twofactor;
-  };
-};
-
-class Mega : public MegaAuth {
- public:
-  using Auth = MegaAuth;
-
-  static constexpr std::string_view kId = "mega";
 
   struct ItemData {
     ::mega::handle id;
@@ -68,9 +63,21 @@ class Mega : public MegaAuth {
     int64_t space_total;
   };
 
+  struct CloudProvider;
+
+  static constexpr std::string_view kId = "mega";
+};
+
+class Mega::CloudProvider
+    : public coro::cloudstorage::CloudProvider<Mega, CloudProvider> {
+ public:
+  using AuthToken = Auth::AuthToken;
+  using AuthData = Auth::AuthData;
+  using UserCredential = Auth::UserCredential;
+
   template <typename EventLoop, http::HttpClient HttpClient>
-  Mega(const EventLoop& event_loop, const HttpClient& http,
-       AuthToken auth_token, const AuthData& auth_data)
+  CloudProvider(const EventLoop& event_loop, const HttpClient& http,
+                AuthToken auth_token, const AuthData& auth_data)
       : auth_token_(std::move(auth_token)),
         d_(std::make_unique<Data>(event_loop, http, auth_data)) {}
 
@@ -324,16 +331,17 @@ class Mega : public MegaAuth {
 template <>
 struct CreateCloudProvider<Mega> {
   template <typename CloudFactory, typename... Args>
-  auto operator()(const CloudFactory& factory, Mega::AuthToken auth_token,
+  auto operator()(const CloudFactory& factory, Mega::Auth::AuthToken auth_token,
                   Args&&...) const {
-    return Mega(*factory.event_loop_, *factory.http_, std::move(auth_token),
-                factory.auth_data_.template operator()<Mega>());
+    return Mega::CloudProvider(*factory.event_loop_, *factory.http_,
+                               std::move(auth_token),
+                               factory.auth_data_.template operator()<Mega>());
   }
 };
 
 namespace util {
 template <>
-inline auto ToJson<Mega::AuthToken>(Mega::AuthToken token) {
+inline auto ToJson<Mega::Auth::AuthToken>(Mega::Auth::AuthToken token) {
   nlohmann::json json;
   json["email"] = std::move(token.email);
   json["session"] = http::ToBase64(token.session);
@@ -341,8 +349,8 @@ inline auto ToJson<Mega::AuthToken>(Mega::AuthToken token) {
 }
 
 template <>
-inline auto ToAuthToken<Mega::AuthToken>(const nlohmann::json& json) {
-  return Mega::AuthToken{
+inline auto ToAuthToken<Mega::Auth::AuthToken>(const nlohmann::json& json) {
+  return Mega::Auth::AuthToken{
       .email = json.at("email"),
       .session = http::FromBase64(std::string(json.at("session")))};
 }
@@ -351,12 +359,12 @@ template <typename EventLoop, http::HttpClient HttpClient>
 class MegaAuthHandler {
  public:
   MegaAuthHandler(const EventLoop& event_loop, const HttpClient& http,
-                  Mega::AuthData auth_data)
+                  Mega::Auth::AuthData auth_data)
       : event_loop_(&event_loop),
         http_(&http),
         auth_data_(std::move(auth_data)) {}
 
-  Task<std::variant<http::Response<>, Mega::AuthToken>> operator()(
+  Task<std::variant<http::Response<>, Mega::Auth::AuthToken>> operator()(
       coro::http::Request<> request, coro::stdx::stop_token stop_token) const {
     if (request.method == http::Method::kPost) {
       auto query =
@@ -365,17 +373,17 @@ class MegaAuthHandler {
       auto it2 = query.find("password");
       if (it1 != std::end(query) && it2 != std::end(query)) {
         auto it3 = query.find("twofactor");
-        Mega::UserCredential credential = {
+        Mega::Auth::UserCredential credential = {
             .email = it1->second,
             .password = it2->second,
             .twofactor = it3 != std::end(query)
                              ? std::make_optional(it3->second)
                              : std::nullopt};
-        std::string session = co_await Mega::GetSession(*event_loop_, *http_,
-                                                        std::move(credential),
-                                                        auth_data_, stop_token);
-        co_return Mega::AuthToken{.email = it1->second,
-                                  .session = std::move(session)};
+        std::string session = co_await Mega::CloudProvider::GetSession(
+            *event_loop_, *http_, std::move(credential), auth_data_,
+            stop_token);
+        co_return Mega::Auth::AuthToken{.email = it1->second,
+                                        .session = std::move(session)};
       } else {
         throw http::HttpException(http::HttpException::kBadRequest);
       }
@@ -409,7 +417,7 @@ class MegaAuthHandler {
 
   const EventLoop* event_loop_;
   const HttpClient* http_;
-  Mega::AuthData auth_data_;
+  Mega::Auth::AuthData auth_data_;
 };
 
 template <>
@@ -423,7 +431,7 @@ struct CreateAuthHandler<Mega> {
 };
 
 template <>
-inline Mega::AuthData GetAuthData<Mega>() {
+inline Mega::Auth::AuthData GetAuthData<Mega>() {
   return {.api_key = "ZVhB0Czb", .app_name = "coro-cloudstorage"};
 }
 

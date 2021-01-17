@@ -115,7 +115,8 @@ struct OneDrive {
 };
 
 template <typename AuthManager>
-struct OneDrive::CloudProvider : OneDrive {
+struct OneDrive::CloudProvider
+    : coro::cloudstorage::CloudProvider<OneDrive, CloudProvider<AuthManager>> {
   using Request = http::Request<std::string>;
 
   explicit CloudProvider(AuthManager auth_manager)

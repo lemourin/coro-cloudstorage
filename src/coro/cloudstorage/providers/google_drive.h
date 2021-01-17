@@ -120,7 +120,9 @@ struct GoogleDrive {
 };
 
 template <typename AuthManager>
-struct GoogleDrive::CloudProvider : GoogleDrive {
+struct GoogleDrive::CloudProvider
+    : coro::cloudstorage::CloudProvider<GoogleDrive,
+                                        CloudProvider<AuthManager>> {
   using Request = http::Request<std::string>;
   explicit CloudProvider(AuthManager auth_manager)
       : auth_manager_(std::move(auth_manager)) {}

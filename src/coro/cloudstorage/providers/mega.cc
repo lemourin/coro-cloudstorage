@@ -29,8 +29,8 @@ Mega::Item ToItem(::mega::Node* node) {
 
 }  // namespace
 
-Task<std::string> Mega::Data::GetSession(UserCredential credentials,
-                                         stdx::stop_token stop_token) {
+Task<std::string> Mega::CloudProvider::Data::GetSession(
+    UserCredential credentials, stdx::stop_token stop_token) {
   auto [version, email, salt, prelogin_error] =
       std::any_cast<std::tuple<int, std::string, std::string, ::mega::error>>(
           co_await Do<&::mega::MegaClient::prelogin>(
@@ -65,7 +65,7 @@ Task<std::string> Mega::Data::GetSession(UserCredential credentials,
   co_return std::string(reinterpret_cast<const char*>(buffer), length);
 }
 
-Task<> Mega::Data::LogIn(std::string session) {
+Task<> Mega::CloudProvider::Data::LogIn(std::string session) {
   auto stop_token = stop_source.get_token();
   auto login_error = std::any_cast<::mega::error>(co_await Do<kSessionLogin>(
       stop_token, reinterpret_cast<const uint8_t*>(session.c_str()),
@@ -79,16 +79,16 @@ Task<> Mega::Data::LogIn(std::string session) {
   Check(fetch_error);
 }
 
-Task<> Mega::Data::EnsureLoggedIn(std::string session,
-                                  stdx::stop_token stop_token) {
+Task<> Mega::CloudProvider::Data::EnsureLoggedIn(std::string session,
+                                                 stdx::stop_token stop_token) {
   if (!current_login) {
     current_login =
-        SharedPromise(Mega::DoLogIn{.d = this, .session = std::move(session)});
+        SharedPromise(DoLogIn{.d = this, .session = std::move(session)});
   }
   co_await current_login->Get(std::move(stop_token));
 }
 
-const char* Mega::GetErrorDescription(::mega::error e) {
+const char* Mega::CloudProvider::GetErrorDescription(::mega::error e) {
   if (e <= 0) {
     using namespace ::mega;
     switch (e) {
@@ -151,7 +151,7 @@ const char* Mega::GetErrorDescription(::mega::error e) {
   return "HTTP Error";
 }
 
-void Mega::Data::OnEvent() {
+void Mega::CloudProvider::Data::OnEvent() {
   if (exec_pending) {
     recursive_exec = true;
     return;
@@ -165,7 +165,7 @@ void Mega::Data::OnEvent() {
   }
 }
 
-::mega::Node* Mega::GetNode(::mega::handle handle) const {
+::mega::Node* Mega::CloudProvider::GetNode(::mega::handle handle) const {
   auto node = d_->mega_client.nodebyhandle(handle);
   if (!node) {
     throw CloudException(CloudException::Type::kNotFound);
@@ -174,7 +174,7 @@ void Mega::Data::OnEvent() {
   }
 }
 
-Task<Mega::PageData> Mega::ListDirectoryPage(
+Task<Mega::PageData> Mega::CloudProvider::ListDirectoryPage(
     Directory directory, std::optional<std::string>,
     coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, std::move(stop_token));
@@ -185,13 +185,14 @@ Task<Mega::PageData> Mega::ListDirectoryPage(
   co_return result;
 }
 
-Task<Mega::Directory> Mega::GetRoot(coro::stdx::stop_token stop_token) {
+Task<Mega::Directory> Mega::CloudProvider::GetRoot(
+    coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, std::move(stop_token));
   co_return Directory{{.id = d_->mega_client.rootnodes[0]}};
 }
 
-Task<Mega::Item> Mega::RenameItem(Item item, std::string new_name,
-                                  coro::stdx::stop_token stop_token) {
+Task<Mega::Item> Mega::CloudProvider::RenameItem(
+    Item item, std::string new_name, coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
   auto node =
       GetNode(std::visit([](const auto& d) { return std::cref(d.id); }, item));
@@ -204,8 +205,8 @@ Task<Mega::Item> Mega::RenameItem(Item item, std::string new_name,
   co_return ToItem(GetNode(handle));
 }
 
-Task<Mega::Directory> Mega::CreateDirectory(Directory parent, std::string name,
-                                            coro::stdx::stop_token stop_token) {
+Task<Mega::Directory> Mega::CloudProvider::CreateDirectory(
+    Directory parent, std::string name, coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
 
   ::mega::NewNode folder;
@@ -240,7 +241,8 @@ Task<Mega::Directory> Mega::CreateDirectory(Directory parent, std::string name,
       ToItem(GetNode(std::any_cast<::mega::handle>(result))));
 }
 
-Task<> Mega::RemoveItem(Item item, coro::stdx::stop_token stop_token) {
+Task<> Mega::CloudProvider::RemoveItem(Item item,
+                                       coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
 
   std::any result = co_await Do<&::mega::MegaClient::unlink>(
@@ -251,7 +253,7 @@ Task<> Mega::RemoveItem(Item item, coro::stdx::stop_token stop_token) {
   Check(error);
 }
 
-Task<Mega::GeneralData> Mega::GetGeneralData(
+Task<Mega::GeneralData> Mega::CloudProvider::GetGeneralData(
     coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
   std::any result = co_await Do<&::mega::MegaClient::getaccountdetails>(
@@ -267,16 +269,17 @@ Task<Mega::GeneralData> Mega::GetGeneralData(
                         .space_total = account_details.storage_max};
 }
 
-Generator<std::string> Mega::GetFileContent(File file, http::Range range,
-                                            coro::stdx::stop_token stop_token) {
+Generator<std::string> Mega::CloudProvider::GetFileContent(
+    File file, http::Range range, coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
   auto node = GetNode(file.id);
   intptr_t tag = d_->mega_client.nextreqtag();
   auto size = range.end.value_or(node->size - 1) - range.start + 1;
   auto data = std::make_shared<ReadData>();
   d_->mega_app.read_data.insert({tag, data});
-  auto guard = coro::util::MakePointer(
-      this, [tag](Mega* m) { m->d_->mega_app.read_data.erase(tag); });
+  auto guard = coro::util::MakePointer(this, [tag](Mega::CloudProvider* m) {
+    m->d_->mega_app.read_data.erase(tag);
+  });
 
   stdx::stop_callback callback(stop_token, [data] {
     data->semaphore.SetException(InterruptedException());

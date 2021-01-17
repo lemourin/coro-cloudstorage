@@ -32,9 +32,8 @@ class CloudFactory {
   template <typename CloudProvider, typename... Args>
   auto Create(typename CloudProvider::Auth::AuthToken auth_token,
               Args&&... args) const {
-    return ::coro::cloudstorage::CloudProvider(
-        CreateCloudProvider<CloudProvider>{}(*this, std::move(auth_token),
-                                             std::forward<Args>(args)...));
+    return CreateCloudProvider<CloudProvider>{}(*this, std::move(auth_token),
+                                                std::forward<Args>(args)...);
   }
 
   template <typename CloudProvider>

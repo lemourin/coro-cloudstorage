@@ -32,10 +32,12 @@ concept HasMimeType = requires(T v) {
 };
 
 template <typename T, typename CloudProvider>
-concept IsDirectory = requires(typename CloudProvider::Impl provider, T v,
-                               std::optional<std::string> page_token,
-                               stdx::stop_token stop_token) {
-  { provider.ListDirectoryPage(v, page_token, stop_token).await_resume() }
+concept IsDirectory = requires(
+    typename CloudProvider::Impl provider, T v,
+    std::optional<std::string> page_token, stdx::stop_token stop_token,
+    typename decltype(provider.ListDirectoryPage(v, page_token,
+                                                 stop_token))::type page_data) {
+  { page_data }
   ->stdx::convertible_to<typename CloudProvider::PageData>;
 };
 
@@ -46,110 +48,28 @@ concept IsFile = requires(typename CloudProvider::Impl provider, T v,
   ->GeneratorLike<std::string_view>;
 };
 
-template <typename ImplT>
+template <typename CloudProviderT, typename ImplT = CloudProviderT>
 class CloudProvider {
  public:
   using Impl = ImplT;
-  using Item = typename Impl::Item;
-  using PageData = typename Impl::PageData;
+  using Item = typename CloudProviderT::Item;
+  using PageData = typename CloudProviderT::PageData;
 
-  explicit CloudProvider(Impl impl) : impl_(std::move(impl)) {}
-
-  CloudProvider(const CloudProvider&) = delete;
-  CloudProvider(CloudProvider&&) noexcept = default;
-  CloudProvider& operator=(const CloudProvider&) = delete;
-  CloudProvider& operator=(CloudProvider&&) noexcept = default;
-
-  ~CloudProvider() { stop_source_.request_stop(); }
-
-  auto GetRoot(stdx::stop_token stop_token = stdx::stop_token()) {
-    return Do(
-        [this, stop_token]() mutable {
-          return impl_.GetRoot(std::move(stop_token));
-        },
-        stop_token);
-  }
-
-  auto GetGeneralData(stdx::stop_token stop_token = stdx::stop_token()) {
-    return Do(
-        [this, stop_token]() mutable {
-          return impl_.GetGeneralData(std::move(stop_token));
-        },
-        stop_token);
-  }
-
-  auto RenameItem(Item item, std::string new_name,
-                  stdx::stop_token stop_token = stdx::stop_token()) {
-    return Do(
-        [this, item = std::move(item), new_name = std::move(new_name),
-         stop_token]() mutable {
-          return impl_.RenameItem(std::move(item), std::move(new_name),
-                                  std::move(stop_token));
-        },
-        stop_token);
-  }
-
-  Task<Item> GetItemByPath(std::string path,
-                           stdx::stop_token stop_token = stdx::stop_token()) {
-    co_return co_await GetItemByPath(co_await GetRoot(stop_token),
-                                     std::move(path), stop_token);
-  }
-
-  template <typename File>
-  auto GetFileContent(File file, http::Range range = http::Range{},
-                      stdx::stop_token stop_token = stdx::stop_token()) {
-    return Do(
-        [this, file = std::move(file), range, stop_token]() mutable {
-          return impl_.GetFileContent(std::move(file), range,
-                                      std::move(stop_token));
-        },
-        stop_token);
+  Task<Item> GetItemByPath(std::string path, stdx::stop_token stop_token) {
+    co_return co_await Get()->GetItemByPath(co_await Get()->GetRoot(stop_token),
+                                            std::move(path), stop_token);
   }
 
   template <typename Directory>
-  Generator<PageData> ListDirectory(
-      Directory directory, stdx::stop_token stop_token = stdx::stop_token()) {
+  Generator<PageData> ListDirectory(Directory directory,
+                                    stdx::stop_token stop_token) {
     std::optional<std::string> current_page_token;
     do {
-      auto page_data = co_await ListDirectoryPage(
+      auto page_data = co_await Get()->ListDirectoryPage(
           directory, std::move(current_page_token), stop_token);
       co_yield page_data;
       current_page_token = page_data.next_page_token;
     } while (current_page_token);
-  }
-
-  template <typename Directory>
-  auto ListDirectoryPage(Directory directory,
-                         std::optional<std::string> page_token = std::nullopt,
-                         stdx::stop_token stop_token = stdx::stop_token()) {
-    return Do(
-        [this, directory = std::move(directory),
-         page_token = std::move(page_token), stop_token]() mutable {
-          return impl_.ListDirectoryPage(std::move(directory),
-                                         std::move(page_token),
-                                         std::move(stop_token));
-        },
-        stop_token);
-  }
-
-  template <typename Directory>
-  auto CreateDirectory(Directory parent, std::string name,
-                       stdx::stop_token stop_token = stdx::stop_token()) {
-    return Do(
-        [this, parent = std::move(parent), name = std::move(name),
-         stop_token]() mutable {
-          return impl_.CreateDirectory(std::move(parent), std::move(name),
-                                       std::move(stop_token));
-        },
-        stop_token);
-  }
-
-  auto RemoveItem(Item item, stdx::stop_token stop_token = stdx::stop_token()) {
-    return Do(
-        [this, item = std::move(item), stop_token]() mutable {
-          return impl_.RemoveItem(std::move(item), std::move(stop_token));
-        },
-        stop_token);
   }
 
   template <typename T>
@@ -189,6 +109,8 @@ class CloudProvider {
   }
 
  private:
+  auto Get() { return static_cast<Impl*>(this); }
+
   template <typename Directory>
   Task<Item> GetItemByPath(Directory current_directory, std::string path,
                            stdx::stop_token stop_token) {
@@ -230,59 +152,6 @@ class CloudProvider {
 
     throw CloudException(CloudException::Type::kNotFound);
   }
-
-  template <typename F>
-  auto Do(F func, stdx::stop_token stop_token)
-      -> std::enable_if_t<std::is_same_v<void, decltype(func().await_resume())>,
-                          Task<>> {
-    ::coro::util::StopTokenOr stop_token_or(stop_source_.get_token(),
-                                            std::move(stop_token));
-    stop_token = stop_token_or.GetToken();
-    co_await func();
-    if (stop_token.stop_requested()) {
-      throw InterruptedException();
-    }
-  }
-
-  template <typename F>
-  auto Do(F func, stdx::stop_token stop_token) -> std::enable_if_t<
-      !std::is_same_v<void, decltype(func().await_resume())>,
-      Task<decltype(func().await_resume())>> {
-    stdx::stop_source stop_source;
-    stdx::stop_callback callback_fst(stop_token,
-                                     [&] { stop_source.request_stop(); });
-    stdx::stop_callback callback_nd(stop_source_.get_token(),
-                                    [&] { stop_source.request_stop(); });
-    stop_token = stop_source.get_token();
-    auto result = co_await func();
-    if (stop_token.stop_requested()) {
-      throw InterruptedException();
-    }
-    co_return std::move(result);
-  }
-
-  template <typename F>
-  auto Do(F func, stdx::stop_token stop_token) -> Generator<
-      std::remove_reference_t<decltype(*(func().begin().await_resume()))>> {
-    stdx::stop_source stop_source;
-    stdx::stop_callback callback_fst(stop_token,
-                                     [&] { stop_source.request_stop(); });
-    stdx::stop_callback callback_nd(stop_source_.get_token(),
-                                    [&] { stop_source.request_stop(); });
-    stop_token = stop_source.get_token();
-    FOR_CO_AWAIT(auto& entry, func()) {
-      if (stop_token.stop_requested()) {
-        throw InterruptedException();
-      }
-      co_yield std::move(entry);
-    }
-    if (stop_token.stop_requested()) {
-      throw InterruptedException();
-    }
-  }
-
-  stdx::stop_source stop_source_;
-  Impl impl_;
 };
 
 template <typename CloudProvider>
