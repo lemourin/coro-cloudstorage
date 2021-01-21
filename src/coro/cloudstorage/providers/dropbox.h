@@ -217,6 +217,24 @@ class Dropbox::CloudProvider
     co_return ToItem(response["metadata"]);
   }
 
+  Task<File> CreateFile(Directory parent, std::string_view name,
+                        Generator<std::string> content, int64_t size,
+                        stdx::stop_token stop_token) {
+    json json;
+    json["path"] = parent.id + "/" + std::string(name);
+    json["mode"] = "overwrite";
+    auto request = http::Request<>{
+        .url = "https://content.dropboxapi.com/2/files/upload",
+        .method = http::Method::kPost,
+        .headers = {{"Dropbox-API-Arg", json.dump()},
+                    {"Authorization", "Bearer " + auth_token_.access_token},
+                    {"Content-Type", "application/octet-stream"}},
+        .body = std::move(content)};
+    auto response = co_await util::FetchJson(*http_, std::move(request),
+                                             std::move(stop_token));
+    co_return ToItemImpl<File>(response);
+  }
+
  private:
   static constexpr std::string_view kEndpoint = "https://api.dropboxapi.com/2";
 
@@ -233,8 +251,7 @@ class Dropbox::CloudProvider
     return std::string(kEndpoint) + std::string(path);
   }
 
-  auto FetchJson(http::Request<std::string> request,
-                 stdx::stop_token stop_token) const {
+  auto FetchJson(Request request, stdx::stop_token stop_token) const {
     request.method = http::Method::kPost;
     request.headers.emplace_back("Content-Type", "application/json");
     request.headers.emplace_back("Authorization",

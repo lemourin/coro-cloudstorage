@@ -49,6 +49,17 @@ concept IsFile = requires(typename CloudProvider::Impl provider, T v,
   ->GeneratorLike<std::string_view>;
 };
 
+template <typename T, typename V, typename CloudProvider>
+concept CanCreateFile = requires(
+    typename CloudProvider::Impl provider, T parent, std::string_view name,
+    V content, int64_t size, stdx::stop_token stop_token,
+    decltype(provider.CreateFile(parent, name, std::move(content), size,
+                                 stop_token)) item_promise,
+    typename decltype(item_promise)::type item) {
+  { item }
+  ->IsFile<CloudProvider>;
+};
+
 template <typename T, typename CloudProvider>
 concept CanRename = requires(
     typename CloudProvider::Impl provider, T v, std::string new_name,
