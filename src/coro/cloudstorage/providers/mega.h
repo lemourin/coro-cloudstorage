@@ -17,6 +17,10 @@
 #undef CreateDirectory
 #endif
 
+#ifdef CreateFile
+#undef CreateFile
+#endif
+
 #include <any>
 #include <optional>
 #include <random>
