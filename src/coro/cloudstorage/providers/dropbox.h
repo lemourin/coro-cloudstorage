@@ -4,6 +4,7 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/fetch_json.h>
+#include <coro/cloudstorage/util/generator_utils.h>
 #include <coro/http/http.h>
 
 #include <nlohmann/json.hpp>
@@ -220,19 +221,69 @@ class Dropbox::CloudProvider
   Task<File> CreateFile(Directory parent, std::string_view name,
                         Generator<std::string> content, int64_t size,
                         stdx::stop_token stop_token) {
-    json json;
-    json["path"] = parent.id + "/" + std::string(name);
-    json["mode"] = "overwrite";
-    auto request = http::Request<>{
-        .url = "https://content.dropboxapi.com/2/files/upload",
-        .method = http::Method::kPost,
-        .headers = {{"Dropbox-API-Arg", json.dump()},
-                    {"Authorization", "Bearer " + auth_token_.access_token},
-                    {"Content-Type", "application/octet-stream"}},
-        .body = std::move(content)};
-    auto response = co_await util::FetchJson(*http_, std::move(request),
-                                             std::move(stop_token));
-    co_return ToItemImpl<File>(response);
+    constexpr int kChunkSize = 1024 * 1024 * 150;
+    if (size <= kChunkSize) {
+      json json;
+      json["path"] = parent.id + "/" + std::string(name);
+      json["mode"] = "overwrite";
+      auto request = http::Request<>{
+          .url = "https://content.dropboxapi.com/2/files/upload",
+          .method = http::Method::kPost,
+          .headers = {{"Dropbox-API-Arg", json.dump()},
+                      {"Authorization", "Bearer " + auth_token_.access_token},
+                      {"Content-Type", "application/octet-stream"}},
+          .body = std::move(content)};
+      auto response = co_await util::FetchJson(*http_, std::move(request),
+                                               std::move(stop_token));
+      co_return ToItemImpl<File>(response);
+    } else {
+      int64_t offset = 0;
+      std::optional<std::string> session_id;
+      auto it = co_await content.begin();
+      while (true) {
+        auto chunk_size = std::min<int64_t>(kChunkSize, size - offset);
+        http::Request<> request{
+            .method = http::Method::kPost,
+            .headers = {{"Authorization", "Bearer " + auth_token_.access_token},
+                        {"Content-Type", "application/octet-stream"},
+                        {"Content-Length", std::to_string(chunk_size)}},
+            .body = util::Take(it, chunk_size)};
+        if (!session_id) {
+          request.headers.emplace_back("Dropbox-API-Arg", "{}");
+          request.url =
+              "https://content.dropboxapi.com/2/files/upload_session/start";
+          auto response =
+              co_await util::FetchJson(*http_, std::move(request), stop_token);
+          session_id = response["session_id"];
+        } else if (offset + chunk_size < size) {
+          json json;
+          json["cursor"]["session_id"] = *session_id;
+          json["cursor"]["offset"] = offset;
+          request.headers.emplace_back("Dropbox-API-Arg", json.dump());
+          request.url =
+              "https://content.dropboxapi.com/2/files/upload_session/append_v2";
+          auto response = co_await http_->Fetch(std::move(request), stop_token);
+          if (response.status / 100 != 2) {
+            throw coro::http::HttpException(
+                response.status,
+                co_await http::GetBody(std::move(response.body)));
+          }
+        } else {
+          json json;
+          json["cursor"]["session_id"] = *session_id;
+          json["cursor"]["offset"] = offset;
+          json["commit"]["path"] = parent.id + "/" + std::string(name);
+          json["commit"]["mode"] = "overwrite";
+          request.headers.emplace_back("Dropbox-API-Arg", json.dump());
+          request.url =
+              "https://content.dropboxapi.com/2/files/upload_session/finish";
+          auto response =
+              co_await util::FetchJson(*http_, std::move(request), stop_token);
+          co_return ToItemImpl<File>(response);
+        }
+        offset += chunk_size;
+      }
+    }
   }
 
  private:
