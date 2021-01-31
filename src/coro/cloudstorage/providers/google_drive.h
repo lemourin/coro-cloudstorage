@@ -268,7 +268,53 @@ struct GoogleDrive::CloudProvider
     co_return ToItem(response);
   }
 
+  Task<File> CreateSmallFile(Directory parent, std::string_view name,
+                             FileContent content, stdx::stop_token stop_token) {
+    http::Request<> request{
+        .url = "https://www.googleapis.com/upload/drive/v3/files?" +
+               http::FormDataToString(
+                   {{"uploadType", "multipart"}, {"fields", kFileProperties}}),
+        .method = http::Method::kPost,
+        .headers = {{"Accept", "application/json"},
+                    {"Content-Type",
+                     "multipart/related; boundary=" + std::string(kSeparator)},
+                    {"Authorization",
+                     "Bearer " + auth_manager_.GetAuthToken().access_token}},
+        .body = GetUploadForm(std::move(parent), std::string(name),
+                              std::move(content))};
+    auto response = co_await util::FetchJson(
+        auth_manager_.GetHttp(), std::move(request), std::move(stop_token));
+    co_return ToItemImpl<File>(response);
+  }
+
  private:
+  Generator<std::string> GetUploadForm(Directory parent, std::string name,
+                                       FileContent content) {
+    json metadata;
+    metadata["name"] = std::move(name);
+    metadata["parents"].push_back(parent.id);
+    co_yield "--";
+    co_yield std::string(kSeparator);
+    co_yield "\r\n";
+    co_yield "Content-Type: application/json; charset=UTF-8\r\n\r\n";
+    co_yield metadata.dump();
+    co_yield "\r\n";
+    co_yield "--";
+    co_yield std::string(kSeparator);
+    co_yield "\r\n";
+    co_yield "Content-Type: application/octet-stream\r\n\r\n";
+
+    FOR_CO_AWAIT(std::string & chunk, content.data) {
+      co_yield std::move(chunk);
+    }
+
+    co_yield "\r\n--";
+    co_yield std::string(kSeparator);
+    co_yield "--\r\n";
+  }
+
+  static constexpr std::string_view kSeparator = "fWoDm9QNn3v3Bq3bScUX";
+
   static constexpr std::string_view kEndpoint =
       "https://www.googleapis.com/drive/v3";
   static constexpr std::string_view kFileProperties =
