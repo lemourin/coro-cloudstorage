@@ -241,6 +241,23 @@ struct OneDrive::CloudProvider
     co_return ToItem(response);
   }
 
+  Task<File> CreateSmallFile(Directory parent, std::string_view name,
+                             FileContent content, stdx::stop_token stop_token) {
+    http::Request<> request{
+        .url = GetEndpoint("/me/drive/items/") + parent.id + ":/" +
+               http::EncodeUri(name) + ":/content",
+        .method = http::Method::kPut,
+        .headers = {{"Accept", "application/json"},
+                    {"Content-Type", "application/octet-stream"},
+                    {"Content-Length", std::to_string(content.size)},
+                    {"Authorization",
+                     "Bearer " + auth_manager_.GetAuthToken().access_token}},
+        .body = std::move(content.data)};
+    auto response = co_await util::FetchJson(
+        auth_manager_.GetHttp(), std::move(request), std::move(stop_token));
+    co_return ToItemImpl<File>(response);
+  }
+
  private:
   static constexpr std::string_view kFileProperties =
       "name,folder,audio,image,photo,video,id,size,lastModifiedDateTime,"
