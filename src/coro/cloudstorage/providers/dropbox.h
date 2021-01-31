@@ -4,7 +4,6 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/fetch_json.h>
-#include <coro/cloudstorage/util/generator_utils.h>
 #include <coro/http/http.h>
 
 #include <nlohmann/json.hpp>
@@ -78,6 +77,11 @@ struct Dropbox {
                                            std::move(stop_token));
       co_return AuthToken{.access_token = json["access_token"]};
     }
+  };
+
+  struct UploadSession {
+    std::string id;
+    std::string path;
   };
 
   template <http::HttpClient Http>
@@ -220,72 +224,81 @@ class Dropbox::CloudProvider
     co_return ToItem(response["metadata"]);
   }
 
-  Task<File> CreateFile(Directory parent, std::string_view name,
-                        Generator<std::string> content, int64_t size,
-                        stdx::stop_token stop_token) {
-    constexpr int kChunkSize = 1024 * 1024 * 150;
-    if (size <= kChunkSize) {
-      json json;
-      json["path"] = parent.id + "/" + std::string(name);
-      json["mode"] = "overwrite";
-      auto request = http::Request<>{
-          .url = "https://content.dropboxapi.com/2/files/upload",
-          .method = http::Method::kPost,
-          .headers = {{"Dropbox-API-Arg", json.dump()},
-                      {"Authorization", "Bearer " + auth_token_.access_token},
-                      {"Content-Type", "application/octet-stream"}},
-          .body = std::move(content)};
-      auto response = co_await util::FetchJson(*http_, std::move(request),
-                                               std::move(stop_token));
-      co_return ToItemImpl<File>(response);
-    } else {
-      int64_t offset = 0;
-      std::optional<std::string> session_id;
-      auto it = co_await content.begin();
-      while (true) {
-        auto chunk_size = std::min<int64_t>(kChunkSize, size - offset);
-        http::Request<> request{
-            .method = http::Method::kPost,
-            .headers = {{"Authorization", "Bearer " + auth_token_.access_token},
-                        {"Content-Type", "application/octet-stream"},
-                        {"Content-Length", std::to_string(chunk_size)}},
-            .body = util::Take(it, chunk_size)};
-        if (!session_id) {
-          request.headers.emplace_back("Dropbox-API-Arg", "{}");
-          request.url =
-              "https://content.dropboxapi.com/2/files/upload_session/start";
-          auto response =
-              co_await util::FetchJson(*http_, std::move(request), stop_token);
-          session_id = response["session_id"];
-        } else if (offset + chunk_size < size) {
-          json json;
-          json["cursor"]["session_id"] = *session_id;
-          json["cursor"]["offset"] = offset;
-          request.headers.emplace_back("Dropbox-API-Arg", json.dump());
-          request.url =
-              "https://content.dropboxapi.com/2/files/upload_session/append_v2";
-          auto response = co_await http_->Fetch(std::move(request), stop_token);
-          if (response.status / 100 != 2) {
-            throw coro::http::HttpException(
-                response.status,
-                co_await http::GetBody(std::move(response.body)));
-          }
-        } else {
-          json json;
-          json["cursor"]["session_id"] = *session_id;
-          json["cursor"]["offset"] = offset;
-          json["commit"]["path"] = parent.id + "/" + std::string(name);
-          json["commit"]["mode"] = "overwrite";
-          request.headers.emplace_back("Dropbox-API-Arg", json.dump());
-          request.url =
-              "https://content.dropboxapi.com/2/files/upload_session/finish";
-          auto response =
-              co_await util::FetchJson(*http_, std::move(request), stop_token);
-          co_return ToItemImpl<File>(response);
-        }
-        offset += chunk_size;
-      }
+  Task<UploadSession> CreateUploadSession(Directory parent,
+                                          std::string_view name,
+                                          FileContent content,
+                                          stdx::stop_token stop_token) {
+    http::Request<> request{
+        .url = "https://content.dropboxapi.com/2/files/upload_session/start",
+        .method = http::Method::kPost,
+        .headers = {{"Authorization", "Bearer " + auth_token_.access_token},
+                    {"Content-Type", "application/octet-stream"},
+                    {"Content-Length", std::to_string(content.size)},
+                    {"Dropbox-API-Arg", "{}"}},
+        .body = std::move(content.data)};
+    auto response = co_await util::FetchJson(*http_, std::move(request),
+                                             std::move(stop_token));
+    co_return UploadSession{.id = response["session_id"],
+                            .path = parent.id + "/" + std::string(name)};
+  }
+
+  Task<UploadSession> WriteChunk(UploadSession session, FileContent content,
+                                 int64_t offset, stdx::stop_token stop_token) {
+    json json;
+    json["cursor"]["session_id"] = std::move(session.id);
+    json["cursor"]["offset"] = offset;
+    http::Request<> request = {
+        .url =
+            "https://content.dropboxapi.com/2/files/upload_session/append_v2",
+        .method = http::Method::kPost,
+        .headers = {{"Authorization", "Bearer " + auth_token_.access_token},
+                    {"Content-Type", "application/octet-stream"},
+                    {"Content-Length", std::to_string(content.size)},
+                    {"Dropbox-API-Arg", json.dump()}},
+        .body = std::move(content.data)};
+    auto response = co_await http_->Fetch(std::move(request), stop_token);
+    if (response.status / 100 != 2) {
+      throw coro::http::HttpException(
+          response.status, co_await http::GetBody(std::move(response.body)));
     }
+    co_return std::move(session);
+  }
+
+  Task<File> FinishUploadSession(UploadSession session, FileContent content,
+                                 int64_t offset, stdx::stop_token stop_token) {
+    json json;
+    json["cursor"]["session_id"] = std::move(session.id);
+    json["cursor"]["offset"] = offset;
+    json["commit"]["path"] = std::move(session.path);
+    json["commit"]["mode"] = "overwrite";
+    http::Request<> request{
+        .url = "https://content.dropboxapi.com/2/files/upload_session/finish",
+        .method = http::Method::kPost,
+        .headers = {{"Authorization", "Bearer " + auth_token_.access_token},
+                    {"Content-Type", "application/octet-stream"},
+                    {"Content-Length", std::to_string(content.size)},
+                    {"Dropbox-API-Arg", json.dump()}},
+        .body = std::move(content.data)};
+    auto response =
+        co_await util::FetchJson(*http_, std::move(request), stop_token);
+    co_return ToItemImpl<File>(response);
+  }
+
+  Task<File> CreateSmallFile(Directory parent, std::string_view name,
+                             FileContent content, stdx::stop_token stop_token) {
+    json json;
+    json["path"] = parent.id + "/" + std::string(name);
+    json["mode"] = "overwrite";
+    auto request = http::Request<>{
+        .url = "https://content.dropboxapi.com/2/files/upload",
+        .method = http::Method::kPost,
+        .headers = {{"Dropbox-API-Arg", json.dump()},
+                    {"Authorization", "Bearer " + auth_token_.access_token},
+                    {"Content-Type", "application/octet-stream"}},
+        .body = std::move(content.data)};
+    auto response = co_await util::FetchJson(*http_, std::move(request),
+                                             std::move(stop_token));
+    co_return ToItemImpl<File>(response);
   }
 
  private:
