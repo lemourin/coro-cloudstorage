@@ -270,6 +270,57 @@ struct GoogleDrive::CloudProvider
 
   Task<File> CreateSmallFile(Directory parent, std::string_view name,
                              FileContent content, stdx::stop_token stop_token) {
+    return CreateOrUpdateFile(std::move(parent), name, std::move(content),
+                              std::move(stop_token));
+  }
+
+  Task<File> CreateOrUpdateFile(Directory parent, std::string_view name,
+                                FileContent content,
+                                stdx::stop_token stop_token) {
+    auto request = Request{
+        .url = GetEndpoint("/files") + "?" +
+               http::FormDataToString(
+                   {{"q", "'" + parent.id + "' in parents and name = '" +
+                              std::string(name) + "'"},
+                    {"fields", "files(id)"}})};
+    auto response =
+        co_await auth_manager_.FetchJson(std::move(request), stop_token);
+    if (response["files"].size() == 0) {
+      co_return co_await CreateFileImpl(
+          std::move(parent), name, std::move(content), std::move(stop_token));
+    } else if (response["files"].size() == 1) {
+      co_return co_await UpdateFile(std::string(response["files"][0]["id"]),
+                                    std::move(content), std::move(stop_token));
+    } else {
+      throw CloudException("ambiguous file reference");
+    }
+  }
+
+  Task<File> UpdateFile(std::string_view id, FileContent content,
+                        stdx::stop_token stop_token) {
+    http::Request<> request{
+        .url = "https://www.googleapis.com/upload/drive/v3/files/" +
+               std::string(id) + "?" +
+               http::FormDataToString(
+                   {{"uploadType", "multipart"}, {"fields", kFileProperties}}),
+        .method = http::Method::kPatch,
+        .headers = {{"Accept", "application/json"},
+                    {"Content-Type",
+                     "multipart/related; boundary=" + std::string(kSeparator)},
+                    {"Authorization",
+                     "Bearer " + auth_manager_.GetAuthToken().access_token}},
+        .body = GetUploadForm(json(), std::move(content))};
+    auto response = co_await util::FetchJson(
+        auth_manager_.GetHttp(), std::move(request), std::move(stop_token));
+    co_return ToItemImpl<File>(response);
+  }
+
+ private:
+  Task<File> CreateFileImpl(Directory parent, std::string_view name,
+                            FileContent content, stdx::stop_token stop_token) {
+    json metadata;
+    metadata["name"] = std::move(name);
+    metadata["parents"].push_back(parent.id);
     http::Request<> request{
         .url = "https://www.googleapis.com/upload/drive/v3/files?" +
                http::FormDataToString(
@@ -280,19 +331,13 @@ struct GoogleDrive::CloudProvider
                      "multipart/related; boundary=" + std::string(kSeparator)},
                     {"Authorization",
                      "Bearer " + auth_manager_.GetAuthToken().access_token}},
-        .body = GetUploadForm(std::move(parent), std::string(name),
-                              std::move(content))};
+        .body = GetUploadForm(std::move(metadata), std::move(content))};
     auto response = co_await util::FetchJson(
         auth_manager_.GetHttp(), std::move(request), std::move(stop_token));
     co_return ToItemImpl<File>(response);
   }
 
- private:
-  Generator<std::string> GetUploadForm(Directory parent, std::string name,
-                                       FileContent content) {
-    json metadata;
-    metadata["name"] = std::move(name);
-    metadata["parents"].push_back(parent.id);
+  Generator<std::string> GetUploadForm(json metadata, FileContent content) {
     co_yield "--";
     co_yield std::string(kSeparator);
     co_yield "\r\n";
