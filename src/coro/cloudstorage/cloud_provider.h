@@ -184,7 +184,7 @@ class CloudProvider {
   template <IsDirectory<CloudProvider> Directory, typename T = CloudProvider>
   requires CanCreateFile<Directory, T> auto CreateFile(
       Directory parent, std::string_view name, FileContent content,
-      stdx::stop_token stop_token) -> Task<typename CloudProviderT::File> {
+      stdx::stop_token stop_token) {
     constexpr int kChunkSize = 1024 * 1024 * 150;
     if constexpr (CanCreateSmallFile<Directory, T> &&
                   CanCreateUploadSession<Directory, T>) {

@@ -269,7 +269,7 @@ class Mega::CloudProvider
   };
 
   struct DoLogIn {
-    Task<> operator()() const { co_await d->LogIn(std::move(session)); }
+    Task<> operator()() { co_await d->LogIn(std::move(session)); }
     Data* d;
     std::string session;
   };
