@@ -233,7 +233,6 @@ class Dropbox::CloudProvider
         .method = http::Method::kPost,
         .headers = {{"Authorization", "Bearer " + auth_token_.access_token},
                     {"Content-Type", "application/octet-stream"},
-                    {"Content-Length", std::to_string(content.size)},
                     {"Dropbox-API-Arg", "{}"}},
         .body = std::move(content.data)};
     auto response = co_await util::FetchJson(*http_, std::move(request),
@@ -253,7 +252,6 @@ class Dropbox::CloudProvider
         .method = http::Method::kPost,
         .headers = {{"Authorization", "Bearer " + auth_token_.access_token},
                     {"Content-Type", "application/octet-stream"},
-                    {"Content-Length", std::to_string(content.size)},
                     {"Dropbox-API-Arg", json.dump()}},
         .body = std::move(content.data)};
     auto response = co_await http_->Fetch(std::move(request), stop_token);
@@ -276,7 +274,6 @@ class Dropbox::CloudProvider
         .method = http::Method::kPost,
         .headers = {{"Authorization", "Bearer " + auth_token_.access_token},
                     {"Content-Type", "application/octet-stream"},
-                    {"Content-Length", std::to_string(content.size)},
                     {"Dropbox-API-Arg", json.dump()}},
         .body = std::move(content.data)};
     auto response =

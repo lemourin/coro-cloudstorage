@@ -249,7 +249,6 @@ struct OneDrive::CloudProvider
         .method = http::Method::kPut,
         .headers = {{"Accept", "application/json"},
                     {"Content-Type", "application/octet-stream"},
-                    {"Content-Length", std::to_string(content.size)},
                     {"Authorization",
                      "Bearer " + auth_manager_.GetAuthToken().access_token}},
         .body = std::move(content.data)};

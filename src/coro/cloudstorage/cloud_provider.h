@@ -16,7 +16,7 @@ namespace coro::cloudstorage {
 
 struct FileContent {
   Generator<std::string> data;
-  int64_t size;
+  std::optional<int64_t> size;
 };
 
 template <typename T>
@@ -232,8 +232,8 @@ class CloudProvider {
     std::optional<UploadSessionT<Directory, T>> session;
     auto it = co_await content.data.begin();
     while (true) {
-      auto chunk_size =
-          std::min<int64_t>(upload_chunk_size, content.size - offset);
+      auto chunk_size = std::min<int64_t>(
+          upload_chunk_size, content.size.value_or(INT64_MAX) - offset);
       FileContent chunk{.data = util::Take(it, chunk_size), .size = chunk_size};
       if (!session) {
         session = co_await Get()->CreateUploadSession(
