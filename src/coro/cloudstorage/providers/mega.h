@@ -216,7 +216,7 @@ class Mega::CloudProvider
         return false;
       }
       it->second->buffer.emplace_back(reinterpret_cast<const char*>(data),
-                                      length);
+                                      static_cast<size_t>(length));
       it->second->size += static_cast<int>(length);
       if (it->second->size >= kBufferSize) {
         it->second->paused = true;
