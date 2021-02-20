@@ -112,6 +112,11 @@ struct OneDrive {
     std::vector<Item> items;
     std::optional<std::string> next_page_token;
   };
+
+  struct FileContent {
+    Generator<std::string> data;
+    std::optional<int64_t> size;
+  };
 };
 
 template <typename AuthManager>

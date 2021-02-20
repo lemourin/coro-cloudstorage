@@ -5,6 +5,30 @@
 
 namespace coro::cloudstorage {
 
+namespace {
+
+template <typename Type>
+static Type ToItemImpl(::mega::Node* node) {
+  Type type;
+  type.name = node->displayname();
+  type.id = node->nodehandle;
+  type.timestamp = node->mtime ? node->mtime : node->ctime;
+  if constexpr (std::is_same_v<Type, Mega::File>) {
+    type.size = node->size;
+  }
+  return type;
+}
+
+static Mega::Item ToItem(::mega::Node* node) {
+  if (node->type == ::mega::FILENODE) {
+    return ToItemImpl<Mega::File>(node);
+  } else {
+    return ToItemImpl<Mega::Directory>(node);
+  }
+}
+
+}  // namespace
+
 Task<std::string> Mega::CloudProvider::Data::GetSession(
     UserCredential credentials, stdx::stop_token stop_token) {
   auto [version, email, salt, prelogin_error] =
@@ -299,6 +323,41 @@ Generator<std::string> Mega::CloudProvider::GetFileContent(
       co_await d_->wait_(0, stop_token);
     }
   }
+}
+
+auto Mega::CloudProvider::CreateSmallFile(Directory parent,
+                                          std::string_view name,
+                                          FileContent content,
+                                          stdx::stop_token stop_token)
+    -> Task<File> {
+  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
+
+  class FileUpload : public ::mega::File {
+   public:
+    explicit FileUpload(App* app) : app_(app), tag_(app_->client->restag) {}
+    void terminated() final {
+      app_->client->restag = tag;
+      app_->SetResult(::mega::error::API_EINTERNAL);
+    }
+
+   private:
+    App* app_;
+    int tag_;
+  } file(&d_->mega_app);
+
+  file.name = name;
+  file.h = parent.id;
+  file.localname = std::to_string(reinterpret_cast<intptr_t>(&content));
+  file.size = content.size;
+  std::any result = co_await Do<&::mega::MegaClient::startxfer>(
+      std::move(stop_token), ::mega::PUT, &file, /*skipdupes=*/false,
+      /*startfirst=*/false);
+  if (result.type() == typeid(::mega::error)) {
+    throw CloudException(
+        GetErrorDescription(std::any_cast<::mega::error>(result)));
+  }
+  co_return ToItemImpl<Mega::File>(
+      GetNode(std::any_cast<::mega::handle>(result)));
 }
 
 }  // namespace coro::cloudstorage

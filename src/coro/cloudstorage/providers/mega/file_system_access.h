@@ -10,16 +10,9 @@ namespace coro::cloudstorage::mega {
 
 class FileSystemAccess : public ::mega::FileSystemAccess {
  public:
-  class FileContent {
-   public:
-    explicit FileContent(int64_t size) : size_(size) {}
-    virtual Task<std::string> Read(int64_t offset, int64_t size,
-                                   stdx::stop_token) = 0;
-
-    int64_t size() const { return size_; }
-
-   private:
-    int64_t size_;
+  struct FileContent {
+    Generator<std::string> data;
+    int64_t size;
   };
 
   class NoopWaiter : public ::mega::Waiter {
@@ -28,15 +21,10 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
     void notify() final {}
   };
 
-  class AsyncIOContext : public ::mega::AsyncIOContext {
-   public:
+  struct AsyncIOContext : ::mega::AsyncIOContext {
     explicit AsyncIOContext(::mega::Waiter* waiter) { this->waiter = waiter; }
-    ~AsyncIOContext() override { stop_source_.request_stop(); }
-    void finish() final { stop_source_.request_stop(); }
-    stdx::stop_token stop_token() const { return stop_source_.get_token(); }
 
-   private:
-    stdx::stop_source stop_source_;
+    std::optional<Generator<std::string>::iterator> current_it;
   };
 
   class FileAccess : public ::mega::FileAccess {
@@ -63,8 +51,15 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
       }
       Invoke([=]() -> Task<> {
         try {
-          auto chunk = co_await content_->Read(context->pos, context->len,
-                                               context->stop_token());
+          if (last_read_ != context->pos) {
+            throw CloudException("out of order read");
+          }
+          if (!context->current_it) {
+            context->current_it = co_await content_->data.begin();
+          }
+          auto chunk = co_await coro::http::GetBody(
+              util::Take(*context->current_it, context->len));
+          last_read_ = context->pos + context->len;
           context->failed = false;
           context->retry = false;
           context->finished = true;
@@ -109,7 +104,7 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
     }
     bool sysstat(::mega::m_time_t* time, m_off_t* size) final {
       *time = 0;
-      *size = content_->size();
+      *size = content_->size;
       return true;
     }
     bool sysopen(bool) final { return fopen(&localname, true, false); }
@@ -117,6 +112,7 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
 
    private:
     FileContent* content_ = nullptr;
+    int64_t last_read_ = 0;
   };
 
   void tmpnamelocal(std::string*) const final {}

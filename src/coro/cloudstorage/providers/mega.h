@@ -71,6 +71,8 @@ struct Mega {
     int64_t space_total;
   };
 
+  using FileContent = ::coro::cloudstorage::mega::FileSystemAccess::FileContent;
+
   class CloudProvider;
 
   static constexpr std::string_view kId = "mega";
@@ -108,7 +110,6 @@ class Mega::CloudProvider
   Task<> RemoveItem(Item item, coro::stdx::stop_token);
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         coro::stdx::stop_token);
-  template <RandomAccessFileContent FileContent>
   Task<File> CreateSmallFile(Directory parent, std::string_view name,
                              FileContent content, stdx::stop_token);
 
@@ -142,26 +143,6 @@ class Mega::CloudProvider
     bool paused = true;
     int size = 0;
   };
-
-  template <typename Type>
-  static Type ToItemImpl(::mega::Node* node) {
-    Type type;
-    type.name = node->displayname();
-    type.id = node->nodehandle;
-    type.timestamp = node->mtime ? node->mtime : node->ctime;
-    if constexpr (std::is_same_v<Type, Mega::File>) {
-      type.size = node->size;
-    }
-    return type;
-  }
-
-  static Mega::Item ToItem(::mega::Node* node) {
-    if (node->type == ::mega::FILENODE) {
-      return ToItemImpl<Mega::File>(node);
-    } else {
-      return ToItemImpl<Mega::Directory>(node);
-    }
-  }
 
   struct Data;
 
@@ -486,56 +467,6 @@ inline Mega::Auth::AuthData GetAuthData<Mega>() {
 }
 
 }  // namespace util
-
-template <RandomAccessFileContent FileContentT>
-auto Mega::CloudProvider::CreateSmallFile(Directory parent,
-                                          std::string_view name,
-                                          FileContentT content,
-                                          stdx::stop_token stop_token)
-    -> Task<File> {
-  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
-
-  class FileContentWrapper : mega::FileSystemAccess::FileContent {
-   public:
-    explicit FileContentWrapper(FileContentT* content)
-        : mega::FileSystemAccess::FileContent(content->size),
-          content_(content) {}
-    Task<std::string> Read(int64_t offset, int64_t size,
-                           stdx::stop_token stop_token) final {
-      co_return co_await (*content_)(offset, size, std::move(stop_token));
-    }
-
-   private:
-    FileContentT* content_;
-  } wrapper(&content);
-
-  class FileUpload : public ::mega::File {
-   public:
-    explicit FileUpload(App* app) : app_(app), tag_(app_->client->restag) {}
-    void terminated() final {
-      app_->client->restag = tag;
-      app_->SetResult(::mega::error::API_EINTERNAL);
-    }
-
-   private:
-    App* app_;
-    int tag_;
-  } file(&d_->mega_app);
-
-  file.name = name;
-  file.h = parent.id;
-  file.localname = std::to_string(reinterpret_cast<intptr_t>(&wrapper));
-  file.size = content.size;
-  std::any result = co_await Do<&::mega::MegaClient::startxfer>(
-      std::move(stop_token), ::mega::PUT, &file, /*skipdupes=*/false,
-      /*startfirst=*/false);
-  if (result.type() == typeid(::mega::error)) {
-    throw CloudException(
-        GetErrorDescription(std::any_cast<::mega::error>(result)));
-  }
-  co_return ToItemImpl<Mega::File>(
-      GetNode(std::any_cast<::mega::handle>(result)));
-}
 
 }  // namespace coro::cloudstorage
 

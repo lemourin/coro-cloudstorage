@@ -117,6 +117,11 @@ struct GoogleDrive {
     std::optional<std::string> next_page_token;
   };
 
+  struct FileContent {
+    Generator<std::string> data;
+    std::optional<int64_t> size;
+  };
+
   static constexpr std::string_view kId = "google";
 };
 

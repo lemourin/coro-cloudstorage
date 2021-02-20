@@ -84,6 +84,11 @@ struct Dropbox {
     std::string path;
   };
 
+  struct FileContent {
+    Generator<std::string> data;
+    std::optional<int64_t> size;
+  };
+
   template <http::HttpClient Http>
   class CloudProvider;
 

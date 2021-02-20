@@ -51,6 +51,11 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>> {
     std::optional<std::string> next_page_token;
   };
 
+  struct FileContent {
+    Generator<std::string> data;
+    std::optional<int64_t> size;
+  };
+
   class CloudProvider;
 };
 
@@ -211,41 +216,33 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
         impl_);
   }
 
-  template <typename FileContent>
-  bool CanCreateFile(const Item& parent) const {
+  bool IsFileContentSizeRequired() const {
     return std::visit(
         [&](const auto* d) {
           using CloudProviderT = std::remove_pointer_t<decltype(d)>;
-          using ItemT = typename CloudProviderT::Item;
-
-          return std::visit(
-              [&](const auto& parent) {
-                return IsDirectory<decltype(parent), CloudProviderT> &&
-                       ::coro::cloudstorage::CanCreateFile<
-                           decltype(parent), FileContent, CloudProviderT>;
-              },
-              std::get<ItemT>(parent));
+          using FileContentT = typename CloudProviderT::FileContent;
+          return std::is_convertible_v<
+              decltype(std::declval<FileContentT>().size), int64_t>;
         },
         impl_);
   }
 
-  template <typename FileContent>
   Task<Item> CreateFile(Item parent, std::string_view name, FileContent content,
                         stdx::stop_token stop_token) {
     co_return co_await std::visit(
         [&](auto* d) {
           using CloudProviderT = std::remove_pointer_t<decltype(d)>;
           using ItemT = typename CloudProviderT::Item;
+          using FileContentT = typename CloudProviderT::FileContent;
 
           return std::visit(
               [&](auto& parent) -> Task<Item> {
                 if constexpr (IsDirectory<decltype(parent), CloudProviderT> &&
-                              ::coro::cloudstorage::CanCreateFile<
-                                  decltype(parent), FileContent,
-                                  CloudProviderT>) {
-                  co_return co_await d->CreateFile(std::move(parent), name,
-                                                   std::move(content),
-                                                   std::move(stop_token));
+                              CanCreateFile<decltype(parent), CloudProviderT>) {
+                  co_return co_await d->CreateFile(
+                      std::move(parent), name,
+                      ToFileContent<FileContentT>(std::move(content)),
+                      std::move(stop_token));
                 } else {
                   throw std::invalid_argument("not supported");
                 }
@@ -282,6 +279,16 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
   }
 
  private:
+  template <typename T>
+  static T ToFileContent(FileContent content) {
+    if constexpr (std::is_convertible_v<decltype(std::declval<T>().size),
+                                        int64_t>) {
+      return T{.data = std::move(content.data), .size = content.size.value()};
+    } else {
+      return T{.data = std::move(content.data), .size = content.size};
+    }
+  }
+
   using ItemToCloudProvider =
       ::coro::util::TypeList<std::pair<typename Ts::Item, Ts>...>;
 
