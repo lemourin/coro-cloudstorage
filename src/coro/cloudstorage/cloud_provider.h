@@ -20,6 +20,15 @@ struct FileContent {
 };
 
 template <typename T>
+concept RandomAccessFileContent = requires(T v, int64_t offset, int64_t size,
+                                           stdx::stop_token stop_token) {
+  { v.size }
+  ->stdx::convertible_to<int64_t>;
+  { v(offset, size, stop_token) }
+  ->Awaitable<std::string>;
+};
+
+template <typename T>
 concept HasTimestamp = requires(T v) {
   { v.timestamp }
   ->stdx::convertible_to<std::optional<int64_t>>;
@@ -52,7 +61,7 @@ concept IsFile = requires(typename CloudProvider::Impl provider, T v,
   ->GeneratorLike<std::string_view>;
 };
 
-template <typename Parent, typename CloudProvider>
+template <typename Parent, typename FileContent, typename CloudProvider>
 concept CanCreateSmallFile = requires(
     typename CloudProvider::Impl provider, Parent parent, std::string_view name,
     FileContent content, stdx::stop_token stop_token,
@@ -63,7 +72,7 @@ concept CanCreateSmallFile = requires(
   ->IsFile<CloudProvider>;
 };
 
-template <typename Parent, typename CloudProvider>
+template <typename Parent, typename FileContent, typename CloudProvider>
 concept CanCreateUploadSession = requires(
     typename CloudProvider::Impl provider, Parent parent, std::string_view name,
     FileContent content, int64_t offset, stdx::stop_token stop_token,
@@ -79,9 +88,10 @@ concept CanCreateUploadSession = requires(
   ->IsFile<CloudProvider>;
 };
 
-template <typename Parent, typename CloudProvider>
-concept CanCreateFile = CanCreateSmallFile<Parent, CloudProvider> ||
-                        CanCreateUploadSession<Parent, CloudProvider>;
+template <typename Parent, typename FileContent, typename CloudProvider>
+concept CanCreateFile =
+    CanCreateSmallFile<Parent, FileContent, CloudProvider> ||
+    CanCreateUploadSession<Parent, FileContent, CloudProvider>;
 
 template <typename T, typename CloudProvider>
 concept CanRename = requires(
@@ -181,13 +191,14 @@ class CloudProvider {
     }
   }
 
-  template <IsDirectory<CloudProvider> Directory, typename T = CloudProvider>
-  requires CanCreateFile<Directory, T> auto CreateFile(
+  template <IsDirectory<CloudProvider> Directory, typename FileContent,
+            typename T = CloudProvider>
+  requires CanCreateFile<Directory, FileContent, T> auto CreateFile(
       Directory parent, std::string_view name, FileContent content,
       stdx::stop_token stop_token) {
     constexpr int kChunkSize = 1024 * 1024 * 150;
-    if constexpr (CanCreateSmallFile<Directory, T> &&
-                  CanCreateUploadSession<Directory, T>) {
+    if constexpr (CanCreateSmallFile<Directory, FileContent, T> &&
+                  CanCreateUploadSession<Directory, FileContent, T>) {
       if (content.size <= kChunkSize) {
         return Get()->CreateSmallFile(
             std::move(parent), name, std::move(content), std::move(stop_token));
@@ -196,11 +207,11 @@ class CloudProvider {
                                            std::move(content), kChunkSize,
                                            std::move(stop_token));
       }
-    } else if constexpr (CanCreateSmallFile<Directory, T>) {
+    } else if constexpr (CanCreateSmallFile<Directory, FileContent, T>) {
       return Get()->CreateSmallFile(std::move(parent), name, std::move(content),
                                     std::move(stop_token));
     } else {
-      static_assert(CanCreateUploadSession<Directory, T>);
+      static_assert(CanCreateUploadSession<Directory, FileContent, T>);
       return CreateFileWithUploadSession(std::move(parent), name,
                                          std::move(content), kChunkSize,
                                          std::move(stop_token));
@@ -222,8 +233,9 @@ class CloudProvider {
           std::declval<UploadSessionT<Directory, T>>(),
           std::declval<FileContent>(), 0, stdx::stop_token()))::type;
 
-  template <IsDirectory<CloudProvider> Directory, typename T = CloudProvider>
-  requires CanCreateUploadSession<Directory, T> auto
+  template <IsDirectory<CloudProvider> Directory, typename FileContent,
+            typename T = CloudProvider>
+  requires CanCreateUploadSession<Directory, FileContent, T> auto
   CreateFileWithUploadSession(Directory parent, std::string_view name,
                               FileContent content, int64_t upload_chunk_size,
                               stdx::stop_token stop_token)
@@ -310,7 +322,7 @@ struct CreateCloudProvider {
     using Impl =
         typename CloudProvider::template CloudProvider<decltype(auth_manager)>;
     return Impl(std::move(auth_manager));
-  }  // namespace coro::cloudstorage
+  }
 };
 
 }  // namespace coro::cloudstorage

@@ -211,6 +211,25 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
         impl_);
   }
 
+  template <typename FileContent>
+  bool CanCreateFile(const Item& parent) const {
+    return std::visit(
+        [&](const auto* d) {
+          using CloudProviderT = std::remove_pointer_t<decltype(d)>;
+          using ItemT = typename CloudProviderT::Item;
+
+          return std::visit(
+              [&](const auto& parent) {
+                return IsDirectory<decltype(parent), CloudProviderT> &&
+                       ::coro::cloudstorage::CanCreateFile<
+                           decltype(parent), FileContent, CloudProviderT>;
+              },
+              std::get<ItemT>(parent));
+        },
+        impl_);
+  }
+
+  template <typename FileContent>
   Task<Item> CreateFile(Item parent, std::string_view name, FileContent content,
                         stdx::stop_token stop_token) {
     co_return co_await std::visit(
@@ -221,12 +240,14 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
           return std::visit(
               [&](auto& parent) -> Task<Item> {
                 if constexpr (IsDirectory<decltype(parent), CloudProviderT> &&
-                              CanCreateFile<decltype(parent), CloudProviderT>) {
+                              ::coro::cloudstorage::CanCreateFile<
+                                  decltype(parent), FileContent,
+                                  CloudProviderT>) {
                   co_return co_await d->CreateFile(std::move(parent), name,
                                                    std::move(content),
                                                    std::move(stop_token));
                 } else {
-                  throw std::invalid_argument("not supported ");
+                  throw std::invalid_argument("not supported");
                 }
               },
               std::get<ItemT>(parent));

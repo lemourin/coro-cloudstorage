@@ -108,6 +108,9 @@ class Mega::CloudProvider
   Task<> RemoveItem(Item item, coro::stdx::stop_token);
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         coro::stdx::stop_token);
+  template <RandomAccessFileContent FileContent>
+  Task<File> CreateSmallFile(Directory parent, std::string_view name,
+                             FileContent content, stdx::stop_token);
 
   template <typename EventLoop, http::HttpClient HttpClient>
   static Task<std::string> GetSession(
@@ -139,6 +142,26 @@ class Mega::CloudProvider
     bool paused = true;
     int size = 0;
   };
+
+  template <typename Type>
+  static Type ToItemImpl(::mega::Node* node) {
+    Type type;
+    type.name = node->displayname();
+    type.id = node->nodehandle;
+    type.timestamp = node->mtime ? node->mtime : node->ctime;
+    if constexpr (std::is_same_v<Type, Mega::File>) {
+      type.size = node->size;
+    }
+    return type;
+  }
+
+  static Mega::Item ToItem(::mega::Node* node) {
+    if (node->type == ::mega::FILENODE) {
+      return ToItemImpl<Mega::File>(node);
+    } else {
+      return ToItemImpl<Mega::Directory>(node);
+    }
+  }
 
   struct Data;
 
@@ -173,8 +196,9 @@ class Mega::CloudProvider
     }
 
     void putnodes_result(::mega::error e, ::mega::targettype_t,
-                         ::mega::NewNode*) final {
+                         ::mega::NewNode* nodes) final {
       if (e == ::mega::API_OK) {
+        delete[] nodes;
         SetResult(client->nodenotify.back()->nodehandle);
       } else {
         SetResult(e);
@@ -225,6 +249,11 @@ class Mega::CloudProvider
       }
       it->second->semaphore.SetValue();
       return true;
+    }
+
+    void transfer_failed(::mega::Transfer*, ::mega::error e,
+                         ::mega::dstime time) override {
+      std::cerr << "TRANSFER FAILED " << client->restag << "\n";
     }
 
     void notify_retry(::mega::dstime time, ::mega::retryreason_t reason) final {
@@ -291,7 +320,14 @@ class Mega::CloudProvider
     template <auto Method, typename... Args>
     Task<std::any> Do(stdx::stop_token stop_token, Args... args) {
       auto tag = mega_client.nextreqtag();
-      (mega_client.*Method)(args...);
+      if constexpr (std::is_same_v<bool,
+                                   decltype((mega_client.*Method)(args...))>) {
+        if (!(mega_client.*Method)(args...)) {
+          throw CloudException("unknown mega error");
+        }
+      } else {
+        (mega_client.*Method)(args...);
+      }
       OnEvent();
       auto semaphore = mega_app.GetSemaphore(tag);
       stdx::stop_callback callback(
@@ -450,6 +486,56 @@ inline Mega::Auth::AuthData GetAuthData<Mega>() {
 }
 
 }  // namespace util
+
+template <RandomAccessFileContent FileContentT>
+auto Mega::CloudProvider::CreateSmallFile(Directory parent,
+                                          std::string_view name,
+                                          FileContentT content,
+                                          stdx::stop_token stop_token)
+    -> Task<File> {
+  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
+
+  class FileContentWrapper : mega::FileSystemAccess::FileContent {
+   public:
+    explicit FileContentWrapper(FileContentT* content)
+        : mega::FileSystemAccess::FileContent(content->size),
+          content_(content) {}
+    Task<std::string> Read(int64_t offset, int64_t size,
+                           stdx::stop_token stop_token) final {
+      co_return co_await (*content_)(offset, size, std::move(stop_token));
+    }
+
+   private:
+    FileContentT* content_;
+  } wrapper(&content);
+
+  class FileUpload : public ::mega::File {
+   public:
+    explicit FileUpload(App* app) : app_(app), tag_(app_->client->restag) {}
+    void terminated() final {
+      app_->client->restag = tag;
+      app_->SetResult(::mega::error::API_EINTERNAL);
+    }
+
+   private:
+    App* app_;
+    int tag_;
+  } file(&d_->mega_app);
+
+  file.name = name;
+  file.h = parent.id;
+  file.localname = std::to_string(reinterpret_cast<intptr_t>(&wrapper));
+  file.size = content.size;
+  std::any result = co_await Do<&::mega::MegaClient::startxfer>(
+      std::move(stop_token), ::mega::PUT, &file, /*skipdupes=*/false,
+      /*startfirst=*/false);
+  if (result.type() == typeid(::mega::error)) {
+    throw CloudException(
+        GetErrorDescription(std::any_cast<::mega::error>(result)));
+  }
+  co_return ToItemImpl<Mega::File>(
+      GetNode(std::any_cast<::mega::handle>(result)));
+}
 
 }  // namespace coro::cloudstorage
 

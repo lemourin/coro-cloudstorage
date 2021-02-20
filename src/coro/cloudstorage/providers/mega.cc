@@ -5,30 +5,6 @@
 
 namespace coro::cloudstorage {
 
-namespace {
-
-template <typename Type>
-Type ToItemImpl(::mega::Node* node) {
-  Type type;
-  type.name = node->displayname();
-  type.id = node->nodehandle;
-  type.timestamp = node->mtime ? node->mtime : node->ctime;
-  if constexpr (std::is_same_v<Type, Mega::File>) {
-    type.size = node->size;
-  }
-  return type;
-}
-
-Mega::Item ToItem(::mega::Node* node) {
-  if (node->type == ::mega::FILENODE) {
-    return ToItemImpl<Mega::File>(node);
-  } else {
-    return ToItemImpl<Mega::Directory>(node);
-  }
-}
-
-}  // namespace
-
 Task<std::string> Mega::CloudProvider::Data::GetSession(
     UserCredential credentials, stdx::stop_token stop_token) {
   auto [version, email, salt, prelogin_error] =
