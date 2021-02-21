@@ -232,9 +232,10 @@ class Mega::CloudProvider
       return true;
     }
 
-    void transfer_failed(::mega::Transfer*, ::mega::error e,
-                         ::mega::dstime time) override {
-      std::cerr << "TRANSFER FAILED " << client->restag << "\n";
+    void transfer_failed(::mega::Transfer* d, ::mega::error e,
+                         ::mega::dstime time) final {
+      client->restag = d->tag;
+      SetResult(e);
     }
 
     void notify_retry(::mega::dstime time, ::mega::retryreason_t reason) final {

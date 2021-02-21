@@ -51,6 +51,8 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
       }
       Invoke([=]() -> Task<> {
         try {
+          std::cerr << "START READ " << context->pos << " " << context->len
+                    << "\n";
           if (last_read_ != context->pos) {
             throw CloudException("out of order read");
           }
@@ -59,6 +61,8 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
           }
           auto chunk = co_await coro::http::GetBody(
               util::Take(*context->current_it, context->len));
+          std::cerr << "DONE READ " << context->pos << " " << context->len
+                    << "\n";
           last_read_ = context->pos + context->len;
           context->failed = false;
           context->retry = false;
@@ -71,6 +75,7 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
           context->failed = true;
           context->retry = false;
           context->finished = true;
+          std::cerr << "FINISHED " << context << "\n";
           if (context->userCallback) {
             context->userCallback(context->userData);
           }

@@ -334,7 +334,8 @@ auto Mega::CloudProvider::CreateSmallFile(Directory parent,
 
   class FileUpload : public ::mega::File {
    public:
-    explicit FileUpload(App* app) : app_(app), tag_(app_->client->restag) {}
+    explicit FileUpload(App* app) : app_(app), tag_(app_->client->restag + 1) {}
+
     void terminated() final {
       app_->client->restag = tag;
       app_->SetResult(::mega::error::API_EINTERNAL);
