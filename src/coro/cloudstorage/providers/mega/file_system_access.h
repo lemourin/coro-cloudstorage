@@ -21,12 +21,6 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
     void notify() final {}
   };
 
-  struct AsyncIOContext : ::mega::AsyncIOContext {
-    explicit AsyncIOContext(::mega::Waiter* waiter) { this->waiter = waiter; }
-
-    std::optional<Generator<std::string>::iterator> current_it;
-  };
-
   class FileAccess : public ::mega::FileAccess {
    public:
     explicit FileAccess(::mega::Waiter* waiter) : ::mega::FileAccess(waiter) {}
@@ -44,30 +38,36 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
       }
     }
 
-    void asyncsysread(::mega::AsyncIOContext* base_context) final {
-      auto context = reinterpret_cast<AsyncIOContext*>(base_context);
-      if (!context) {
-        return;
-      }
+    void asyncsysread(::mega::AsyncIOContext* context) final {
       Invoke([=]() -> Task<> {
         try {
-          std::cerr << "START READ " << context->pos << " " << context->len
-                    << "\n";
+          PendingRead read{.offset = context->pos};
+          reads_.emplace_back(&read);
+          if (reads_.size() > 1) {
+            co_await read.semaphore;
+          }
+          auto guard = coro::util::AtScopeExit([&] {
+            reads_.erase(std::find(reads_.begin(), reads_.end(), &read));
+            auto it = std::min_element(
+                reads_.begin(), reads_.end(),
+                [](auto* a, auto* b) { return a->offset < b->offset; });
+            if (it != reads_.end()) {
+              (*it)->semaphore.SetValue();
+            }
+          });
           if (last_read_ != context->pos) {
             throw CloudException("out of order read");
           }
-          if (!context->current_it) {
-            context->current_it = co_await content_->data.begin();
+          if (!current_it_) {
+            current_it_ = co_await content_->data.begin();
           }
-          auto chunk = co_await coro::http::GetBody(
-              util::Take(*context->current_it, context->len));
-          std::cerr << "DONE READ " << context->pos << " " << context->len
-                    << "\n";
+          auto chunk =
+              co_await http::GetBody(util::Take(*current_it_, context->len));
           last_read_ = context->pos + context->len;
           context->failed = false;
           context->retry = false;
           context->finished = true;
-          memcpy(base_context->buffer, chunk.data(), chunk.size());
+          memcpy(context->buffer, chunk.data(), chunk.size());
           if (context->userCallback) {
             context->userCallback(context->userData);
           }
@@ -75,7 +75,6 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
           context->failed = true;
           context->retry = false;
           context->finished = true;
-          std::cerr << "FINISHED " << context << "\n";
           if (context->userCallback) {
             context->userCallback(context->userData);
           }
@@ -84,7 +83,9 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
     }
 
     ::mega::AsyncIOContext* newasynccontext() final {
-      return new AsyncIOContext(waiter);
+      auto context = new ::mega::AsyncIOContext;
+      context->waiter = waiter;
+      return context;
     }
 
     bool asyncavailable() final { return true; }
@@ -116,8 +117,15 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
     void sysclose() override {}
 
    private:
+    struct PendingRead {
+      int64_t offset;
+      Promise<void> semaphore;
+    };
+
     FileContent* content_ = nullptr;
     int64_t last_read_ = 0;
+    std::optional<Generator<std::string>::iterator> current_it_;
+    std::vector<PendingRead*> reads_;
   };
 
   void tmpnamelocal(std::string*) const final {}
