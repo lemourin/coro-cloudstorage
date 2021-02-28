@@ -54,7 +54,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     stdx::stop_source stop_source;
   };
 
-  using AbstractCloudProvider = AbstractCloudProvider<
+  using AbstractCloudProviderT = AbstractCloudProvider<
       ::coro::util::TypeList<typename CloudProviderAccount::
                                  template CloudProviderT<CloudProviders>...>>;
 
