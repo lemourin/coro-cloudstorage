@@ -71,6 +71,8 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
                       impl_);
   }
 
+  auto type() const { return impl_.index(); }
+
   Task<Item> GetRoot(stdx::stop_token stop_token) {
     co_return co_await std::visit(
         [&](auto* p) -> Task<Item> {
