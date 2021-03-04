@@ -38,48 +38,50 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
       }
     }
 
-    void asyncsysread(::mega::AsyncIOContext* context) final {
-      Invoke([=]() -> Task<> {
-        try {
-          PendingRead read{.offset = context->pos};
-          reads_.emplace_back(&read);
-          if (reads_.size() > 1) {
-            co_await read.semaphore;
-          }
-          auto guard = coro::util::AtScopeExit([&] {
-            reads_.erase(std::find(reads_.begin(), reads_.end(), &read));
-            auto it = std::min_element(
-                reads_.begin(), reads_.end(),
-                [](auto* a, auto* b) { return a->offset < b->offset; });
-            if (it != reads_.end()) {
-              (*it)->semaphore.SetValue();
-            }
-          });
-          if (last_read_ != context->pos) {
-            throw CloudException("out of order read");
-          }
-          if (!current_it_) {
-            current_it_ = co_await content_->data.begin();
-          }
-          auto chunk =
-              co_await http::GetBody(util::Take(*current_it_, context->len));
-          last_read_ = context->pos + context->len;
-          context->failed = false;
-          context->retry = false;
-          context->finished = true;
-          memcpy(context->buffer, chunk.data(), chunk.size());
-          if (context->userCallback) {
-            context->userCallback(context->userData);
-          }
-        } catch (const std::exception&) {
-          context->failed = true;
-          context->retry = false;
-          context->finished = true;
-          if (context->userCallback) {
-            context->userCallback(context->userData);
-          }
+    Task<> DoAsyncRead(::mega::AsyncIOContext* context) {
+      try {
+        PendingRead read{.offset = context->pos};
+        reads_.emplace_back(&read);
+        if (reads_.size() > 1) {
+          co_await read.semaphore;
         }
-      });
+        auto guard = coro::util::AtScopeExit([&] {
+          reads_.erase(std::find(reads_.begin(), reads_.end(), &read));
+          auto it = std::min_element(
+              reads_.begin(), reads_.end(),
+              [](auto* a, auto* b) { return a->offset < b->offset; });
+          if (it != reads_.end()) {
+            (*it)->semaphore.SetValue();
+          }
+        });
+        if (last_read_ != context->pos) {
+          throw CloudException("out of order read");
+        }
+        if (!current_it_) {
+          current_it_ = co_await content_->data.begin();
+        }
+        auto chunk =
+            co_await http::GetBody(util::Take(*current_it_, context->len));
+        last_read_ = context->pos + context->len;
+        context->failed = false;
+        context->retry = false;
+        context->finished = true;
+        memcpy(context->buffer, chunk.data(), chunk.size());
+        if (context->userCallback) {
+          context->userCallback(context->userData);
+        }
+      } catch (const std::exception&) {
+        context->failed = true;
+        context->retry = false;
+        context->finished = true;
+        if (context->userCallback) {
+          context->userCallback(context->userData);
+        }
+      }
+    }
+
+    void asyncsysread(::mega::AsyncIOContext* context) final {
+      Invoke(DoAsyncRead(context));
     }
 
     ::mega::AsyncIOContext* newasynccontext() final {
