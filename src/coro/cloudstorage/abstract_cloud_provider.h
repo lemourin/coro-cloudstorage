@@ -64,7 +64,21 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
     : public ::coro::cloudstorage::CloudProvider<AbstractCloudProvider,
                                                  CloudProvider> {
  public:
-  explicit CloudProvider(std::variant<Ts*...> impl) : impl_(std::move(impl)) {}
+  template <typename T>
+  explicit CloudProvider(T* impl) : impl_(impl) {}
+
+  CloudProvider(const CloudProvider& provider) : impl_(provider.impl_) {}
+  CloudProvider(CloudProvider&& provider) noexcept
+      : impl_(std::move(provider.impl_)) {}
+
+  CloudProvider& operator=(const CloudProvider& provider) {
+    impl_ = provider.impl_;
+    return *this;
+  }
+  CloudProvider& operator=(CloudProvider&& provider) noexcept {
+    impl_ = std::move(provider.impl_);
+    return *this;
+  }
 
   intptr_t id() const {
     return std::visit([](auto* p) { return reinterpret_cast<intptr_t>(p); },
@@ -119,7 +133,7 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
           return std::visit(
               [&](auto& item) -> Generator<std::string> {
                 if constexpr (IsFile<decltype(item), CloudProviderT>) {
-                  return d->GetFileContent(std::move(item), std::move(range),
+                  return d->GetFileContent(std::move(item), range,
                                            std::move(stop_token));
                 } else {
                   throw std::invalid_argument("not a file");
