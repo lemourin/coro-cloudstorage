@@ -110,8 +110,8 @@ class Mega::CloudProvider
   Task<> RemoveItem(Item item, coro::stdx::stop_token);
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         coro::stdx::stop_token);
-  Task<File> CreateSmallFile(Directory parent, std::string_view name,
-                             FileContent content, stdx::stop_token);
+  Task<File> CreateFile(Directory parent, std::string_view name,
+                        FileContent content, stdx::stop_token);
 
   template <typename EventLoop, http::HttpClient HttpClient>
   static Task<std::string> GetSession(

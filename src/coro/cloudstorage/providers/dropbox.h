@@ -229,6 +229,50 @@ class Dropbox::CloudProvider
     co_return ToItem(response["metadata"]);
   }
 
+  Task<File> CreateFile(Directory parent, std::string_view name,
+                        FileContent content, stdx::stop_token stop_token) {
+    if (content.size < 150 * 1024 * 1024) {
+      json json;
+      json["path"] = parent.id + "/" + std::string(name);
+      json["mode"] = "overwrite";
+      auto request = http::Request<>{
+          .url = "https://content.dropboxapi.com/2/files/upload",
+          .method = http::Method::kPost,
+          .headers = {{"Dropbox-API-Arg", json.dump()},
+                      {"Authorization", "Bearer " + auth_token_.access_token},
+                      {"Content-Type", "application/octet-stream"}},
+          .body = std::move(content.data)};
+      auto response = co_await util::FetchJson(*http_, std::move(request),
+                                               std::move(stop_token));
+      co_return ToItemImpl<File>(response);
+    } else {
+      int64_t offset = 0;
+      std::optional<UploadSession> session;
+      auto it = co_await content.data.begin();
+      while (true) {
+        auto chunk_size = std::min<int64_t>(
+            150 * 1024 * 1024, content.size.value_or(INT64_MAX) - offset);
+        FileContent chunk{.data = util::Take(it, chunk_size),
+                          .size = chunk_size};
+        if (!session) {
+          session = co_await CreateUploadSession(std::move(parent), name,
+                                                 std::move(chunk), stop_token);
+        } else if (offset + chunk_size < content.size) {
+          session = co_await WriteChunk(std::move(*session), std::move(chunk),
+                                        offset, stop_token);
+        } else {
+          co_return co_await FinishUploadSession(std::move(*session),
+                                                 std::move(chunk), offset,
+                                                 std::move(stop_token));
+        }
+        offset += chunk_size;
+      }
+    }
+  }
+
+ private:
+  static constexpr std::string_view kEndpoint = "https://api.dropboxapi.com/2";
+
   Task<UploadSession> CreateUploadSession(Directory parent,
                                           std::string_view name,
                                           FileContent content,
@@ -285,26 +329,6 @@ class Dropbox::CloudProvider
         co_await util::FetchJson(*http_, std::move(request), stop_token);
     co_return ToItemImpl<File>(response);
   }
-
-  Task<File> CreateSmallFile(Directory parent, std::string_view name,
-                             FileContent content, stdx::stop_token stop_token) {
-    json json;
-    json["path"] = parent.id + "/" + std::string(name);
-    json["mode"] = "overwrite";
-    auto request = http::Request<>{
-        .url = "https://content.dropboxapi.com/2/files/upload",
-        .method = http::Method::kPost,
-        .headers = {{"Dropbox-API-Arg", json.dump()},
-                    {"Authorization", "Bearer " + auth_token_.access_token},
-                    {"Content-Type", "application/octet-stream"}},
-        .body = std::move(content.data)};
-    auto response = co_await util::FetchJson(*http_, std::move(request),
-                                             std::move(stop_token));
-    co_return ToItemImpl<File>(response);
-  }
-
- private:
-  static constexpr std::string_view kEndpoint = "https://api.dropboxapi.com/2";
 
   static std::string GetDirectoryPath(std::string_view path) {
     auto it = path.find_last_of('/');

@@ -273,8 +273,8 @@ struct GoogleDrive::CloudProvider
     co_return ToItem(response);
   }
 
-  Task<File> CreateSmallFile(Directory parent, std::string_view name,
-                             FileContent content, stdx::stop_token stop_token) {
+  Task<File> CreateFile(Directory parent, std::string_view name,
+                        FileContent content, stdx::stop_token stop_token) {
     return CreateOrUpdateFile(std::move(parent), name, std::move(content),
                               std::move(stop_token));
   }

@@ -250,8 +250,8 @@ struct OneDrive::CloudProvider
     co_return ToItem(response);
   }
 
-  Task<File> CreateSmallFile(Directory parent, std::string_view name,
-                             FileContent content, stdx::stop_token stop_token) {
+  Task<File> CreateFile(Directory parent, std::string_view name,
+                        FileContent content, stdx::stop_token stop_token) {
     if (content.size <= 4 * 1024 * 1024) {
       http::Request<> request{
           .url = GetEndpoint("/me/drive/items/") + parent.id + ":/" +
