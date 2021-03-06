@@ -89,6 +89,9 @@ class HttpIO : public ::mega::HttpIO {
           on_event_();
           response_size += static_cast<int64_t>(chunk.size());
         }
+        if (stop_source.get_token().stop_requested()) {
+          throw InterruptedException();
+        }
         if (*content_length != response_size) {
           throw http::HttpException(http::HttpException::kMalformedResponse);
         }
