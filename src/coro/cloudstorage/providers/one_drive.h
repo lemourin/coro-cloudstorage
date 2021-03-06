@@ -115,7 +115,11 @@ struct OneDrive {
 
   struct FileContent {
     Generator<std::string> data;
-    std::optional<int64_t> size;
+    int64_t size;
+  };
+
+  struct UploadSession {
+    std::string upload_url;
   };
 };
 
@@ -248,21 +252,73 @@ struct OneDrive::CloudProvider
 
   Task<File> CreateSmallFile(Directory parent, std::string_view name,
                              FileContent content, stdx::stop_token stop_token) {
-    http::Request<> request{
-        .url = GetEndpoint("/me/drive/items/") + parent.id + ":/" +
-               http::EncodeUri(name) + ":/content",
-        .method = http::Method::kPut,
-        .headers = {{"Accept", "application/json"},
-                    {"Content-Type", "application/octet-stream"},
-                    {"Authorization",
-                     "Bearer " + auth_manager_.GetAuthToken().access_token}},
-        .body = std::move(content.data)};
-    auto response = co_await util::FetchJson(
-        auth_manager_.GetHttp(), std::move(request), std::move(stop_token));
-    co_return ToItemImpl<File>(response);
+    if (content.size <= 4 * 1024 * 1024) {
+      http::Request<> request{
+          .url = GetEndpoint("/me/drive/items/") + parent.id + ":/" +
+                 http::EncodeUri(name) + ":/content",
+          .method = http::Method::kPut,
+          .headers = {{"Accept", "application/json"},
+                      {"Content-Type", "application/octet-stream"},
+                      {"Authorization",
+                       "Bearer " + auth_manager_.GetAuthToken().access_token}},
+          .body = std::move(content.data)};
+      auto response = co_await util::FetchJson(
+          auth_manager_.GetHttp(), std::move(request), std::move(stop_token));
+      co_return ToItemImpl<File>(response);
+    } else {
+      auto session =
+          co_await CreateUploadSession(std::move(parent), name, stop_token);
+      auto it = co_await content.data.begin();
+      int64_t offset = 0;
+      while (true) {
+        auto chunk_size =
+            std::min<int64_t>(60 * 1024 * 1024, content.size - offset);
+        FileContent chunk{.data = util::Take(it, chunk_size),
+                          .size = chunk_size};
+        auto response = co_await WriteChunk(session, std::move(chunk), offset,
+                                            content.size, stop_token);
+        offset += chunk_size;
+        if (offset >= content.size) {
+          co_return ToItemImpl<File>(response);
+        }
+      }
+    }
   }
 
  private:
+  Task<UploadSession> CreateUploadSession(Directory parent,
+                                          std::string_view name,
+                                          stdx::stop_token stop_token) {
+    http::Request<std::string> request{
+        .url = GetEndpoint("/me/drive/items/") + parent.id + ":/" +
+               http::EncodeUri(name) + ":/createUploadSession",
+        .method = http::Method::kPost,
+        .headers = {{"Content-Type", "application/json"}},
+        .body = "{}"};
+    auto response =
+        co_await auth_manager_.FetchJson(std::move(request), stop_token);
+    co_return UploadSession{.upload_url = std::string(response["uploadUrl"])};
+  }
+
+  Task<json> WriteChunk(UploadSession session, FileContent content,
+                        int64_t offset, int64_t total_size,
+                        stdx::stop_token stop_token) {
+    std::stringstream range_header;
+    range_header << "bytes " << offset << "-" << offset + content.size - 1
+                 << "/" << total_size;
+    auto body = co_await http::GetBody(std::move(content.data));
+    http::Request<std::string> request{
+        .url = session.upload_url,
+        .method = http::Method::kPut,
+        .headers = {{"Content-Length", std::to_string(content.size)},
+                    {"Content-Range", range_header.str()},
+                    {"Content-Type", "application/octet-stream"}},
+        .body = std::move(body)};
+    auto response = co_await util::FetchJson(
+        auth_manager_.GetHttp(), std::move(request), std::move(stop_token));
+    co_return std::move(response);
+  }
+
   static constexpr std::string_view kFileProperties =
       "name,folder,audio,image,photo,video,id,size,lastModifiedDateTime,"
       "thumbnails,@content.downloadUrl,mimeType";
