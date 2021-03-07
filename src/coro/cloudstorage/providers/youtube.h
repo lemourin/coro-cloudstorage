@@ -56,7 +56,6 @@ struct YouTube {
   struct ItemData {
     std::string id;
     std::string name;
-    std::string path;
   };
 
   struct RootDirectory : ItemData {
@@ -64,14 +63,17 @@ struct YouTube {
   };
 
   struct StreamDirectory : ItemData {
+    std::string video_id;
     int64_t timestamp;
   };
 
   struct Playlist : ItemData {
+    std::string playlist_id;
     Presentation presentation;
   };
 
   struct Stream : ItemData {
+    std::string video_id;
     std::string mime_type;
     int64_t timestamp;
     int64_t size;
@@ -81,6 +83,7 @@ struct YouTube {
   struct DashManifest : ItemData {
     static constexpr std::string_view mime_type = "application/dash+xml";
     static constexpr int64_t size = 8096;
+    std::string video_id;
     int64_t timestamp;
   };
 
@@ -120,8 +123,7 @@ struct YouTube::CloudProvider
 
   Task<RootDirectory> GetRoot(stdx::stop_token) {
     RootDirectory d = {};
-    d.id = "root";
-    d.path = "/";
+    d.id = "/";
     d.presentation = Presentation::kDash;
     co_return d;
   }
@@ -138,7 +140,8 @@ struct YouTube::CloudProvider
                                    std::optional<std::string> page_token,
                                    stdx::stop_token stop_token) {
     PageData result;
-    StreamData data = co_await stream_cache_.Get(directory.id, stop_token);
+    StreamData data =
+        co_await stream_cache_.Get(directory.video_id, stop_token);
     for (const auto& d : data.data) {
       if (!d.contains("contentLength")) {
         continue;
@@ -149,11 +152,11 @@ struct YouTube::CloudProvider
       std::string extension(mime_type.begin() + mime_type.find('/') + 1,
                             mime_type.begin() + mime_type.find(';'));
       Stream file;
-      file.id = directory.id;
+      file.video_id = directory.video_id;
       file.name = "[" + quality_label + "] stream." + extension;
       file.mime_type = std::move(mime_type);
       file.size = std::stoll(std::string(d["contentLength"]));
-      file.path = directory.path + file.name;
+      file.id = directory.id + file.name;
       file.itag = d["itag"];
       result.items.emplace_back(std::move(file));
     }
@@ -166,7 +169,7 @@ struct YouTube::CloudProvider
     PageData result;
     std::vector<std::pair<std::string, std::string>> headers{
         {"part", "snippet"},
-        {"playlistId", directory.id},
+        {"playlistId", directory.playlist_id},
         {"maxResults", "50"}};
     if (page_token) {
       headers.emplace_back("pageToken", *page_token);
@@ -179,21 +182,21 @@ struct YouTube::CloudProvider
       switch (directory.presentation) {
         case Presentation::kStream: {
           StreamDirectory streams;
-          streams.id = item["snippet"]["resourceId"]["videoId"];
+          streams.video_id = item["snippet"]["resourceId"]["videoId"];
           streams.timestamp =
               http::ParseTime(std::string(item["snippet"]["publishedAt"]));
           streams.name = std::string(item["snippet"]["title"]);
-          streams.path = directory.path + streams.name + "/";
+          streams.id = directory.id + streams.name + "/";
           result.items.emplace_back(std::move(streams));
           break;
         }
         case Presentation::kDash: {
           DashManifest file;
-          file.id = item["snippet"]["resourceId"]["videoId"];
+          file.video_id = item["snippet"]["resourceId"]["videoId"];
           file.timestamp =
               http::ParseTime(std::string(item["snippet"]["publishedAt"]));
           file.name = std::string(item["snippet"]["title"]) + ".mpd";
-          file.path = directory.path + file.name;
+          file.id = directory.id + file.name;
           result.items.emplace_back(std::move(file));
           break;
         }
@@ -218,14 +221,14 @@ struct YouTube::CloudProvider
                                                      std::move(stop_token));
     for (const auto& [key, value] :
          response["items"][0]["contentDetails"]["relatedPlaylists"].items()) {
-      result.items.emplace_back(Playlist{
-          {.id = value, .name = key, .path = directory.path + key + "/"},
-          directory.presentation});
+      result.items.emplace_back(
+          Playlist{{.id = directory.id + key + "/", .name = key},
+                   value,
+                   directory.presentation});
     }
     if (directory.presentation == Presentation::kDash) {
-      result.items.emplace_back(
-          RootDirectory{{.id = "root", .name = "streams", .path = "/"},
-                        Presentation::kStream});
+      result.items.emplace_back(RootDirectory{
+          {.id = "/streams/", .name = "streams"}, Presentation::kStream});
     }
     co_return result;
   }
@@ -238,14 +241,14 @@ struct YouTube::CloudProvider
       range_header << *range.end;
     }
     std::string video_url =
-        co_await GetVideoUrl(file.id, file.itag, stop_token);
+        co_await GetVideoUrl(file.video_id, file.itag, stop_token);
     Request request{.url = std::move(video_url),
                     .headers = {{"Range", range_header.str()}}};
     auto response =
         co_await auth_manager_.GetHttp().Fetch(std::move(request), stop_token);
     if (response.status / 100 == 4) {
-      stream_cache_.Invalidate(file.id);
-      video_url = co_await GetVideoUrl(file.id, file.itag, stop_token);
+      stream_cache_.Invalidate(file.video_id);
+      video_url = co_await GetVideoUrl(file.video_id, file.itag, stop_token);
       Request retry_request{.url = std::move(video_url),
                             .headers = {{"Range", range_header.str()}}};
       response = co_await auth_manager_.GetHttp().Fetch(
@@ -272,9 +275,9 @@ struct YouTube::CloudProvider
   Generator<std::string> GetFileContent(DashManifest file, http::Range range,
                                         stdx::stop_token stop_token) {
     StreamData data =
-        co_await stream_cache_.Get(file.id, std::move(stop_token));
+        co_await stream_cache_.Get(file.video_id, std::move(stop_token));
     std::string dash_manifest = GenerateDashManifest(
-        "../streams" + file.path.substr(0, file.path.size() - 4), data.data);
+        "../streams" + file.id.substr(0, file.id.size() - 4), data.data);
     if ((range.end && range.end >= kDashManifestSize) ||
         range.start >= kDashManifestSize) {
       throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
