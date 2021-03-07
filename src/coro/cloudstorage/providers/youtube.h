@@ -281,8 +281,9 @@ struct YouTube::CloudProvider
     }
     dash_manifest.resize(kDashManifestSize, ' ');
     co_yield std::move(dash_manifest)
-        .substr(range.start,
-                range.end.value_or(kDashManifestSize - 1) - range.start + 1);
+        .substr(static_cast<size_t>(range.start),
+                static_cast<size_t>(range.end.value_or(kDashManifestSize - 1) -
+                                    range.start + 1));
   }
 
  private:
