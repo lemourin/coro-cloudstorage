@@ -55,6 +55,27 @@ std::string Find(std::string_view text,
 
 }  // namespace
 
+YouTube::Stream YouTube::ToStream(const StreamDirectory& directory, json d) {
+  std::string mime_type = d["mimeType"];
+  std::string extension(mime_type.begin() + mime_type.find('/') + 1,
+                        mime_type.begin() + mime_type.find(';'));
+  Stream stream;
+  stream.video_id = directory.video_id;
+  if (d.contains("qualityLabel")) {
+    stream.name += "[" + std::string(d["qualityLabel"]) + "]";
+  }
+  if (d.contains("audioQuality")) {
+    stream.name += "[" + std::string(d["audioQuality"]) + "]";
+  }
+  stream.name += "[" + std::to_string(int(d["itag"])) + "] " + directory.name +
+                 "." + extension;
+  stream.mime_type = std::move(mime_type);
+  stream.size = std::stoll(std::string(d["contentLength"]));
+  stream.id = directory.id + stream.name;
+  stream.itag = d["itag"];
+  return stream;
+}
+
 nlohmann::json YouTube::GetConfig(std::string_view page_data) {
   constexpr std::string_view kPattern = "var ytInitialPlayerResponse = ";
   auto it = page_data.find(kPattern);
@@ -71,6 +92,7 @@ nlohmann::json YouTube::GetConfig(std::string_view page_data) {
 }
 
 std::string YouTube::GenerateDashManifest(std::string_view path,
+                                          std::string_view name,
                                           const json& stream_data) {
   std::stringstream r;
   int64_t duration = 0;
@@ -147,8 +169,10 @@ std::string YouTube::GenerateDashManifest(std::string_view path,
         << "/>";
       r << "</SegmentBase>";
       r << "<BaseURL>"
-        << http::EncodeUriPath(StrCat(path, "/[", quality_label, "] stream ",
-                                      stream["itag"], ".", extension))
+        << http::EncodeUriPath(
+               std::string(path) +
+               ToStream(StreamDirectory{{.name = std::string(name)}}, stream)
+                   .name)
         << "</BaseURL>";
       r << "</Representation>";
     }
