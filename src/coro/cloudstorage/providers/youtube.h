@@ -153,7 +153,8 @@ struct YouTube::CloudProvider
                             mime_type.begin() + mime_type.find(';'));
       Stream file;
       file.video_id = directory.video_id;
-      file.name = "[" + quality_label + "] stream." + extension;
+      file.name = "[" + quality_label + "] stream " +
+                  std::to_string(int(d["itag"])) + "." + extension;
       file.mime_type = std::move(mime_type);
       file.size = std::stoll(std::string(d["contentLength"]));
       file.id = directory.id + file.name;
@@ -323,8 +324,14 @@ struct YouTube::CloudProvider
       std::string page =
           co_await GetVideoPage(http, std::move(video_id), stop_token);
       json config = GetConfig(page);
-      StreamData result{
-          .data = std::move(config["streamingData"]["adaptiveFormats"])};
+      json streams;
+      for (auto& json : config["streamingData"]["formats"]) {
+        streams.emplace_back(std::move(json));
+      }
+      for (auto& json : config["streamingData"]["adaptiveFormats"]) {
+        streams.emplace_back(std::move(json));
+      }
+      StreamData result{.data = streams};
       for (const auto& d : result.data) {
         if (!d.contains("url")) {
           auto response = co_await http.Fetch(GetPlayerUrl(page), stop_token);

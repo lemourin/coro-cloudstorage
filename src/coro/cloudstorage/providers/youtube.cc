@@ -147,8 +147,8 @@ std::string YouTube::GenerateDashManifest(std::string_view path,
         << "/>";
       r << "</SegmentBase>";
       r << "<BaseURL>"
-        << http::EncodeUriPath(
-               StrCat(path, "/[", quality_label, "] stream.", extension))
+        << http::EncodeUriPath(StrCat(path, "/[", quality_label, "] stream ",
+                                      stream["itag"], ".", extension))
         << "</BaseURL>";
       r << "</Representation>";
     }
