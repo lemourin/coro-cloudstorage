@@ -21,6 +21,7 @@ struct YouTube {
   static json GetConfig(std::string_view page_data);
   static std::string GetPlayerUrl(std::string_view page_data);
   static std::string GenerateDashManifest(std::string_view path,
+                                          std::string_view name,
                                           const json& stream_data);
   static std::function<std::string(std::string_view cipher)> GetDescrambler(
       std::string_view page);
@@ -88,7 +89,8 @@ struct YouTube {
   };
 
   struct StreamData {
-    json data;
+    json adaptive_formats;
+    json formats;
     std::optional<std::function<std::string(std::string_view)>> descrambler;
   };
 
@@ -108,6 +110,8 @@ struct YouTube {
     Generator<std::string> data;
     int64_t size;
   };
+
+  static Stream ToStream(const StreamDirectory&, json d);
 
   static constexpr std::string_view kId = "youtube";
 };
@@ -142,24 +146,13 @@ struct YouTube::CloudProvider
     PageData result;
     StreamData data =
         co_await stream_cache_.Get(directory.video_id, stop_token);
-    for (const auto& d : data.data) {
-      if (!d.contains("contentLength")) {
-        continue;
+    for (const auto& formats : {data.adaptive_formats, data.formats}) {
+      for (const auto& d : formats) {
+        if (!d.contains("contentLength")) {
+          continue;
+        }
+        result.items.emplace_back(ToStream(directory, d));
       }
-      std::string quality_label =
-          (d.contains("qualityLabel") ? d["qualityLabel"] : d["audioQuality"]);
-      std::string mime_type = d["mimeType"];
-      std::string extension(mime_type.begin() + mime_type.find('/') + 1,
-                            mime_type.begin() + mime_type.find(';'));
-      Stream file;
-      file.video_id = directory.video_id;
-      file.name = "[" + quality_label + "] stream " +
-                  std::to_string(int(d["itag"])) + "." + extension;
-      file.mime_type = std::move(mime_type);
-      file.size = std::stoll(std::string(d["contentLength"]));
-      file.id = directory.id + file.name;
-      file.itag = d["itag"];
-      result.items.emplace_back(std::move(file));
     }
     co_return result;
   }
@@ -277,8 +270,12 @@ struct YouTube::CloudProvider
                                         stdx::stop_token stop_token) {
     StreamData data =
         co_await stream_cache_.Get(file.video_id, std::move(stop_token));
-    std::string dash_manifest = GenerateDashManifest(
-        "../streams" + file.id.substr(0, file.id.size() - 4), data.data);
+    auto strip_extension = [](std::string_view str) {
+      return std::string(str.substr(0, str.size() - 4));
+    };
+    std::string dash_manifest =
+        GenerateDashManifest("../streams" + strip_extension(file.id) + "/",
+                             strip_extension(file.name), data.adaptive_formats);
     if ((range.end && range.end >= kDashManifestSize) ||
         range.start >= kDashManifestSize) {
       throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
@@ -303,12 +300,14 @@ struct YouTube::CloudProvider
                                 stdx::stop_token stop_token) const {
     StreamData data = co_await stream_cache_.Get(video_id, stop_token);
     std::optional<std::string> url;
-    for (const auto& d : data.data) {
-      if (d["itag"] == itag) {
-        if (d.contains("url")) {
-          url = d["url"];
-        } else {
-          url = (*data.descrambler)(std::string(d["signatureCipher"]));
+    for (const auto& formats : {data.adaptive_formats, data.formats}) {
+      for (const auto& d : formats) {
+        if (d["itag"] == itag) {
+          if (d.contains("url")) {
+            url = d["url"];
+          } else {
+            url = (*data.descrambler)(std::string(d["signatureCipher"]));
+          }
         }
       }
     }
@@ -324,20 +323,17 @@ struct YouTube::CloudProvider
       std::string page =
           co_await GetVideoPage(http, std::move(video_id), stop_token);
       json config = GetConfig(page);
-      json streams;
-      for (auto& json : config["streamingData"]["formats"]) {
-        streams.emplace_back(std::move(json));
-      }
-      for (auto& json : config["streamingData"]["adaptiveFormats"]) {
-        streams.emplace_back(std::move(json));
-      }
-      StreamData result{.data = streams};
-      for (const auto& d : result.data) {
-        if (!d.contains("url")) {
-          auto response = co_await http.Fetch(GetPlayerUrl(page), stop_token);
-          result.descrambler =
-              GetDescrambler(co_await http::GetBody(std::move(response.body)));
-          break;
+      StreamData result{
+          .adaptive_formats = config["streamingData"]["adaptiveFormats"],
+          .formats = config["streamingData"]["formats"]};
+      for (const auto& formats : {result.adaptive_formats, result.formats}) {
+        for (const auto& d : formats) {
+          if (!d.contains("url")) {
+            auto response = co_await http.Fetch(GetPlayerUrl(page), stop_token);
+            result.descrambler = GetDescrambler(
+                co_await http::GetBody(std::move(response.body)));
+            break;
+          }
         }
       }
       co_return result;
