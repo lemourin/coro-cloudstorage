@@ -106,7 +106,7 @@ class Dropbox::CloudProvider
       : http_(&http), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {
-    Directory d{};
+    Directory d{{.id = ""}};
     co_return d;
   }
 
