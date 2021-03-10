@@ -250,14 +250,17 @@ class Dropbox::CloudProvider
       std::optional<UploadSession> session;
       auto it = co_await content.data.begin();
       while (true) {
-        auto chunk_size = std::min<int64_t>(
-            150 * 1024 * 1024, content.size.value_or(INT64_MAX) - offset);
+        auto chunk_size = std::min<size_t>(
+            150 * 1024 * 1024,
+            static_cast<size_t>(
+                content.size.value_or((std::numeric_limits<size_t>::max)()) -
+                offset));
         FileContent chunk{.data = util::Take(it, chunk_size),
                           .size = chunk_size};
         if (!session) {
           session = co_await CreateUploadSession(std::move(parent), name,
                                                  std::move(chunk), stop_token);
-        } else if (offset + chunk_size < content.size) {
+        } else if (offset + static_cast<int64_t>(chunk_size) < content.size) {
           session = co_await WriteChunk(std::move(*session), std::move(chunk),
                                         offset, stop_token);
         } else {

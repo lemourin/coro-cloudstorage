@@ -8,7 +8,7 @@
 namespace coro::cloudstorage::util {
 
 Generator<std::string> Take(Generator<std::string>::iterator& iterator,
-                            int64_t chunk_size);
+                            size_t chunk_size);
 
 }  // namespace coro::cloudstorage::util
 
