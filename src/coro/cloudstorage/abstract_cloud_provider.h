@@ -99,11 +99,11 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
                                    std::optional<std::string> page_token,
                                    stdx::stop_token stop_token) {
     co_return co_await std::visit(
-        [&](auto* p) {
+        [&](auto* p) -> Task<PageData> {
           using CloudProviderT = std::remove_pointer_t<decltype(p)>;
           using ItemT = typename CloudProviderT::Item;
 
-          return std::visit(
+          co_return co_await std::visit(
               [&](auto& d) -> Task<PageData> {
                 if constexpr (IsDirectory<decltype(d), CloudProviderT>) {
                   auto page_data = co_await p->ListDirectoryPage(
@@ -146,12 +146,12 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
 
   Task<Item> CreateDirectory(Item parent, std::string_view name,
                              stdx::stop_token stop_token) {
-    return std::visit(
+    co_return co_await std::visit(
         [&](auto* d) -> Task<Item> {
           using CloudProviderT = std::remove_pointer_t<decltype(d)>;
           using ItemT = typename CloudProviderT::Item;
 
-          return std::visit(
+          co_return co_await std::visit(
               [&](auto& item) -> Task<Item> {
                 if constexpr (IsDirectory<decltype(item), CloudProviderT>) {
                   if constexpr (CanCreateDirectory<decltype(item),
@@ -207,11 +207,11 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
   Task<Item> MoveItem(Item source, Item destination,
                       stdx::stop_token stop_token) {
     co_return co_await std::visit(
-        [&](auto* d) {
+        [&](auto* d) -> Task<Item> {
           using CloudProviderT = std::remove_pointer_t<decltype(d)>;
           using ItemT = typename CloudProviderT::Item;
 
-          return std::visit(
+          co_return co_await std::visit(
               [&](auto& destination) -> Task<Item> {
                 if constexpr (IsDirectory<decltype(destination),
                                           CloudProviderT>) {
@@ -246,12 +246,12 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
   Task<Item> CreateFile(Item parent, std::string_view name, FileContent content,
                         stdx::stop_token stop_token) {
     co_return co_await std::visit(
-        [&](auto* d) {
+        [&](auto* d) -> Task<Item> {
           using CloudProviderT = std::remove_pointer_t<decltype(d)>;
           using ItemT = typename CloudProviderT::Item;
           using FileContentT = typename CloudProviderT::FileContent;
 
-          return std::visit(
+          co_return co_await std::visit(
               [&](auto& parent) -> Task<Item> {
                 if constexpr (IsDirectory<decltype(parent), CloudProviderT> &&
                               CanCreateFile<decltype(parent), CloudProviderT>) {
