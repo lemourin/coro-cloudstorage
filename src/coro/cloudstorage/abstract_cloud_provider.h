@@ -67,19 +67,6 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
   template <typename T>
   explicit CloudProvider(T* impl) : impl_(impl) {}
 
-  CloudProvider(const CloudProvider& provider) : impl_(provider.impl_) {}
-  CloudProvider(CloudProvider&& provider) noexcept
-      : impl_(std::move(provider.impl_)) {}
-
-  CloudProvider& operator=(const CloudProvider& provider) {
-    impl_ = provider.impl_;
-    return *this;
-  }
-  CloudProvider& operator=(CloudProvider&& provider) noexcept {
-    impl_ = std::move(provider.impl_);
-    return *this;
-  }
-
   intptr_t id() const {
     return std::visit([](auto* p) { return reinterpret_cast<intptr_t>(p); },
                       impl_);
