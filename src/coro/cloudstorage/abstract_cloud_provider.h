@@ -156,11 +156,14 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
       using CloudProviderT = std::remove_pointer_t<decltype(d)>;
       using ItemT = typename CloudProviderT::Item;
 
-      if constexpr (CanRemove<ItemT, CloudProviderT>) {
-        co_await d->RemoveItem(std::get<ItemT>(item), std::move(stop_token));
-      } else {
-        throw std::runtime_error("remove not supported");
-      }
+      auto remove_item = [&](auto& item) -> Task<> {
+        if constexpr (CanRemove<decltype(item), CloudProviderT>) {
+          co_await d->RemoveItem(item, std::move(stop_token));
+        } else {
+          throw std::runtime_error("remove not supported");
+        }
+      };
+      co_await std::visit(remove_item, std::get<ItemT>(item));
     };
     co_await std::visit(remove_item, impl_);
   }
@@ -170,13 +173,15 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
     auto rename_item = [&](auto* d) -> Task<Item> {
       using CloudProviderT = std::remove_pointer_t<decltype(d)>;
       using ItemT = typename CloudProviderT::Item;
-      if constexpr (CanRename<ItemT, CloudProviderT>) {
-        co_return co_await d->RenameItem(std::get<ItemT>(item),
-                                         std::string(new_name),
-                                         std::move(stop_token));
-      } else {
-        throw std::runtime_error("rename not supported");
-      }
+      auto rename_item = [&](auto& item) -> Task<Item> {
+        if constexpr (CanRename<decltype(item), CloudProviderT>) {
+          co_return co_await d->RenameItem(
+              std::move(item), std::string(new_name), std::move(stop_token));
+        } else {
+          throw std::runtime_error("rename not supported");
+        }
+      };
+      co_return co_await std::visit(rename_item, std::get<ItemT>(item));
     };
     co_return co_await std::visit(rename_item, impl_);
   }
@@ -189,13 +194,17 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
 
       auto move_item = [&](auto& destination) -> Task<Item> {
         if constexpr (IsDirectory<decltype(destination), CloudProviderT>) {
-          if constexpr (CanMove<ItemT, decltype(destination), CloudProviderT>) {
-            co_return co_await d->MoveItem(std::get<ItemT>(source),
-                                           std::move(destination),
-                                           std::move(stop_token));
-          } else {
-            throw std::runtime_error("move not supported");
-          }
+          auto move_item = [&](auto& source) -> Task<Item> {
+            if constexpr (CanMove<decltype(source), decltype(destination),
+                                  CloudProviderT>) {
+              co_return co_await d->MoveItem(std::move(source),
+                                             std::move(destination),
+                                             std::move(stop_token));
+            } else {
+              throw std::runtime_error("move not supported");
+            }
+          };
+          co_return co_await std::visit(move_item, std::get<ItemT>(source));
         } else {
           throw std::invalid_argument("cannot move into non directory");
         }
