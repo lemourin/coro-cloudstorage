@@ -139,11 +139,14 @@ class Dropbox::CloudProvider
                                    stdx::stop_token stop_token) {
     http::Request<std::string> request;
     if (page_token) {
+      json body;
+      body["cursor"] = *page_token;
       request = {.url = GetEndpoint("/files/list_folder/continue"),
-                 .body = R"({"cursor":")" + *page_token + R"("})"};
+                 .body = body.dump()};
     } else {
-      request = {.url = GetEndpoint("/files/list_folder"),
-                 .body = R"({"path":")" + directory.id + R"("})"};
+      json body;
+      body["path"] = std::move(directory.id);
+      request = {.url = GetEndpoint("/files/list_folder"), .body = body.dump()};
     }
     auto response =
         co_await FetchJson(std::move(request), std::move(stop_token));
