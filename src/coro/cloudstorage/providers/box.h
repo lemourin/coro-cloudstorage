@@ -279,7 +279,7 @@ class Box::CloudProvider
     item.id = json["id"];
     item.size = json["size"];
     item.name = json["name"];
-    item.timestamp = http::ParseTime(json["modified_at"]);
+    item.timestamp = http::ParseTime(std::string(json["modified_at"]));
     return item;
   }
 

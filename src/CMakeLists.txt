@@ -22,6 +22,7 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/providers/mega/file_system_access.h
     coro/cloudstorage/providers/mega/http_io.h
     coro/cloudstorage/providers/box.h
+    coro/cloudstorage/providers/yandex_disk.h
 )
 set(coro-cloudstorage-SOURCES
     coro/cloudstorage/util/webdav_utils.cc
