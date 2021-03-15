@@ -83,22 +83,25 @@ struct YandexDisk {
     std::optional<int64_t> size;
   };
 
-  template <http::HttpClient Http>
+  template <http::HttpClient Http, typename EventLoop>
   class CloudProvider;
 
   static constexpr std::string_view kId = "yandex";
 };
 
-template <http::HttpClient Http>
+template <http::HttpClient Http, typename EventLoop>
 class YandexDisk::CloudProvider
     : public coro::cloudstorage::CloudProvider<YandexDisk,
-                                               CloudProvider<Http>> {
+                                               CloudProvider<Http, EventLoop>> {
  public:
   using json = nlohmann::json;
   using Request = http::Request<std::string>;
 
-  CloudProvider(const Http& http, YandexDisk::Auth::AuthToken auth_token)
-      : http_(&http), auth_token_(std::move(auth_token)) {}
+  CloudProvider(const Http& http, const EventLoop& event_loop,
+                YandexDisk::Auth::AuthToken auth_token)
+      : http_(&http),
+        event_loop_(&event_loop),
+        auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {
     Directory d{{.id = "disk:/"}};
@@ -167,26 +170,67 @@ class YandexDisk::CloudProvider
 
   Task<Item> RenameItem(Item item, std::string new_name,
                         stdx::stop_token stop_token) {
-    throw std::runtime_error("unimplemented");
+    std::string path = std::visit([](const auto& d) { return d.id; }, item);
+    std::string new_path = GetParentPath(path) + "/" + new_name;
+    co_return co_await MoveItem(path, new_path, std::move(stop_token));
   }
 
   Task<Directory> CreateDirectory(Directory parent, std::string name,
                                   stdx::stop_token stop_token) {
-    throw std::runtime_error("unimplemented");
+    Request request{
+        .url = GetEndpoint("/disk/resources/") + "?" +
+               http::FormDataToString({{"path", Concatenate(parent.id, name)}}),
+        .method = http::Method::kPut};
+    auto response = co_await FetchJson(std::move(request), stop_token);
+    request = {.url = response["href"]};
+    co_return ToItemImpl<Directory>(
+        co_await FetchJson(std::move(request), std::move(stop_token)));
   }
 
   Task<> RemoveItem(Item item, stdx::stop_token stop_token) {
-    throw std::runtime_error("unimplemented");
+    Request request{
+        .url =
+            GetEndpoint("/disk/resources") + "?" +
+            http::FormDataToString(
+                {{"path", std::visit([](const auto& d) { return d.id; }, item)},
+                 {"permanently", "true"}}),
+        .method = http::Method::kDelete,
+        .headers = {{"Authorization", "OAuth " + auth_token_.access_token}}};
+    auto response = co_await http_->Fetch(std::move(request), stop_token);
+    std::string body = co_await http::GetBody(std::move(response.body));
+    if (response.status / 100 != 2) {
+      throw http::HttpException(response.status, std::move(body));
+    }
+    if (response.status == 202) {
+      auto json = nlohmann::json::parse(std::move(body));
+      co_await PollStatus(std::string(json["href"]), std::move(stop_token));
+    }
   }
 
   Task<Item> MoveItem(Item source, Directory destination,
                       stdx::stop_token stop_token) {
-    throw std::runtime_error("unimplemented");
+    std::string path = std::visit([](const auto& d) { return d.id; }, source);
+    std::string new_path =
+        Concatenate(destination.id,
+                    std::visit([](const auto& d) { return d.name; }, source));
+    co_return co_await MoveItem(path, new_path, std::move(stop_token));
   }
 
   Task<File> CreateFile(Directory parent, std::string_view name,
                         FileContent content, stdx::stop_token stop_token) {
-    throw std::runtime_error("unimplemented");
+    Request request{.url = GetEndpoint("/disk/resources/upload") + "?" +
+                           http::FormDataToString(
+                               {{"path", Concatenate(parent.id, name)}})};
+    auto response = co_await FetchJson(std::move(request), stop_token);
+    http::Request<> upload_request = {.url = response["href"],
+                                      .method = http::Method::kPut,
+                                      .body = std::move(content.data)};
+    co_await http_->Fetch(std::move(upload_request), stop_token);
+    request = {.url = GetEndpoint("/disk/resources/") + "?" +
+                      http::FormDataToString(
+                          {{"path", Concatenate(parent.id, name)}})};
+    co_return ToItemImpl<File>(
+        co_await FetchJson(std::move(request), std::move(stop_token)));
   }
 
  private:
@@ -195,6 +239,59 @@ class YandexDisk::CloudProvider
 
   static std::string GetEndpoint(std::string_view path) {
     return std::string(kEndpoint) + std::string(path);
+  }
+
+  static std::string Concatenate(std::string_view path,
+                                 std::string_view child) {
+    return std::string(path) +
+           (!path.empty() && path.back() == '/' ? "" : "/") +
+           std::string(child);
+  }
+
+  static std::string GetParentPath(std::string result) {
+    if (result.back() == '/') result.pop_back();
+    return result.substr(0, result.find_last_of('/'));
+  }
+
+  Task<Item> MoveItem(std::string_view from, std::string_view path,
+                      stdx::stop_token stop_token) {
+    Request request{
+        .url = GetEndpoint("/disk/resources/move") + "?" +
+               http::FormDataToString({{"from", from}, {"path", path}}),
+        .method = http::Method::kPost,
+        .headers = {{"Authorization", "OAuth " + auth_token_.access_token}}};
+    auto response = co_await http_->Fetch(std::move(request), stop_token);
+    std::string body = co_await http::GetBody(std::move(response.body));
+    if (response.status / 100 != 2) {
+      throw http::HttpException(response.status, std::move(body));
+    }
+    if (response.status == 202) {
+      auto json = nlohmann::json::parse(std::move(body));
+      co_await PollStatus(std::string(json["href"]), stop_token);
+    }
+    request = {.url = GetEndpoint("/disk/resources") + "?" +
+                      http::FormDataToString({{"path", path}})};
+    co_return ToItem(
+        co_await FetchJson(std::move(request), std::move(stop_token)));
+  }
+
+  Task<> PollStatus(std::string_view url, stdx::stop_token stop_token) {
+    int backoff = 100;
+    while (true) {
+      Request request{.url = std::string(url)};
+      auto json = co_await FetchJson(std::move(request), stop_token);
+      if (json["status"] == "success") {
+        break;
+      } else if (json["status"] == "failure") {
+        throw CloudException(json.dump());
+      } else if (json["status"] == "in-progress") {
+        co_await event_loop_->Wait(backoff, stop_token);
+        backoff *= 2;
+        continue;
+      } else {
+        throw CloudException("unknown status");
+      }
+    }
   }
 
   auto FetchJson(Request request, stdx::stop_token stop_token) const {
@@ -225,6 +322,7 @@ class YandexDisk::CloudProvider
   }
 
   const Http* http_;
+  const EventLoop* event_loop_;
   YandexDisk::Auth::AuthToken auth_token_;
 };
 
@@ -233,7 +331,8 @@ struct CreateCloudProvider<YandexDisk> {
   template <typename CloudFactory, typename... Args>
   auto operator()(const CloudFactory& factory,
                   YandexDisk::Auth::AuthToken auth_token, Args&&...) const {
-    return YandexDisk::CloudProvider(*factory.http_, std::move(auth_token));
+    return YandexDisk::CloudProvider(*factory.http_, *factory.event_loop_,
+                                     std::move(auth_token));
   }
 };
 

@@ -169,15 +169,15 @@ class Box::CloudProvider
     if (range.end) {
       range_header << *range.end;
     }
-    auto response = co_await auth_manager_.Fetch(
-        Request{.url = GetEndpoint("/files/" + file.id + "/content"),
-                .headers = {{"Range", range_header.str()}}},
-        stop_token);
+    Request request{.url = GetEndpoint("/files/" + file.id + "/content"),
+                    .headers = {{"Range", range_header.str()}}};
+    auto response =
+        co_await auth_manager_.Fetch(std::move(request), stop_token);
     if (response.status / 100 == 3) {
-      response = co_await auth_manager_.GetHttp().Fetch(
-          Request{.url = http::GetHeader(response.headers, "Location").value(),
-                  .headers = {{"Range", range_header.str()}}},
-          std::move(stop_token));
+      request = {.url = http::GetHeader(response.headers, "Location").value(),
+                 .headers = {{"Range", range_header.str()}}};
+      response = co_await auth_manager_.GetHttp().Fetch(std::move(request),
+                                                        std::move(stop_token));
     }
     FOR_CO_AWAIT(auto& chunk, response.body) { co_yield std::move(chunk); }
   }
@@ -209,18 +209,16 @@ class Box::CloudProvider
   }
 
   Task<> RemoveItem(File item, stdx::stop_token stop_token) {
-    co_await auth_manager_.Fetch(
-        Request{.url = GetEndpoint("/files/" + item.id),
-                .method = http::Method::kDelete},
-        std::move(stop_token));
+    Request request = {.url = GetEndpoint("/files/" + item.id),
+                       .method = http::Method::kDelete};
+    co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
   }
 
   Task<> RemoveItem(Directory item, stdx::stop_token stop_token) {
-    co_await auth_manager_.Fetch(
-        Request{.url = GetEndpoint("/folders/" + item.id) + "?" +
-                       http::FormDataToString({{"recursive", "true"}}),
-                .method = http::Method::kDelete},
-        std::move(stop_token));
+    Request request{.url = GetEndpoint("/folders/" + item.id) + "?" +
+                           http::FormDataToString({{"recursive", "true"}}),
+                    .method = http::Method::kDelete};
+    co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
   }
 
   Task<Directory> MoveItem(Directory source, Directory destination,
@@ -238,20 +236,17 @@ class Box::CloudProvider
 
   Task<File> CreateFile(Directory parent, std::string_view name,
                         FileContent content, stdx::stop_token stop_token) {
+    http::Request<> request{
+        .url = "https://upload.box.com/api/2.0/files/content",
+        .method = http::Method::kPost,
+        .headers = {{"Accept", "application/json"},
+                    {"Content-Type", "multipart/form-data; boundary=" +
+                                         std::string(kSeparator)},
+                    {"Authorization",
+                     "Bearer " + auth_manager_.GetAuthToken().access_token}},
+        .body = GetUploadStream(std::move(parent), name, std::move(content))};
     auto response = co_await util::FetchJson(
-        auth_manager_.GetHttp(),
-        http::Request<>{
-            .url = "https://upload.box.com/api/2.0/files/content",
-            .method = http::Method::kPost,
-            .headers = {{"Accept", "application/json"},
-                        {"Content-Type", "multipart/form-data; boundary=" +
-                                             std::string(kSeparator)},
-                        {"Authorization",
-                         "Bearer " +
-                             auth_manager_.GetAuthToken().access_token}},
-            .body =
-                GetUploadStream(std::move(parent), name, std::move(content))},
-        std::move(stop_token));
+        auth_manager_.GetHttp(), std::move(request), std::move(stop_token));
     co_return ToItemImpl<File>(response["entries"][0]);
   }
 
