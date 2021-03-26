@@ -87,22 +87,11 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
     auto list_directory_page = [&](auto* p) -> Task<PageData> {
       using CloudProviderT = std::remove_pointer_t<decltype(p)>;
       using ItemT = typename CloudProviderT::Item;
-
-      auto list_directory_page = [&](auto& d) -> Task<PageData> {
-        if constexpr (IsDirectory<decltype(d), CloudProviderT>) {
-          auto page_data = co_await p->ListDirectoryPage(
-              std::move(d), std::move(page_token), std::move(stop_token));
-          PageData result = {.next_page_token =
-                                 std::move(page_data.next_page_token)};
-          std::copy(page_data.items.begin(), page_data.items.end(),
-                    std::back_inserter(result.items));
-          co_return std::move(result);
-        } else {
-          throw std::runtime_error("not a directory");
-        }
-      };
-      co_return co_await std::visit(list_directory_page,
-                                    std::get<ItemT>(directory));
+      auto list_directory_page =
+          BindFront(ListDirectoryPageF{}, p, std::move(page_token),
+                    std::move(stop_token));
+      co_return co_await std::visit(std::move(list_directory_page),
+                                    std::move(std::get<ItemT>(directory)));
     };
     co_return co_await std::visit(list_directory_page, impl_);
   }
@@ -113,17 +102,9 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
         [&](auto* d) {
           using CloudProviderT = std::remove_pointer_t<decltype(d)>;
           using ItemT = typename CloudProviderT::Item;
-
           return std::visit(
-              [&](auto& item) -> Generator<std::string> {
-                if constexpr (IsFile<decltype(item), CloudProviderT>) {
-                  return d->GetFileContent(std::move(item), range,
-                                           std::move(stop_token));
-                } else {
-                  throw std::invalid_argument("not a file");
-                }
-              },
-              std::get<ItemT>(file));
+              BindFront(GetFileContentF{}, d, range, std::move(stop_token)),
+              std::move(std::get<ItemT>(file)));
         },
         impl_);
   }
@@ -133,20 +114,10 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
     auto create_directory = [&](auto* d) -> Task<Item> {
       using CloudProviderT = std::remove_pointer_t<decltype(d)>;
       using ItemT = typename CloudProviderT::Item;
-
-      auto create_directory = [&](auto& item) -> Task<Item> {
-        if constexpr (IsDirectory<decltype(item), CloudProviderT>) {
-          if constexpr (CanCreateDirectory<decltype(item), CloudProviderT>) {
-            co_return co_await d->CreateDirectory(
-                std::move(item), std::string(name), std::move(stop_token));
-          } else {
-            throw std::runtime_error("createdirectory not supported");
-          }
-        } else {
-          throw std::invalid_argument("parent not a directory");
-        }
-      };
-      co_return co_await std::visit(create_directory, std::get<ItemT>(parent));
+      auto create_directory =
+          BindFront(CreateDirectoryF{}, d, name, std::move(stop_token));
+      co_return co_await std::visit(std::move(create_directory),
+                                    std::move(std::get<ItemT>(parent)));
     };
     co_return co_await std::visit(create_directory, impl_);
   }
@@ -155,15 +126,9 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
     auto remove_item = [&](auto* d) -> Task<> {
       using CloudProviderT = std::remove_pointer_t<decltype(d)>;
       using ItemT = typename CloudProviderT::Item;
-
-      auto remove_item = [&](auto& item) -> Task<> {
-        if constexpr (CanRemove<decltype(item), CloudProviderT>) {
-          co_await d->RemoveItem(item, std::move(stop_token));
-        } else {
-          throw std::runtime_error("remove not supported");
-        }
-      };
-      co_await std::visit(remove_item, std::get<ItemT>(item));
+      auto remove_item = BindFront(RemoveItemF{}, d, std::move(stop_token));
+      co_await std::visit(std::move(remove_item),
+                          std::move(std::get<ItemT>(item)));
     };
     co_await std::visit(remove_item, impl_);
   }
@@ -173,15 +138,10 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
     auto rename_item = [&](auto* d) -> Task<Item> {
       using CloudProviderT = std::remove_pointer_t<decltype(d)>;
       using ItemT = typename CloudProviderT::Item;
-      auto rename_item = [&](auto& item) -> Task<Item> {
-        if constexpr (CanRename<decltype(item), CloudProviderT>) {
-          co_return co_await d->RenameItem(
-              std::move(item), std::string(new_name), std::move(stop_token));
-        } else {
-          throw std::runtime_error("rename not supported");
-        }
-      };
-      co_return co_await std::visit(rename_item, std::get<ItemT>(item));
+      auto rename_item =
+          BindFront(RenameItemF{}, d, new_name, std::move(stop_token));
+      co_return co_await std::visit(std::move(rename_item),
+                                    std::move(std::get<ItemT>(item)));
     };
     co_return co_await std::visit(rename_item, impl_);
   }
@@ -193,21 +153,10 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
       using ItemT = typename CloudProviderT::Item;
 
       auto move_item = [&](auto& destination) -> Task<Item> {
-        if constexpr (IsDirectory<decltype(destination), CloudProviderT>) {
-          auto move_item = [&](auto& source) -> Task<Item> {
-            if constexpr (CanMove<decltype(source), decltype(destination),
-                                  CloudProviderT>) {
-              co_return co_await d->MoveItem(std::move(source),
-                                             std::move(destination),
-                                             std::move(stop_token));
-            } else {
-              throw std::runtime_error("move not supported");
-            }
-          };
-          co_return co_await std::visit(move_item, std::get<ItemT>(source));
-        } else {
-          throw std::invalid_argument("cannot move into non directory");
-        }
+        auto move_item = BindFront(MoveItemF{}, d, std::move(destination),
+                                   std::move(stop_token));
+        co_return co_await std::visit(std::move(move_item),
+                                      std::move(std::get<ItemT>(source)));
       };
       co_return co_await std::visit(move_item, std::get<ItemT>(destination));
     };
@@ -231,19 +180,12 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
       using CloudProviderT = std::remove_pointer_t<decltype(d)>;
       using ItemT = typename CloudProviderT::Item;
       using FileContentT = typename CloudProviderT::FileContent;
-
-      auto create_file = [&](auto& parent) -> Task<Item> {
-        if constexpr (IsDirectory<decltype(parent), CloudProviderT> &&
-                      CanCreateFile<decltype(parent), CloudProviderT>) {
-          co_return co_await d->CreateFile(
-              std::move(parent), name,
-              ToFileContent<FileContentT>(std::move(content)),
-              std::move(stop_token));
-        } else {
-          throw std::invalid_argument("not supported");
-        }
-      };
-      co_return co_await std::visit(create_file, std::get<ItemT>(parent));
+      auto create_file =
+          BindFront(CreateFileF{}, d, name,
+                    ToFileContent<FileContentT>(std::move(content)),
+                    std::move(stop_token));
+      co_return co_await std::visit(std::move(create_file),
+                                    std::move(std::get<ItemT>(parent)));
     };
     co_return co_await std::visit(create_file, impl_);
   }
@@ -275,6 +217,131 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
   }
 
  private:
+  template <typename FD, typename... Args>
+  struct BindFrontF {
+    FD func;
+    std::tuple<std::decay_t<Args>...> args;
+
+    template <typename... CallArgs>
+    auto operator()(CallArgs&&... call_args) && {
+      return std::apply(
+          func,
+          std::tuple_cat(std::move(args), std::forward_as_tuple(call_args...)));
+    }
+  };
+
+  template <typename FD, typename... Args>
+  auto BindFront(FD func, Args&&... args) {
+    return BindFrontF<FD, Args...>{
+        std::move(func), std::make_tuple(std::forward<Args>(args)...)};
+  }
+
+  struct RenameItemF {
+    template <typename CloudProviderT, typename ItemT>
+    Task<Item> operator()(CloudProviderT* d, std::string_view new_name,
+                          stdx::stop_token stop_token, ItemT item) const {
+      if constexpr (CanRename<ItemT, CloudProviderT>) {
+        co_return co_await d->RenameItem(std::move(item), std::string(new_name),
+                                         std::move(stop_token));
+      } else {
+        throw std::runtime_error("rename not supported");
+      }
+    }
+  };
+
+  struct RemoveItemF {
+    template <typename CloudProviderT, typename ItemT>
+    Task<> operator()(CloudProviderT* d, stdx::stop_token stop_token,
+                      ItemT item) const {
+      if constexpr (CanRemove<ItemT, CloudProviderT>) {
+        co_await d->RemoveItem(item, std::move(stop_token));
+      } else {
+        throw std::runtime_error("remove not supported");
+      }
+    }
+  };
+
+  struct MoveItemF {
+    template <typename CloudProviderT, typename Destination, typename Source>
+    Task<Item> operator()(CloudProviderT* d, Destination destination,
+                          stdx::stop_token stop_token, Source source) const {
+      if constexpr (IsDirectory<decltype(destination), CloudProviderT>) {
+        if constexpr (CanMove<Source, Destination, CloudProviderT>) {
+          co_return co_await d->MoveItem(
+              std::move(source), std::move(destination), std::move(stop_token));
+        } else {
+          throw std::runtime_error("move not supported");
+        }
+      } else {
+        throw std::invalid_argument("cannot move into non directory");
+      }
+    }
+  };
+
+  struct CreateDirectoryF {
+    template <typename CloudProviderT, typename ItemT>
+    Task<Item> operator()(CloudProviderT* d, std::string_view name,
+                          stdx::stop_token stop_token, ItemT item) const {
+      if constexpr (IsDirectory<ItemT, CloudProviderT>) {
+        if constexpr (CanCreateDirectory<ItemT, CloudProviderT>) {
+          co_return co_await d->CreateDirectory(
+              std::move(item), std::string(name), std::move(stop_token));
+        } else {
+          throw std::runtime_error("createdirectory not supported");
+        }
+      } else {
+        throw std::invalid_argument("parent not a directory");
+      }
+    }
+  };
+
+  struct CreateFileF {
+    template <typename CloudProviderT, typename FileContentT, typename ItemT>
+    Task<Item> operator()(CloudProviderT* d, std::string_view name,
+                          FileContentT content, stdx::stop_token stop_token,
+                          ItemT parent) const {
+      if constexpr (IsDirectory<ItemT, CloudProviderT> &&
+                    CanCreateFile<ItemT, CloudProviderT>) {
+        co_return co_await d->CreateFile(
+            std::move(parent), name, std::move(content), std::move(stop_token));
+      } else {
+        throw std::invalid_argument("not supported");
+      }
+    }
+  };
+
+  struct ListDirectoryPageF {
+    template <typename CloudProviderT, typename ItemT>
+    Task<PageData> operator()(CloudProviderT* d,
+                              std::optional<std::string> page_token,
+                              stdx::stop_token stop_token, ItemT item) const {
+      if constexpr (IsDirectory<ItemT, CloudProviderT>) {
+        auto page_data = co_await d->ListDirectoryPage(
+            std::move(item), std::move(page_token), std::move(stop_token));
+        PageData result = {.next_page_token =
+                               std::move(page_data.next_page_token)};
+        std::copy(page_data.items.begin(), page_data.items.end(),
+                  std::back_inserter(result.items));
+        co_return result;
+      } else {
+        throw std::runtime_error("not a directory");
+      }
+    }
+  };
+
+  struct GetFileContentF {
+    template <typename CloudProviderT, typename ItemT>
+    Generator<std::string> operator()(CloudProviderT* d, http::Range range,
+                                      stdx::stop_token stop_token,
+                                      ItemT item) const {
+      if constexpr (IsFile<ItemT, CloudProviderT>) {
+        return d->GetFileContent(std::move(item), range, std::move(stop_token));
+      } else {
+        throw std::invalid_argument("not a file");
+      }
+    }
+  };
+
   template <typename T>
   static T ToFileContent(FileContent content) {
     if constexpr (std::is_convertible_v<decltype(std::declval<T>().size),
