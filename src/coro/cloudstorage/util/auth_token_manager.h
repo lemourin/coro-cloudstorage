@@ -70,16 +70,20 @@ struct LoadToken<coro::util::TypeList<CloudProviders...>> {
 std::string GetConfigFilePath(std::string_view app_name = "coro-cloudstorage",
                               std::string_view file_name = "config.json");
 
-struct AuthTokenManager {
+class AuthTokenManager {
+ public:
+  AuthTokenManager(std::string path = GetConfigFilePath())
+      : path_(std::move(path)) {}
+
   template <typename CloudProviderList>
   auto LoadTokenData() const {
-    return internal::LoadToken<CloudProviderList>{}(GetConfigFilePath());
+    return internal::LoadToken<CloudProviderList>{}(path_);
   }
 
   template <typename CloudProvider>
   void SaveToken(typename CloudProvider::Auth::AuthToken token,
                  std::string_view id) const {
-    auto token_file = GetConfigFilePath();
+    auto token_file = path_;
     nlohmann::json json;
     {
       std::ifstream input_token_file{token_file};
@@ -113,7 +117,9 @@ struct AuthTokenManager {
   }
 
  private:
-  static void RemoveToken(std::string_view id, std::string_view provider_id);
+  void RemoveToken(std::string_view id, std::string_view provider_id) const;
+
+  std::string path_;
 };
 
 }  // namespace coro::cloudstorage::util

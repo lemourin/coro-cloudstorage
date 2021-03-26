@@ -60,8 +60,8 @@ std::string GetConfigFilePath(std::string_view app_name,
 }
 
 void AuthTokenManager::RemoveToken(std::string_view id,
-                                   std::string_view provider_id) {
-  auto token_file = GetConfigFilePath();
+                                   std::string_view provider_id) const {
+  auto token_file = path_;
   nlohmann::json json;
   {
     std::ifstream input_token_file{token_file};
