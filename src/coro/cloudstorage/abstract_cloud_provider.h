@@ -41,6 +41,7 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>> {
     std::string name;
     std::optional<int64_t> timestamp;
     std::optional<int64_t> size;
+    std::optional<std::string> mime_type;
     enum class Type { kFile, kDirectory } type;
   };
 
@@ -204,9 +205,16 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
                           stream << std::move(d.id);
                           return std::move(stream.str());
                         }(),
-                    .name = std::move(d.name),
+                    .name = d.name,
                     .timestamp = CloudProviderT::GetTimestamp(d),
                     .size = CloudProviderT::GetSize(d),
+                    .mime_type = [&] {
+                      if constexpr (IsFile<decltype(d), CloudProviderT>) {
+                        return CloudProviderT::GetMimeType(d);
+                      } else {
+                        return std::nullopt;
+                      }
+                    }(),
                     .type = IsDirectory<decltype(d), CloudProviderT>
                                 ? GenericItem::Type::kDirectory
                                 : GenericItem::Type::kFile};
