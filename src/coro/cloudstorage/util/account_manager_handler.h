@@ -253,7 +253,9 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     if (request.method == coro::http::Method::kOptions) {
       co_return Response{
           .status = 204,
-          .headers = {{"Allow", "OPTIONS, GET, HEAD, POST, PROPFIND"},
+          .headers = {{"Allow",
+                       "OPTIONS, GET, HEAD, POST, PUT, DELETE, MOVE, "
+                       "MKCOL, PROPFIND, PATCH, PROPPATCH"},
                       {"DAV", "1"},
                       {"Access-Control-Allow-Origin", "*"},
                       {"Access-Control-Allow-Headers", "*"}}};
