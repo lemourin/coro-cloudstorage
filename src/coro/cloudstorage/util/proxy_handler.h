@@ -52,15 +52,9 @@ class ProxyHandler {
       if (GetDirectoryPath(path) != destination_path) {
         auto destination_directory =
             co_await item_cache_.Get(destination_path, stop_token);
-        auto move_item = [&](auto& destination)
-            -> Task<std::optional<typename CloudProvider::Item>> {
-          if constexpr (CanMove<Item, decltype(destination), CloudProvider>) {
-            co_return co_await provider_->MoveItem(d, destination, stop_token);
-          } else {
-            co_return std::nullopt;
-          }
-        };
-        auto item = co_await std::visit(move_item, destination_directory);
+        auto move_item = stdx::BindFront(MoveItemF{}, provider_, d, stop_token);
+        auto item =
+            co_await std::visit(std::move(move_item), destination_directory);
         if (!item) {
           co_return Response{.status = 501};
         } else {
@@ -68,16 +62,9 @@ class ProxyHandler {
         }
       }
       if (GetFileName(path) != destination_name) {
-        auto rename_item = [&](auto& source)
-            -> Task<std::optional<typename CloudProvider::Item>> {
-          if constexpr (CanRename<decltype(source), CloudProvider>) {
-            co_return co_await provider_->RenameItem(source, destination_name,
-                                                     std::move(stop_token));
-          } else {
-            co_return std::nullopt;
-          }
-        };
-        auto item = co_await std::visit(rename_item, new_item);
+        auto rename_item = stdx::BindFront(
+            RenameItemF{}, provider_, std::move(destination_name), stop_token);
+        auto item = co_await std::visit(std::move(rename_item), new_item);
         if (!item) {
           co_return Response{.status = 501};
         } else {
@@ -151,33 +138,16 @@ class ProxyHandler {
     }
     try {
       if (request.method == http::Method::kMkcol) {
-        auto create_directory = [&](const auto& d) -> Task<Response> {
-          if constexpr (IsDirectory<decltype(d), CloudProvider> &&
-                        CanCreateDirectory<decltype(d), CloudProvider>) {
-            co_await provider_->CreateDirectory(d, GetFileName(path),
-                                                std::move(stop_token));
-            co_return Response{.status = 201};
-          } else {
-            co_return Response{.status = 501};
-          }
-        };
-        co_return co_await std::visit(create_directory,
+        auto create_directory =
+            stdx::BindFront(CreateDirectoryF{}, provider_, path, stop_token);
+        co_return co_await std::visit(std::move(create_directory),
                                       co_await provider_->GetItemByPath(
                                           GetDirectoryPath(path), stop_token));
       }
       if (request.method == http::Method::kPut) {
-        auto create_file = [&](const auto& d) -> Task<Response> {
-          if constexpr (IsDirectory<decltype(d), CloudProvider> &&
-                        CanCreateFile<decltype(d), CloudProvider>) {
-            co_await provider_->CreateFile(d, GetFileName(path),
-                                           ToFileContent(std::move(request)),
-                                           std::move(stop_token));
-            co_return Response{.status = 201};
-          } else {
-            co_return Response{.status = 501};
-          }
-        };
-        co_return co_await std::visit(create_file,
+        auto create_file = stdx::BindFront(CreateFileF{}, provider_, path,
+                                           std::move(request), stop_token);
+        co_return co_await std::visit(std::move(create_file),
                                       co_await provider_->GetItemByPath(
                                           GetDirectoryPath(path), stop_token));
       }
@@ -354,6 +324,66 @@ class ProxyHandler {
     }
     return result;
   }
+
+  struct RenameItemF {
+    template <typename Item>
+    Task<std::optional<typename CloudProvider::Item>> operator()(
+        CloudProvider* provider, std::string new_name,
+        stdx::stop_token stop_token, Item item) {
+      if constexpr (CanRename<Item, CloudProvider>) {
+        co_return co_await provider->RenameItem(
+            std::move(item), std::move(new_name), std::move(stop_token));
+      } else {
+        co_return std::nullopt;
+      }
+    }
+  };
+
+  struct MoveItemF {
+    template <typename Destination, typename Item>
+    Task<std::optional<typename CloudProvider::Item>> operator()(
+        CloudProvider* provider, Item item, stdx::stop_token stop_token,
+        Destination destination) {
+      if constexpr (CanMove<Item, Destination, CloudProvider>) {
+        co_return co_await provider->MoveItem(
+            std::move(item), std::move(destination), std::move(stop_token));
+      } else {
+        co_return std::nullopt;
+      }
+    }
+  };
+
+  struct CreateDirectoryF {
+    template <typename Item>
+    Task<Response> operator()(CloudProvider* provider, std::string path,
+                              stdx::stop_token stop_token, const Item& item) {
+      if constexpr (IsDirectory<Item, CloudProvider> &&
+                    CanCreateDirectory<Item, CloudProvider>) {
+        co_await provider->CreateDirectory(item, GetFileName(std::move(path)),
+                                           std::move(stop_token));
+        co_return Response{.status = 201};
+      } else {
+        co_return Response{.status = 501};
+      }
+    }
+  };
+
+  struct CreateFileF {
+    template <typename Item>
+    Task<Response> operator()(CloudProvider* provider, std::string path,
+                              Request request, stdx::stop_token stop_token,
+                              const Item& item) {
+      if constexpr (IsDirectory<Item, CloudProvider> &&
+                    CanCreateFile<Item, CloudProvider>) {
+        co_await provider->CreateFile(item, GetFileName(std::move(path)),
+                                      ToFileContent(std::move(request)),
+                                      std::move(stop_token));
+        co_return Response{.status = 201};
+      } else {
+        co_return Response{.status = 501};
+      }
+    }
+  };
 
   struct GetItem {
     auto operator()(std::string path, stdx::stop_token stop_token) {
