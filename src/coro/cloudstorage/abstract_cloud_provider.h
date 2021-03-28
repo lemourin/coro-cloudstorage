@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_ABSTRACT_CLOUD_PROVIDER_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/stdx/bind_front.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/util/type_list.h>
 
@@ -89,8 +90,8 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
       using CloudProviderT = std::remove_pointer_t<decltype(p)>;
       using ItemT = typename CloudProviderT::Item;
       auto list_directory_page =
-          BindFront(ListDirectoryPageF{}, p, std::move(page_token),
-                    std::move(stop_token));
+          stdx::BindFront(ListDirectoryPageF{}, p, std::move(page_token),
+                          std::move(stop_token));
       co_return co_await std::visit(std::move(list_directory_page),
                                     std::move(std::get<ItemT>(directory)));
     };
@@ -103,9 +104,9 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
         [&](auto* d) {
           using CloudProviderT = std::remove_pointer_t<decltype(d)>;
           using ItemT = typename CloudProviderT::Item;
-          return std::visit(
-              BindFront(GetFileContentF{}, d, range, std::move(stop_token)),
-              std::move(std::get<ItemT>(file)));
+          return std::visit(stdx::BindFront(GetFileContentF{}, d, range,
+                                            std::move(stop_token)),
+                            std::move(std::get<ItemT>(file)));
         },
         impl_);
   }
@@ -116,7 +117,7 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
       using CloudProviderT = std::remove_pointer_t<decltype(d)>;
       using ItemT = typename CloudProviderT::Item;
       auto create_directory =
-          BindFront(CreateDirectoryF{}, d, name, std::move(stop_token));
+          stdx::BindFront(CreateDirectoryF{}, d, name, std::move(stop_token));
       co_return co_await std::visit(std::move(create_directory),
                                     std::move(std::get<ItemT>(parent)));
     };
@@ -127,7 +128,8 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
     auto remove_item = [&](auto* d) -> Task<> {
       using CloudProviderT = std::remove_pointer_t<decltype(d)>;
       using ItemT = typename CloudProviderT::Item;
-      auto remove_item = BindFront(RemoveItemF{}, d, std::move(stop_token));
+      auto remove_item =
+          stdx::BindFront(RemoveItemF{}, d, std::move(stop_token));
       co_await std::visit(std::move(remove_item),
                           std::move(std::get<ItemT>(item)));
     };
@@ -140,7 +142,7 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
       using CloudProviderT = std::remove_pointer_t<decltype(d)>;
       using ItemT = typename CloudProviderT::Item;
       auto rename_item =
-          BindFront(RenameItemF{}, d, new_name, std::move(stop_token));
+          stdx::BindFront(RenameItemF{}, d, new_name, std::move(stop_token));
       co_return co_await std::visit(std::move(rename_item),
                                     std::move(std::get<ItemT>(item)));
     };
@@ -154,8 +156,8 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
       using ItemT = typename CloudProviderT::Item;
 
       auto move_item = [&](auto& destination) -> Task<Item> {
-        auto move_item = BindFront(MoveItemF{}, d, std::move(destination),
-                                   std::move(stop_token));
+        auto move_item = stdx::BindFront(MoveItemF{}, d, std::move(destination),
+                                         std::move(stop_token));
         co_return co_await std::visit(std::move(move_item),
                                       std::move(std::get<ItemT>(source)));
       };
@@ -182,9 +184,9 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
       using ItemT = typename CloudProviderT::Item;
       using FileContentT = typename CloudProviderT::FileContent;
       auto create_file =
-          BindFront(CreateFileF{}, d, name,
-                    ToFileContent<FileContentT>(std::move(content)),
-                    std::move(stop_token));
+          stdx::BindFront(CreateFileF{}, d, name,
+                          ToFileContent<FileContentT>(std::move(content)),
+                          std::move(stop_token));
       co_return co_await std::visit(std::move(create_file),
                                     std::move(std::get<ItemT>(parent)));
     };
@@ -208,13 +210,14 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
                     .name = d.name,
                     .timestamp = CloudProviderT::GetTimestamp(d),
                     .size = CloudProviderT::GetSize(d),
-                    .mime_type = [&] {
-                      if constexpr (IsFile<decltype(d), CloudProviderT>) {
-                        return CloudProviderT::GetMimeType(d);
-                      } else {
-                        return std::nullopt;
-                      }
-                    }(),
+                    .mime_type =
+                        [&] {
+                          if constexpr (IsFile<decltype(d), CloudProviderT>) {
+                            return CloudProviderT::GetMimeType(d);
+                          } else {
+                            return std::nullopt;
+                          }
+                        }(),
                     .type = IsDirectory<decltype(d), CloudProviderT>
                                 ? GenericItem::Type::kDirectory
                                 : GenericItem::Type::kFile};
@@ -225,25 +228,6 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
   }
 
  private:
-  template <typename FD, typename... Args>
-  struct BindFrontF {
-    FD func;
-    std::tuple<std::decay_t<Args>...> args;
-
-    template <typename... CallArgs>
-    auto operator()(CallArgs&&... call_args) && {
-      return std::apply(
-          func,
-          std::tuple_cat(std::move(args), std::forward_as_tuple(call_args...)));
-    }
-  };
-
-  template <typename FD, typename... Args>
-  auto BindFront(FD func, Args&&... args) {
-    return BindFrontF<FD, Args...>{
-        std::move(func), std::make_tuple(std::forward<Args>(args)...)};
-  }
-
   struct RenameItemF {
     template <typename CloudProviderT, typename ItemT>
     Task<Item> operator()(CloudProviderT* d, std::string_view new_name,
