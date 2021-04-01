@@ -180,7 +180,14 @@ class ProxyHandler {
                                                       Item item) {
     co_yield R"(<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:">)";
     ElementData current_element_data{
-        .path = std::move(path), .name = item.name, .is_directory = false};
+        .path = std::move(path),
+        .name = item.name,
+        .size = CloudProvider::GetSize(item),
+        .timestamp = CloudProvider::GetTimestamp(item)};
+    if constexpr (IsFile<Item, CloudProvider>) {
+      current_element_data.mime_type = CloudProvider::GetMimeType(item);
+      current_element_data.size = item.size;
+    }
     co_yield GetElement(std::move(current_element_data));
     co_yield "</d:multistatus>";
   }
