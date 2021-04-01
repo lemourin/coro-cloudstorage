@@ -69,7 +69,7 @@ Task<> CoMain(event_base* event_base) noexcept {
     coro::cloudstorage::CloudFactory cloud_factory(event_loop, http);
 
     Promise<void> quit;
-    HttpServer http_server(event_base, {.address = "0.0.0.0", .port = 12345},
+    HttpServer http_server(event_base, {.address = "127.0.0.1", .port = 12345},
                            HttpHandler(cloud_factory, &quit));
     co_await quit;
     co_await http_server.Quit();
