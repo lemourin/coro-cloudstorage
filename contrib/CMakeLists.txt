@@ -39,3 +39,5 @@ target_include_directories(Mega PUBLIC
 if(ANDROID)
     target_compile_definitions(Mega PRIVATE _LIBCPP_HAS_NO_OFF_T_FUNCTIONS)
 endif()
+
+add_subdirectory(pugixml EXCLUDE_FROM_ALL)

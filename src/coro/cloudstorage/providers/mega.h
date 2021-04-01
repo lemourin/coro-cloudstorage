@@ -373,7 +373,8 @@ struct CreateCloudProvider<Mega> {
 
 namespace util {
 template <>
-inline auto ToJson<Mega::Auth::AuthToken>(Mega::Auth::AuthToken token) {
+inline nlohmann::json ToJson<Mega::Auth::AuthToken>(
+    Mega::Auth::AuthToken token) {
   nlohmann::json json;
   json["email"] = std::move(token.email);
   json["session"] = http::ToBase64(token.session);
@@ -381,10 +382,10 @@ inline auto ToJson<Mega::Auth::AuthToken>(Mega::Auth::AuthToken token) {
 }
 
 template <>
-inline auto ToAuthToken<Mega::Auth::AuthToken>(const nlohmann::json& json) {
-  return Mega::Auth::AuthToken{
-      .email = json.at("email"),
-      .session = http::FromBase64(std::string(json.at("session")))};
+inline Mega::Auth::AuthToken ToAuthToken<Mega::Auth::AuthToken>(
+    const nlohmann::json& json) {
+  return {.email = json.at("email"),
+          .session = http::FromBase64(std::string(json.at("session")))};
 }
 
 template <typename EventLoop, http::HttpClient HttpClient>

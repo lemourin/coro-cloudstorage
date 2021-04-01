@@ -306,7 +306,8 @@ class PCloud::CloudProvider
 
 namespace util {
 template <>
-inline auto ToJson<PCloud::Auth::AuthToken>(PCloud::Auth::AuthToken token) {
+inline nlohmann::json ToJson<PCloud::Auth::AuthToken>(
+    PCloud::Auth::AuthToken token) {
   nlohmann::json json;
   json["access_token"] = std::move(token.access_token);
   json["hostname"] = token.hostname;
@@ -314,10 +315,10 @@ inline auto ToJson<PCloud::Auth::AuthToken>(PCloud::Auth::AuthToken token) {
 }
 
 template <>
-inline auto ToAuthToken<PCloud::Auth::AuthToken>(const nlohmann::json& json) {
-  return PCloud::Auth::AuthToken{
-      .access_token = std::string(json.at("access_token")),
-      .hostname = std::string(json.at("hostname"))};
+inline PCloud::Auth::AuthToken ToAuthToken<PCloud::Auth::AuthToken>(
+    const nlohmann::json& json) {
+  return {.access_token = std::string(json.at("access_token")),
+          .hostname = std::string(json.at("hostname"))};
 }
 template <coro::http::HttpClient HttpClient>
 class PCloudAuthHandler {

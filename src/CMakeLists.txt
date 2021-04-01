@@ -24,14 +24,16 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/providers/box.h
     coro/cloudstorage/providers/yandex_disk.h
     coro/cloudstorage/providers/pcloud.h
+    coro/cloudstorage/providers/webdav.h
 )
 set(coro-cloudstorage-SOURCES
     coro/cloudstorage/util/webdav_utils.cc
     coro/cloudstorage/util/auth_token_manager.cc
     coro/cloudstorage/util/generator_utils.cc
     coro/cloudstorage/providers/mega.cc
+    coro/cloudstorage/providers/webdav.cc
 )
 
 target_sources(coro-cloudstorage PRIVATE ${coro-cloudstorage-HEADERS} ${coro-cloudstorage-SOURCES})
 target_include_directories(coro-cloudstorage PUBLIC .)
-target_link_libraries(coro-cloudstorage PUBLIC coro-http nlohmann_json::nlohmann_json Mega)
+target_link_libraries(coro-cloudstorage PUBLIC coro-http nlohmann_json::nlohmann_json Mega pugixml::pugixml)

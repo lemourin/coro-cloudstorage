@@ -21,7 +21,7 @@ concept HasRefreshToken = requires(T v) {
 };
 
 template <typename AuthToken>
-auto ToJson(AuthToken token) {
+nlohmann::json ToJson(AuthToken token) {
   nlohmann::json json;
   json["access_token"] = std::move(token.access_token);
   if constexpr (HasRefreshToken<AuthToken>) {
@@ -34,7 +34,7 @@ auto ToJson(AuthToken token) {
 }
 
 template <typename AuthToken>
-auto ToAuthToken(const nlohmann::json& json) {
+AuthToken ToAuthToken(const nlohmann::json& json) {
   AuthToken auth_token{.access_token = json.at("access_token")};
   if constexpr (HasRefreshToken<AuthToken>) {
     auth_token.refresh_token = json.at("refresh_token");
