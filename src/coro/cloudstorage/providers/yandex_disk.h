@@ -218,9 +218,10 @@ class YandexDisk::CloudProvider
 
   Task<File> CreateFile(Directory parent, std::string_view name,
                         FileContent content, stdx::stop_token stop_token) {
-    Request request{.url = GetEndpoint("/disk/resources/upload") + "?" +
-                           http::FormDataToString(
-                               {{"path", Concatenate(parent.id, name)}})};
+    Request request{
+        .url = GetEndpoint("/disk/resources/upload") + "?" +
+               http::FormDataToString({{"path", Concatenate(parent.id, name)},
+                                       {"overwrite", "true"}})};
     auto response = co_await FetchJson(std::move(request), stop_token);
     http::Request<> upload_request = {.url = response["href"],
                                       .method = http::Method::kPut,
