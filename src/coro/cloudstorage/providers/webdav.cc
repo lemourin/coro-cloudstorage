@@ -44,26 +44,6 @@ Generator<std::string> GenerateLoginPage() {
   )";
 }
 
-template <typename T>
-T ToItemImpl(const WebDAV::XmlNode<pugi::xml_node>& node) {
-  T item{};
-  auto props = node.child("propstat").child("prop");
-  item.id = node.child("href").text().as_string();
-  item.name = http::DecodeUri(props.child("displayname").text().as_string());
-  if (auto timestamp = props.child("getlastmodified").text()) {
-    item.timestamp = ParseTime(timestamp.as_string());
-  }
-  if constexpr (std::is_same_v<T, WebDAV::File>) {
-    if (auto size = props.child("getcontentlength").text()) {
-      item.size = std::stoll(size.as_string());
-    }
-    if (auto mime_type = props.child("getcontenttype").text()) {
-      item.mime_type = mime_type.as_string();
-    }
-  }
-  return item;
-}
-
 }  // namespace
 
 namespace util {
@@ -145,6 +125,26 @@ std::optional<std::string> WebDAV::GetNamespace(const pugi::xml_node& node) {
   } else {
     throw CloudException("invalid xml");
   }
+}
+
+template <typename T>
+T WebDAV::ToItemImpl(const WebDAV::XmlNode<pugi::xml_node>& node) {
+  T item{};
+  auto props = node.child("propstat").child("prop");
+  item.id = node.child("href").text().as_string();
+  item.name = http::DecodeUri(props.child("displayname").text().as_string());
+  if (auto timestamp = props.child("getlastmodified").text()) {
+    item.timestamp = ParseTime(timestamp.as_string());
+  }
+  if constexpr (std::is_same_v<T, WebDAV::File>) {
+    if (auto size = props.child("getcontentlength").text()) {
+      item.size = std::stoll(size.as_string());
+    }
+    if (auto mime_type = props.child("getcontenttype").text()) {
+      item.mime_type = mime_type.as_string();
+    }
+  }
+  return item;
 }
 
 WebDAV::Item WebDAV::ToItem(const XmlNode<pugi::xml_node>& node) {

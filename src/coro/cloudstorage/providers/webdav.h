@@ -111,6 +111,9 @@ class WebDAV {
   };
 
   static Item ToItem(const XmlNode<pugi::xml_node>&);
+
+  template <typename T>
+  static T ToItemImpl(const WebDAV::XmlNode<pugi::xml_node>& node);
 };
 
 template <http::HttpClient Http>
