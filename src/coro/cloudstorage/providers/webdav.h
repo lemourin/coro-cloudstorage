@@ -137,18 +137,19 @@ class WebDAV::CloudProvider
     if (uri.port) {
       username += ":" + std::to_string(*uri.port);
     }
-    auto response = co_await FetchXml(Request{.url = auth_token_.endpoint,
-                                              .method = http::Method::kPropfind,
-                                              .headers = {{"Depth", "0"}},
-                                              .body = R"(
+    Request request{.url = auth_token_.endpoint,
+                    .method = http::Method::kPropfind,
+                    .headers = {{"Depth", "0"}},
+                    .body = R"(
                                                 <D:propfind xmlns:D="DAV:">
                                                   <D:prop>
                                                     <D:quota-available-bytes/>
                                                     <D:quota-used-bytes/>
                                                   </D:prop>
                                                 </D:propfind>
-                                              )"},
-                                      std::move(stop_token));
+                                              )"};
+    auto response =
+        co_await FetchXml(std::move(request), std::move(stop_token));
     auto stats = response.document_element()
                      .child("response")
                      .child("propstat")
@@ -167,10 +168,11 @@ class WebDAV::CloudProvider
   Task<PageData> ListDirectoryPage(Directory directory,
                                    std::optional<std::string> page_token,
                                    stdx::stop_token stop_token) const {
-    auto response = co_await FetchXml(Request{.url = GetEndpoint(directory.id),
-                                              .method = http::Method::kPropfind,
-                                              .headers = {{"Depth", "1"}}},
-                                      std::move(stop_token));
+    Request request{.url = GetEndpoint(directory.id),
+                    .method = http::Method::kPropfind,
+                    .headers = {{"Depth", "1"}}};
+    auto response =
+        co_await FetchXml(std::move(request), std::move(stop_token));
     auto root = response.document_element();
     PageData page;
     for (auto node = root.first_child().next_sibling(); node;
@@ -226,21 +228,22 @@ class WebDAV::CloudProvider
   Task<Directory> CreateDirectory(Directory parent, std::string name,
                                   stdx::stop_token stop_token) const {
     auto endpoint = GetEndpoint(Concat(parent.id, name));
-    co_await Fetch(Request{.url = endpoint, .method = http::Method::kMkcol},
-                   stop_token);
-    auto response = co_await FetchXml(Request{.url = std::move(endpoint),
-                                              .method = http::Method::kPropfind,
-                                              .headers = {{"Depth", "0"}}},
-                                      std::move(stop_token));
+    Request request{.url = endpoint, .method = http::Method::kMkcol};
+    co_await Fetch(std::move(request), stop_token);
+    request = {.url = std::move(endpoint),
+               .method = http::Method::kPropfind,
+               .headers = {{"Depth", "0"}}};
+    auto response =
+        co_await FetchXml(std::move(request), std::move(stop_token));
     co_return std::get<Directory>(ToItem(XmlNode<pugi::xml_node>(
         response.document_element().first_child(), response.ns())));
   }
 
   template <typename Item>
   Task<> RemoveItem(Item item, stdx::stop_token stop_token) const {
-    co_await Fetch(
-        Request{.url = GetEndpoint(item.id), .method = http::Method::kDelete},
-        std::move(stop_token));
+    Request request{.url = GetEndpoint(item.id),
+                    .method = http::Method::kDelete};
+    co_await Fetch(std::move(request), std::move(stop_token));
   }
 
   template <typename Item>
@@ -265,10 +268,11 @@ class WebDAV::CloudProvider
                                           std::to_string(*content.size));
     }
     co_await Fetch(std::move(upload_request), stop_token);
-    auto response = co_await FetchXml(Request{.url = std::move(endpoint),
-                                              .method = http::Method::kPropfind,
-                                              .headers = {{"Depth", "0"}}},
-                                      std::move(stop_token));
+    Request request{.url = std::move(endpoint),
+                    .method = http::Method::kPropfind,
+                    .headers = {{"Depth", "0"}}};
+    auto response =
+        co_await FetchXml(std::move(request), std::move(stop_token));
     co_return std::get<File>(ToItem(XmlNode<pugi::xml_node>(
         response.document_element().first_child(), response.ns())));
   }
@@ -288,14 +292,15 @@ class WebDAV::CloudProvider
   template <typename T>
   Task<T> Move(T item, std::string destination,
                stdx::stop_token stop_token) const {
-    co_await Fetch(Request{.url = GetEndpoint(item.id),
-                           .method = http::Method::kMove,
-                           .headers = {{"Destination", destination}}},
-                   stop_token);
-    auto response = co_await FetchXml(Request{.url = GetEndpoint(destination),
-                                              .method = http::Method::kPropfind,
-                                              .headers = {{"Depth", "0"}}},
-                                      std::move(stop_token));
+    Request request{.url = GetEndpoint(item.id),
+                    .method = http::Method::kMove,
+                    .headers = {{"Destination", destination}}};
+    co_await Fetch(std::move(request), stop_token);
+    request = {.url = GetEndpoint(destination),
+               .method = http::Method::kPropfind,
+               .headers = {{"Depth", "0"}}};
+    auto response =
+        co_await FetchXml(std::move(request), std::move(stop_token));
     co_return std::get<T>(ToItem(XmlNode<pugi::xml_node>(
         response.document_element().first_child(), response.ns())));
   }
