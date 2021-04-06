@@ -3,6 +3,7 @@
 #ifdef WIN32
 #include <direct.h>
 #include <shlobj.h>
+#undef CreateDirectory
 #else
 #include <sys/stat.h>
 #include <unistd.h>
@@ -10,13 +11,49 @@
 
 namespace coro::cloudstorage::util {
 
-std::string GetDirectoryPath(std::string_view path, char delimiter) {
-  auto it = path.find_last_of(delimiter);
+#ifdef WIN32
+constexpr char kDelimiter = '\\';
+#else
+constexpr char kDelimiter = '/';
+#endif
+
+#ifdef WIN32
+#define mkdir _mkdir
+#define rmdir _rmdir
+#else
+
+namespace {
+int mkdir(const char* path) { return ::mkdir(path, 0777); }
+}  // namespace
+
+#endif
+
+namespace internal {
+
+std::string GetDirectoryPath(std::string_view path) {
+  auto it = path.find_last_of(kDelimiter);
   if (it == std::string::npos) {
     throw std::invalid_argument("not a directory");
   }
   return std::string(path.begin(), path.begin() + it);
 }
+
+void CreateDirectory(std::string_view path) {
+  size_t it = 0;
+  while (it != std::string::npos) {
+    it = path.find_first_of(kDelimiter, it + 1);
+    if (mkdir(std::string(path.begin(), it == std::string::npos
+                                            ? path.end()
+                                            : path.begin() + it)
+                  .c_str()) != 0) {
+      if (errno != EEXIST) {
+        throw std::runtime_error("cannot initialize config file");
+      }
+    }
+  }
+}
+
+}  // namespace internal
 
 std::string GetConfigFilePath(std::string_view app_name,
                               std::string_view file_name) {
@@ -32,11 +69,6 @@ std::string GetConfigFilePath(std::string_view app_name,
                       nullptr);
   path_utf8 += "\\";
   path_utf8 += app_name;
-  if (_mkdir(path_utf8.c_str()) != 0) {
-    if (errno != EEXIST) {
-      throw std::runtime_error("cannot initialize config file");
-    }
-  }
   path_utf8 += "\\";
   path_utf8 += file_name;
   return path_utf8;
@@ -48,11 +80,6 @@ std::string GetConfigFilePath(std::string_view app_name,
     path = std::string(home) + "/.config/";
   }
   path += app_name;
-  if (mkdir(path.c_str(), 0777) != 0) {
-    if (errno != EEXIST) {
-      throw std::runtime_error("cannot initialize config file");
-    }
-  }
   path += "/";
   path += file_name;
   return path;
@@ -78,11 +105,7 @@ void AuthTokenManager::RemoveToken(std::string_view id,
   }
   if (result.is_null()) {
     remove(token_file.c_str());
-#ifdef WIN32
-    _rmdir(GetDirectoryPath(token_file, '\\').c_str());
-#else
-    rmdir(GetDirectoryPath(token_file, '/').c_str());
-#endif
+    rmdir(internal::GetDirectoryPath(token_file).c_str());
   } else {
     std::ofstream{token_file} << result;
   }

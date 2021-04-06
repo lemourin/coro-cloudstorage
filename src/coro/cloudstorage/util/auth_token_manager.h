@@ -65,6 +65,10 @@ struct LoadToken<coro::util::TypeList<CloudProviders...>> {
   }
 };
 
+std::string GetDirectoryPath(std::string_view path);
+
+void CreateDirectory(std::string_view path);
+
 }  // namespace internal
 
 std::string GetConfigFilePath(std::string_view app_name = "coro-cloudstorage",
@@ -108,6 +112,7 @@ class AuthTokenManager {
       token_json["type"] = GetCloudProviderId<CloudProvider>();
       json["auth_token"].emplace_back(std::move(token_json));
     }
+    internal::CreateDirectory(internal::GetDirectoryPath(token_file));
     std::ofstream{token_file} << json;
   }
 

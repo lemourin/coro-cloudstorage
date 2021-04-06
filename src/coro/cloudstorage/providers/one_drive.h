@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_ONE_DRIVE_H
 
 #include <coro/cloudstorage/util/auth_data.h>
+#include <coro/when_all.h>
 
 namespace coro::cloudstorage {
 
