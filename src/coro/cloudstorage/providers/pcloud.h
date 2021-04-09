@@ -158,7 +158,8 @@ class PCloud::CloudProvider
         .url = GetEndpoint("/renamefolder") + "?" +
                http::FormDataToString({{"folderid", std::to_string(item.id)},
                                        {"toname", std::move(new_name)},
-                                       {"timeformat", "timestamp"}})};
+                                       {"timeformat", "timestamp"}}),
+        .flags = Request::kWrite};
     auto response =
         co_await FetchJson(std::move(request), std::move(stop_token));
     co_return ToItemImpl<Directory>(response["metadata"]);
@@ -170,7 +171,8 @@ class PCloud::CloudProvider
         .url = GetEndpoint("/renamefile") + "?" +
                http::FormDataToString({{"fileid", std::to_string(item.id)},
                                        {"toname", std::move(new_name)},
-                                       {"timeformat", "timestamp"}})};
+                                       {"timeformat", "timestamp"}}),
+        .flags = Request::kWrite};
     auto response =
         co_await FetchJson(std::move(request), std::move(stop_token));
     co_return ToItemImpl<File>(response["metadata"]);
@@ -182,7 +184,8 @@ class PCloud::CloudProvider
         .url = GetEndpoint("/createfolder") + "?" +
                http::FormDataToString({{"folderid", std::to_string(parent.id)},
                                        {"name", std::move(name)},
-                                       {"timeformat", "timestamp"}})};
+                                       {"timeformat", "timestamp"}}),
+        .flags = Request::kWrite};
     auto response =
         co_await FetchJson(std::move(request), std::move(stop_token));
     co_return ToItemImpl<Directory>(response["metadata"]);
@@ -191,14 +194,16 @@ class PCloud::CloudProvider
   Task<> RemoveItem(File item, stdx::stop_token stop_token) {
     Request request{
         .url = GetEndpoint("/deletefile") + "?" +
-               http::FormDataToString({{"fileid", std::to_string(item.id)}})};
+               http::FormDataToString({{"fileid", std::to_string(item.id)}}),
+        .flags = Request::kWrite};
     co_await Fetch(std::move(request), std::move(stop_token));
   }
 
   Task<> RemoveItem(Directory item, stdx::stop_token stop_token) {
     Request request{
         .url = GetEndpoint("/deletefolderrecursive") + "?" +
-               http::FormDataToString({{"folderid", std::to_string(item.id)}})};
+               http::FormDataToString({{"folderid", std::to_string(item.id)}}),
+        .flags = Request::kWrite};
     co_await Fetch(std::move(request), std::move(stop_token));
   }
 
@@ -208,7 +213,8 @@ class PCloud::CloudProvider
                            http::FormDataToString(
                                {{"folderid", std::to_string(source.id)},
                                 {"tofolderid", std::to_string(destination.id)},
-                                {"timeformat", "timestamp"}})};
+                                {"timeformat", "timestamp"}}),
+                    .flags = Request::kWrite};
     auto response =
         co_await FetchJson(std::move(request), std::move(stop_token));
     co_return ToItemImpl<Directory>(response["metadata"]);
@@ -220,7 +226,8 @@ class PCloud::CloudProvider
                            http::FormDataToString(
                                {{"fileid", std::to_string(source.id)},
                                 {"tofolderid", std::to_string(destination.id)},
-                                {"timeformat", "timestamp"}})};
+                                {"timeformat", "timestamp"}}),
+                    .flags = Request::Flag::kWrite};
     auto response =
         co_await FetchJson(std::move(request), std::move(stop_token));
     co_return ToItemImpl<File>(response["metadata"]);
@@ -234,21 +241,46 @@ class PCloud::CloudProvider
                                        {"filename", name},
                                        {"timeformat", "timestamp"}}),
         .method = http::Method::kPost,
-        .headers = {{"Content-Type", "application/octet-stream"},
-                    {"Content-Length", std::to_string(content.size)},
-                    {"Accept", "application/json"},
-                    {"Authorization", "Bearer " + auth_token_.access_token}},
-        .body = std::move(content.data)};
+        .headers = {{"Content-Type", "multipart/form-data; boundary=" +
+                                         std::string(kSeparator)},
+                    {"Content-Length",
+                     std::to_string(GetUploadStreamPrefix(name).length() +
+                                    content.size +
+                                    GetUploadStreamSuffix().length())}},
+        .body = GetUploadStream(name, std::move(content)),
+        .flags = http::Request<>::kWrite};
     auto response =
         co_await FetchJson(std::move(request), std::move(stop_token));
     co_return ToItemImpl<File>(response["metadata"][0]);
   }
 
  private:
-  static constexpr std::string_view kEndpoint = "https://api.dropboxapi.com/2";
+  static constexpr std::string_view kSeparator = "Thnlg1ecwyUJHyhYYGrQ";
 
   std::string GetEndpoint(std::string_view path) const {
     return auth_token_.hostname + std::string(path);
+  }
+
+  static std::string GetUploadStreamPrefix(std::string_view name) {
+    std::stringstream chunk;
+    chunk << "--" << kSeparator << "\r\n"
+          << "Content-Disposition: form-data; name=\"filename\"; "
+          << "filename=\"" << name << "\"\r\n"
+          << "Content-Type: application/octet-stream\r\n\r\n";
+    return std::move(chunk).str();
+  }
+
+  static std::string GetUploadStreamSuffix() {
+    return "\r\n--" + std::string(kSeparator) + "--";
+  }
+
+  static Generator<std::string> GetUploadStream(std::string_view name,
+                                                FileContent content) {
+    co_yield GetUploadStreamPrefix(name);
+    FOR_CO_AWAIT(std::string & chunk, content.data) {
+      co_yield std::move(chunk);
+    }
+    co_yield GetUploadStreamSuffix();
   }
 
   template <typename Request>
@@ -270,7 +302,9 @@ class PCloud::CloudProvider
 
   template <typename Request>
   Task<json> FetchJson(Request request, stdx::stop_token stop_token) const {
-    request.headers.emplace_back("Content-Type", "application/json");
+    if (!http::GetHeader(request.headers, "Content-Type")) {
+      request.headers.emplace_back("Content-Type", "application/json");
+    }
     request.headers.emplace_back("Accept", "application/json");
     http::ResponseLike auto response =
         co_await Fetch(std::move(request), std::move(stop_token));
