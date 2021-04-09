@@ -236,8 +236,22 @@ class Box::CloudProvider
 
   Task<File> CreateFile(Directory parent, std::string_view name,
                         FileContent content, stdx::stop_token stop_token) {
+    std::optional<std::string> id;
+    FOR_CO_AWAIT(const PageData& page,
+                 this->ListDirectory(parent, stop_token)) {
+      for (const auto& item : page.items) {
+        if (std::visit([](const auto& d) { return d.name; }, item) == name) {
+          id = std::visit([](const auto& d) { return d.id; }, item);
+          break;
+        }
+      }
+      if (id) {
+        break;
+      }
+    }
     http::Request<> request{
-        .url = "https://upload.box.com/api/2.0/files/content",
+        .url = id ? "https://upload.box.com/api/2.0/files/" + *id + "/content"
+                  : "https://upload.box.com/api/2.0/files/content",
         .method = http::Method::kPost,
         .headers = {{"Accept", "application/json"},
                     {"Content-Type", "multipart/form-data; boundary=" +
