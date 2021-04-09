@@ -307,14 +307,13 @@ struct OneDrive::CloudProvider
     std::stringstream range_header;
     range_header << "bytes " << offset << "-" << offset + content.size - 1
                  << "/" << total_size;
-    auto body = co_await http::GetBody(std::move(content.data));
-    http::Request<std::string> request{
+    http::Request<> request{
         .url = session.upload_url,
         .method = http::Method::kPut,
         .headers = {{"Content-Length", std::to_string(content.size)},
                     {"Content-Range", range_header.str()},
                     {"Content-Type", "application/octet-stream"}},
-        .body = std::move(body)};
+        .body = std::move(content.data)};
     auto response = co_await util::FetchJson(
         auth_manager_.GetHttp(), std::move(request), std::move(stop_token));
     co_return std::move(response);
