@@ -279,6 +279,9 @@ class Box::CloudProvider
     Thumbnail result;
     result.size =
         std::stoll(http::GetHeader(response.headers, "Content-Length").value());
+    if (result.size == 0) {
+      throw CloudException(CloudException::Type::kNotFound);
+    }
     result.data = std::move(response.body);
     co_return result;
   }

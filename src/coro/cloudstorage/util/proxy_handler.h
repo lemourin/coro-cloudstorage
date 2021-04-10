@@ -1,6 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_PROXY_HANDLER_H
 #define CORO_CLOUDSTORAGE_PROXY_HANDLER_H
 
+#include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http_parse.h>
 #include <coro/util/lru_cache.h>
@@ -79,51 +80,46 @@ class ProxyHandler {
   }
 
  private:
+  static Generator<std::string> GetGenerator(std::string content) {
+    co_yield std::move(content);
+  }
+
+  template <typename Item>
+  static Response GetIcon() {
+    std::string_view content;
+    if constexpr (IsFile<Item, CloudProvider>) {
+      content = assets_gtk_file_svg;
+    } else {
+      content = assets_folder_svg;
+    }
+    return Response{
+        .status = 200,
+        .headers = {{"Cache-Control", "private"},
+                    {"Cache-Control", "max-age=604800"},
+                    {"Content-Type", "image/svg+xml"},
+                    {"Content-Length", std::to_string(content.size())}},
+        .body = GetGenerator(std::string(content))};
+  }
+
   template <typename Item>
   Task<Response> GetItemThumbnail(Request request, Item d,
                                   stdx::stop_token stop_token) {
     if constexpr (HasThumbnail<Item, CloudProvider>) {
-      auto range_str = coro::http::GetHeader(request.headers, "Range");
-      coro::http::Range range =
-          coro::http::ParseRange(range_str.value_or("bytes=0-"));
-      std::vector<std::pair<std::string, std::string>> headers = {
-          {"Access-Control-Allow-Origin", "*"},
-          {"Access-Control-Allow-Headers", "*"},
-          {"Cache-Control", "private"},
-          {"Cache-Control", "max-age=604800"}};
-      Response response{};
-      std::optional<int64_t> size;
       try {
         auto thumbnail = co_await provider_->GetItemThumbnail(
-            d, range, std::move(stop_token));
-        headers.emplace_back(
-            "Content-Disposition",
-            "inline; filename=\"" + d.name + "." +
-                http::MimeTypeToExtension(thumbnail.mime_type) + "\"");
-        headers.emplace_back("Content-Type", thumbnail.mime_type);
-        size = thumbnail.size;
-        response.body = std::move(thumbnail.data);
+            d, http::Range{}, std::move(stop_token));
+        co_return Response{
+            .status = 200,
+            .headers = {{"Cache-Control", "private"},
+                        {"Cache-Control", "max-age=604800"},
+                        {"Content-Type", std::string(thumbnail.mime_type)},
+                        {"Content-Length", std::to_string(thumbnail.size)}},
+            .body = std::move(thumbnail.data)};
       } catch (...) {
-        response.status = 404;
+        co_return GetIcon<Item>();
       }
-      if (size) {
-        if (!range.end) {
-          range.end = *size - 1;
-        }
-        headers.emplace_back("Accept-Ranges", "bytes");
-        headers.emplace_back("Content-Length",
-                             std::to_string(*range.end - range.start + 1));
-        if (range_str) {
-          headers.emplace_back(http::ToRangeHeader(range));
-        }
-      }
-      if (!response.status) {
-        response.status = !range_str || !size ? 200 : 206;
-      }
-      response.headers = std::move(headers);
-      co_return response;
     } else {
-      throw CloudException(CloudException::Type::kNotFound);
+      co_return GetIcon<Item>();
     }
   }
 
@@ -287,14 +283,20 @@ class ProxyHandler {
     co_yield "</d:multistatus>";
   }
 
-  static Generator<std::string> GetDirectoryContent(
-      Generator<typename CloudProvider::PageData> page_data, std::string path) {
+  bool IsRoot(std::string_view path) const {
+    return path.length() - path_prefix_.length() <= 1;
+  }
+
+  Generator<std::string> GetDirectoryContent(
+      Generator<typename CloudProvider::PageData> page_data,
+      std::string path) const {
     std::stringstream header;
     header << "<!DOCTYPE html><html><head><meta charset='UTF-8'></head>";
     header << "<body><table>";
     header << "<tr>";
     header << "<td>"
-           << "<image width=64 height=64 src='" << GetDirectoryPath(path)
+           << "<image width=64 height=64 src='"
+           << (IsRoot(path) ? path : GetDirectoryPath(path))
            << "?thumbnail=true'/>"
            << "</td>";
     header << "<td><a href='" << GetDirectoryPath(path) << "'>..</a></td>";
