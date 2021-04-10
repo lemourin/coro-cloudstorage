@@ -98,6 +98,7 @@ struct OneDrive {
     std::string id;
     std::string name;
     int64_t timestamp;
+    std::optional<std::string> thumbnail_url;
   };
 
   struct Directory : ItemData {};
@@ -121,6 +122,12 @@ struct OneDrive {
 
   struct UploadSession {
     std::string upload_url;
+  };
+
+  struct Thumbnail {
+    Generator<std::string> data;
+    int64_t size;
+    std::string mime_type;
   };
 };
 
@@ -286,6 +293,25 @@ struct OneDrive::CloudProvider
     }
   }
 
+  template <typename Item>
+  Task<Thumbnail> GetItemThumbnail(Item item, http::Range range,
+                                   stdx::stop_token stop_token) {
+    if (!item.thumbnail_url) {
+      throw CloudException(CloudException::Type::kNotFound);
+    }
+    Request request{.url = std::move(*item.thumbnail_url),
+                    .headers = {ToRangeHeader(range)}};
+    auto response =
+        co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
+    Thumbnail result;
+    result.mime_type =
+        http::GetHeader(response.headers, "Content-Type").value();
+    result.size =
+        std::stoll(http::GetHeader(response.headers, "Content-Length").value());
+    result.data = std::move(response.body);
+    co_return result;
+  }
+
  private:
   Task<UploadSession> CreateUploadSession(Directory parent,
                                           std::string_view name,
@@ -346,6 +372,9 @@ struct OneDrive::CloudProvider
     result.name = json["name"];
     result.timestamp =
         http::ParseTime(std::string(json["lastModifiedDateTime"]));
+    if (json.contains("thumbnails") && !json["thumbnails"].empty()) {
+      result.thumbnail_url = json["thumbnails"][0]["small"]["url"];
+    }
     if constexpr (std::is_same_v<T, File>) {
       result.size = json.at("size");
       if (json.contains("mimeType")) {

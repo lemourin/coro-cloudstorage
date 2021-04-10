@@ -95,6 +95,16 @@ concept CanCreateDirectory = requires(
   ->stdx::convertible_to<typename CloudProvider::Item>;
 };
 
+template <typename Item, typename CloudProvider>
+concept HasThumbnail = requires(
+    typename CloudProvider::Impl provider, Item v, http::Range range,
+    stdx::stop_token stop_token,
+    decltype(provider.GetItemThumbnail(v, range, stop_token)) thumbnail_promise,
+    typename decltype(thumbnail_promise)::type thumbnail) {
+  { std::declval<decltype(thumbnail)>() }
+  ->stdx::convertible_to<typename CloudProvider::Type::Thumbnail>;
+};
+
 template <typename CloudProviderT, typename ImplT = CloudProviderT>
 class CloudProvider {
  public:

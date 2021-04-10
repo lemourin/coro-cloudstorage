@@ -20,9 +20,103 @@ class ProxyHandler {
         path_prefix_(std::move(path_prefix)),
         item_cache_(32, GetItem{provider_}) {}
 
+  Task<Response> operator()(Request request, stdx::stop_token stop_token) {
+    auto uri = http::ParseUri(request.url);
+    std::string path = GetEffectivePath(
+        http::DecodeUri(uri.path.value_or("")).substr(path_prefix_.length()));
+    if (path.empty() || path.front() != '/') {
+      path = '/' + path;
+    }
+    try {
+      if (request.method == http::Method::kGet && uri.query) {
+        auto query = http::ParseQuery(*uri.query);
+        if (auto it = query.find("thumbnail");
+            it != query.end() && it->second == "true") {
+          co_return co_await std::visit(
+              [&](const auto& d) {
+                return GetItemThumbnail(std::move(request), d,
+                                        std::move(stop_token));
+              },
+              co_await item_cache_.Get(path, stop_token));
+        }
+      }
+      if (request.method == http::Method::kMkcol) {
+        auto create_directory =
+            stdx::BindFront(CreateDirectoryF{}, provider_, path, stop_token);
+        co_return co_await std::visit(std::move(create_directory),
+                                      co_await provider_->GetItemByPath(
+                                          GetDirectoryPath(path), stop_token));
+      }
+      if (request.method == http::Method::kPut) {
+        auto create_file = stdx::BindFront(CreateFileF{}, provider_, path,
+                                           std::move(request), stop_token);
+        co_return co_await std::visit(std::move(create_file),
+                                      co_await provider_->GetItemByPath(
+                                          GetDirectoryPath(path), stop_token));
+      }
+      if ((request.method == http::Method::kPropfind &&
+           ::coro::http::GetHeader(request.headers, "Depth") == "0") ||
+          request.method == http::Method::kMove ||
+          request.method == http::Method::kDelete) {
+        item_cache_.Invalidate(path);
+      }
+      co_return co_await std::visit(
+          [&](const auto& d) {
+            return HandleExistingItem(std::move(request), std::move(path), d,
+                                      std::move(stop_token));
+          },
+          co_await item_cache_.Get(path, stop_token));
+    } catch (const CloudException& e) {
+      switch (e.type()) {
+        case CloudException::Type::kNotFound:
+          co_return Response{.status = 404};
+        case CloudException::Type::kUnauthorized:
+          co_return Response{.status = 401};
+        case CloudException::Type::kUnknown:
+          throw;
+      }
+    }
+  }
+
+ private:
   template <typename Item>
-  Task<Response> HandleExistingItem(Request request, std::string path,
-                                    const Item& d,
+  Task<Response> GetItemThumbnail(Request request, Item d,
+                                  stdx::stop_token stop_token) {
+    if constexpr (HasThumbnail<Item, CloudProvider>) {
+      auto range_str = coro::http::GetHeader(request.headers, "Range");
+      coro::http::Range range =
+          coro::http::ParseRange(range_str.value_or("bytes=0-"));
+      auto thumbnail =
+          co_await provider_->GetItemThumbnail(d, range, std::move(stop_token));
+      std::vector<std::pair<std::string, std::string>> headers = {
+          {"Content-Disposition",
+           "inline; filename=\"" + d.name + "." +
+               http::MimeTypeToExtension(thumbnail.mime_type) + "\""},
+          {"Access-Control-Allow-Origin", "*"},
+          {"Access-Control-Allow-Headers", "*"}};
+      headers.emplace_back("Content-Type", thumbnail.mime_type);
+      std::optional<int64_t> size = thumbnail.size;
+      if (size) {
+        if (!range.end) {
+          range.end = *size - 1;
+        }
+        headers.emplace_back("Accept-Ranges", "bytes");
+        headers.emplace_back("Content-Length",
+                             std::to_string(*range.end - range.start + 1));
+        if (range_str) {
+          headers.emplace_back(http::ToRangeHeader(range));
+        }
+      }
+      co_return Response{.status = !range_str || !size ? 200 : 206,
+                         .headers = std::move(headers),
+                         .body = std::move(thumbnail.data)};
+    } else {
+      throw CloudException(CloudException::Type::kNotFound);
+    }
+  }
+
+  template <typename Item>
+  Task<Response> HandleExistingItem(Request request, std::string path, Item d,
                                     stdx::stop_token stop_token) {
     if (request.method == http::Method::kProppatch) {
       co_return Response{.status = 207,
@@ -116,62 +210,13 @@ class ProxyHandler {
         headers.emplace_back("Content-Length",
                              std::to_string(*range.end - range.start + 1));
         if (range_str) {
-          std::stringstream stream;
-          stream << "bytes " << range.start << "-" << *range.end << "/"
-                 << *size;
-          headers.emplace_back("Content-Range", std::move(stream).str());
+          headers.emplace_back(http::ToRangeHeader(range));
         }
       }
       co_return Response{
           .status = !range_str || !size ? 200 : 206,
           .headers = std::move(headers),
           .body = provider_->GetFileContent(d, range, std::move(stop_token))};
-    }
-  }
-
-  Task<Response> operator()(Request request, stdx::stop_token stop_token) {
-    std::string path = GetEffectivePath(
-        http::DecodeUri(http::ParseUri(request.url).path.value_or(""))
-            .substr(path_prefix_.length()));
-    if (path.empty() || path.front() != '/') {
-      path = '/' + path;
-    }
-    try {
-      if (request.method == http::Method::kMkcol) {
-        auto create_directory =
-            stdx::BindFront(CreateDirectoryF{}, provider_, path, stop_token);
-        co_return co_await std::visit(std::move(create_directory),
-                                      co_await provider_->GetItemByPath(
-                                          GetDirectoryPath(path), stop_token));
-      }
-      if (request.method == http::Method::kPut) {
-        auto create_file = stdx::BindFront(CreateFileF{}, provider_, path,
-                                           std::move(request), stop_token);
-        co_return co_await std::visit(std::move(create_file),
-                                      co_await provider_->GetItemByPath(
-                                          GetDirectoryPath(path), stop_token));
-      }
-      if ((request.method == http::Method::kPropfind &&
-           ::coro::http::GetHeader(request.headers, "Depth") == "0") ||
-          request.method == http::Method::kMove ||
-          request.method == http::Method::kDelete) {
-        item_cache_.Invalidate(path);
-      }
-      co_return co_await std::visit(
-          [&](const auto& d) {
-            return HandleExistingItem(std::move(request), std::move(path), d,
-                                      std::move(stop_token));
-          },
-          co_await item_cache_.Get(path, stop_token));
-    } catch (const CloudException& e) {
-      switch (e.type()) {
-        case CloudException::Type::kNotFound:
-          co_return Response{.status = 404};
-        case CloudException::Type::kUnauthorized:
-          co_return Response{.status = 401};
-        case CloudException::Type::kUnknown:
-          throw;
-      }
     }
   }
 
@@ -258,7 +303,6 @@ class ProxyHandler {
     co_yield "</table></body></html>";
   }
 
- private:
   static auto ToFileContent(Request request) {
     if (!request.body) {
       throw http::HttpException(http::HttpException::kBadRequest);

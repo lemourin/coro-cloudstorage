@@ -28,6 +28,7 @@ struct YandexDisk {
 
   struct File : ItemData {
     int64_t size;
+    std::optional<std::string> thumbnail_url;
   };
 
   using Item = std::variant<File, Directory>;
@@ -81,6 +82,12 @@ struct YandexDisk {
   struct FileContent {
     Generator<std::string> data;
     std::optional<int64_t> size;
+  };
+
+  struct Thumbnail {
+    Generator<std::string> data;
+    int64_t size;
+    std::string mime_type;
   };
 
   template <http::HttpClient Http, typename EventLoop>
@@ -234,6 +241,26 @@ class YandexDisk::CloudProvider
         co_await FetchJson(std::move(request), std::move(stop_token)));
   }
 
+  Task<Thumbnail> GetItemThumbnail(File item, http::Range range,
+                                   stdx::stop_token stop_token) {
+    if (!item.thumbnail_url) {
+      throw CloudException(CloudException::Type::kNotFound);
+    }
+    Request request{
+        .url = std::move(*item.thumbnail_url),
+        .headers = {ToRangeHeader(range),
+                    {"Authorization", "OAuth " + auth_token_.access_token}}};
+    auto response =
+        co_await http_->Fetch(std::move(request), std::move(stop_token));
+    Thumbnail result;
+    result.mime_type =
+        http::GetHeader(response.headers, "Content-Type").value();
+    result.size =
+        std::stoll(http::GetHeader(response.headers, "Content-Length").value());
+    result.data = std::move(response.body);
+    co_return result;
+  }
+
  private:
   static constexpr std::string_view kEndpoint =
       "https://cloud-api.yandex.net/v1";
@@ -318,6 +345,9 @@ class YandexDisk::CloudProvider
     result.timestamp = http::ParseTime(std::string(json["modified"]));
     if constexpr (std::is_same_v<T, File>) {
       result.size = json["size"];
+      if (json.contains("preview")) {
+        result.thumbnail_url = json["preview"];
+      }
     }
     return result;
   }

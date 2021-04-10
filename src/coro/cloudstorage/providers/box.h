@@ -107,6 +107,12 @@ struct Box {
     std::optional<int64_t> size;
   };
 
+  struct Thumbnail {
+    Generator<std::string> data;
+    int64_t size;
+    static inline constexpr std::string_view mime_type = "image/png";
+  };
+
   template <typename AuthManager>
   class CloudProvider;
 
@@ -262,6 +268,19 @@ class Box::CloudProvider
     auto response = co_await util::FetchJson(
         auth_manager_.GetHttp(), std::move(request), std::move(stop_token));
     co_return ToItemImpl<File>(response["entries"][0]);
+  }
+
+  Task<Thumbnail> GetItemThumbnail(File file, http::Range range,
+                                   stdx::stop_token stop_token) {
+    Request request{.url = GetEndpoint("/files/" + file.id + "/thumbnail.png"),
+                    .headers = {ToRangeHeader(range)}};
+    auto response =
+        co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
+    Thumbnail result;
+    result.size =
+        std::stoll(http::GetHeader(response.headers, "Content-Length").value());
+    result.data = std::move(response.body);
+    co_return result;
   }
 
  private:

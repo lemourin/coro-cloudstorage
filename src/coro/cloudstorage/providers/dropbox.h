@@ -90,6 +90,12 @@ struct Dropbox {
     std::optional<int64_t> size;
   };
 
+  struct Thumbnail {
+    Generator<std::string> data;
+    int64_t size;
+    static inline constexpr std::string_view mime_type = "image/jpeg";
+  };
+
   template <http::HttpClient Http>
   class CloudProvider;
 
@@ -281,6 +287,42 @@ class Dropbox::CloudProvider
         offset += chunk_size;
       }
     }
+  }
+
+  Task<Thumbnail> GetItemThumbnail(File file, http::Range range,
+                                   stdx::stop_token stop_token) {
+    auto is_supported = [](std::string_view extension) {
+      for (std::string_view e :
+           {"jpg", "jpeg", "png", "tiff", "tif", "gif", "bmp", "mkv", "mp4"}) {
+        if (e == extension) {
+          return true;
+        }
+      }
+      return true;
+    };
+    if (!is_supported(http::GetExtension(file.name))) {
+      throw CloudException(CloudException::Type::kNotFound);
+    }
+    json json;
+    json["resource"][".tag"] = "path";
+    json["resource"]["path"] = file.id;
+    auto request = Request{
+        .url = "https://content.dropboxapi.com/2/files/get_thumbnail_v2",
+        .method = http::Method::kPost,
+        .headers = {{"Authorization", "Bearer " + auth_token_.access_token},
+                    {"Dropbox-API-Arg", json.dump()},
+                    ToRangeHeader(range)}};
+    auto response =
+        co_await http_->Fetch(std::move(request), std::move(stop_token));
+    if (response.status / 100 != 2) {
+      throw http::HttpException(
+          response.status, co_await http::GetBody(std::move(response.body)));
+    }
+    Thumbnail result;
+    result.size =
+        std::stoll(http::GetHeader(response.headers, "Content-Length").value());
+    result.data = std::move(response.body);
+    co_return result;
   }
 
  private:

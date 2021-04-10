@@ -101,6 +101,7 @@ struct GoogleDrive {
     std::string name;
     int64_t timestamp;
     std::vector<std::string> parents;
+    std::string thumbnail_url;
   };
 
   struct Directory : ItemData {};
@@ -120,6 +121,12 @@ struct GoogleDrive {
   struct FileContent {
     Generator<std::string> data;
     std::optional<int64_t> size;
+  };
+
+  struct Thumbnail {
+    Generator<std::string> data;
+    int64_t size;
+    std::string mime_type;
   };
 
   static constexpr std::string_view kId = "google";
@@ -190,14 +197,9 @@ struct GoogleDrive::CloudProvider
 
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         stdx::stop_token stop_token) {
-    std::stringstream range_header;
-    range_header << "bytes=" << range.start << "-";
-    if (range.end) {
-      range_header << *range.end;
-    }
     auto request =
         Request{.url = GetEndpoint("/files/" + file.id) + "?alt=media",
-                .headers = {{"Range", std::move(range_header).str()}}};
+                .headers = {ToRangeHeader(range)}};
     auto response =
         co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
     FOR_CO_AWAIT(std::string & body, response.body) {
@@ -320,6 +322,22 @@ struct GoogleDrive::CloudProvider
     co_return ToItemImpl<File>(response);
   }
 
+  template <typename Item>
+  Task<Thumbnail> GetItemThumbnail(Item item, http::Range range,
+                                   stdx::stop_token stop_token) {
+    Request request{.url = std::move(item.thumbnail_url),
+                    .headers = {ToRangeHeader(range)}};
+    auto response =
+        co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
+    Thumbnail result;
+    result.mime_type =
+        http::GetHeader(response.headers, "Content-Type").value();
+    result.size =
+        std::stoll(http::GetHeader(response.headers, "Content-Length").value());
+    result.data = std::move(response.body);
+    co_return result;
+  }
+
  private:
   Task<File> CreateFileImpl(Directory parent, std::string_view name,
                             FileContent content, stdx::stop_token stop_token) {
@@ -370,9 +388,21 @@ struct GoogleDrive::CloudProvider
   static constexpr std::string_view kFileProperties =
       "id,name,thumbnailLink,trashed,mimeType,iconLink,parents,size,"
       "modifiedTime";
+  static constexpr int kThumbnailSize = 256;
 
   static std::string GetEndpoint(std::string_view path) {
     return std::string(kEndpoint) + std::string(path);
+  }
+
+  static std::string GetIconLink(std::string_view link) {
+    const auto kDefaultSize = "16";
+    auto it = link.find(kDefaultSize);
+    if (it == std::string::npos) {
+      return std::string(link);
+    }
+    return std::string(link.begin(), link.begin() + it) +
+           std::to_string(kThumbnailSize) +
+           std::string(link.begin() + it + strlen(kDefaultSize), link.end());
   }
 
   static Item ToItem(const json& json) {
@@ -389,6 +419,11 @@ struct GoogleDrive::CloudProvider
     result.id = json["id"];
     result.name = json["name"];
     result.timestamp = http::ParseTime(std::string(json["modifiedTime"]));
+    if (json.contains("thumbnailLink")) {
+      result.thumbnail_url = json["thumbnailLink"];
+    } else {
+      result.thumbnail_url = GetIconLink(std::string(json["iconLink"]));
+    }
     for (std::string parents : json["parents"]) {
       result.parents.emplace_back(std::move(parents));
     }

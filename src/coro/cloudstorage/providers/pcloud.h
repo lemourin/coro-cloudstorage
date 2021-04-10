@@ -85,6 +85,12 @@ struct PCloud {
     int64_t size;
   };
 
+  struct Thumbnail {
+    Generator<std::string> data;
+    int64_t size;
+    std::string mime_type;
+  };
+
   template <http::HttpClient Http>
   class CloudProvider;
 
@@ -252,6 +258,23 @@ class PCloud::CloudProvider
     auto response =
         co_await FetchJson(std::move(request), std::move(stop_token));
     co_return ToItemImpl<File>(response["metadata"][0]);
+  }
+
+  Task<Thumbnail> GetItemThumbnail(File file, http::Range range,
+                                   stdx::stop_token stop_token) {
+    Request request{
+        .url = GetEndpoint("/getthumb") + "?" +
+               http::FormDataToString(
+                   {{"fileid", std::to_string(file.id)}, {"size", "64x64"}}),
+        .headers = {ToRangeHeader(range)}};
+    auto response = co_await Fetch(std::move(request), std::move(stop_token));
+    Thumbnail result;
+    result.mime_type =
+        http::GetHeader(response.headers, "Content-Type").value();
+    result.size =
+        std::stoll(http::GetHeader(response.headers, "Content-Length").value());
+    result.data = std::move(response.body);
+    co_return result;
   }
 
  private:
