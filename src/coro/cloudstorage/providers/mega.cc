@@ -378,8 +378,16 @@ auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
   }
   std::string data = std::move(std::any_cast<std::string>(result));
   Thumbnail thumbnail;
-  thumbnail.size = data.length();
-  thumbnail.data = ToGenerator(std::move(data));
+  if (!range.end) {
+    range.end = data.length() - 1;
+  }
+  thumbnail.size = *range.end - range.start + 1;
+  if (range.end >= data.size()) {
+    throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
+  }
+  thumbnail.data = ToGenerator(std::move(data).substr(
+      static_cast<size_t>(range.start),
+      static_cast<size_t>(*range.end - range.start + 1)));
   co_return thumbnail;
 }
 
