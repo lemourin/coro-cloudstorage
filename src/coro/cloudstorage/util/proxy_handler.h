@@ -307,14 +307,14 @@ class ProxyHandler {
         auto name =
             std::visit([](const auto& item) { return item.name; }, item);
         std::string file_link = coro::http::EncodeUriPath(path + name);
-        if (name.ends_with(".mpd")) {
-          file_link = "/dash" + file_link;
-        }
         std::stringstream row;
         row << "<tr>";
         row << "<td><image width=64 height=64 src='" << file_link
             << "?thumbnail=true"
             << "'/></td>";
+        if (name.ends_with(".mpd")) {
+          file_link = "/dash" + file_link;
+        }
         row << "<td><a href='" << file_link << "'>" << name << "</a></td>";
         row << "</tr>";
         co_yield std::move(row).str();
