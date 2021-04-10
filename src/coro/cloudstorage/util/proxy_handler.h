@@ -291,11 +291,20 @@ class ProxyHandler {
       Generator<typename CloudProvider::PageData> page_data,
       std::string path) const {
     std::stringstream header;
-    header << "<!DOCTYPE html><html><head><meta charset='UTF-8'></head>";
+    header << "<!DOCTYPE html><html><head>";
+    header << "<meta charset='UTF-8'>";
+    header << "<style>";
+    header << ".thumbnail {"
+              "  height: 64px;"
+              "  width: 64px;"
+              "  object-fit: cover;"
+              "}";
+    header << "</style>";
+    header << "</head>";
     header << "<body><table>";
     header << "<tr>";
     header << "<td>"
-           << "<image width=64 height=64 src='"
+           << "<image class='thumbnail' src='"
            << (IsRoot(path) ? path : GetDirectoryPath(path))
            << "?thumbnail=true'/>"
            << "</td>";
@@ -309,7 +318,7 @@ class ProxyHandler {
         std::string file_link = coro::http::EncodeUriPath(path + name);
         std::stringstream row;
         row << "<tr>";
-        row << "<td><image width=64 height=64 src='" << file_link
+        row << "<td><image class='thumbnail' src='" << file_link
             << "?thumbnail=true"
             << "'/></td>";
         if (name.ends_with(".mpd")) {
