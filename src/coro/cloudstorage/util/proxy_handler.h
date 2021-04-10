@@ -86,16 +86,26 @@ class ProxyHandler {
       auto range_str = coro::http::GetHeader(request.headers, "Range");
       coro::http::Range range =
           coro::http::ParseRange(range_str.value_or("bytes=0-"));
-      auto thumbnail =
-          co_await provider_->GetItemThumbnail(d, range, std::move(stop_token));
       std::vector<std::pair<std::string, std::string>> headers = {
-          {"Content-Disposition",
-           "inline; filename=\"" + d.name + "." +
-               http::MimeTypeToExtension(thumbnail.mime_type) + "\""},
           {"Access-Control-Allow-Origin", "*"},
-          {"Access-Control-Allow-Headers", "*"}};
-      headers.emplace_back("Content-Type", thumbnail.mime_type);
-      std::optional<int64_t> size = thumbnail.size;
+          {"Access-Control-Allow-Headers", "*"},
+          {"Cache-Control", "private"},
+          {"Cache-Control", "max-age=604800"}};
+      Response response{};
+      std::optional<int64_t> size;
+      try {
+        auto thumbnail = co_await provider_->GetItemThumbnail(
+            d, range, std::move(stop_token));
+        headers.emplace_back(
+            "Content-Disposition",
+            "inline; filename=\"" + d.name + "." +
+                http::MimeTypeToExtension(thumbnail.mime_type) + "\"");
+        headers.emplace_back("Content-Type", thumbnail.mime_type);
+        size = thumbnail.size;
+        response.body = std::move(thumbnail.data);
+      } catch (...) {
+        response.status = 404;
+      }
       if (size) {
         if (!range.end) {
           range.end = *size - 1;
@@ -107,9 +117,11 @@ class ProxyHandler {
           headers.emplace_back(http::ToRangeHeader(range));
         }
       }
-      co_return Response{.status = !range_str || !size ? 200 : 206,
-                         .headers = std::move(headers),
-                         .body = std::move(thumbnail.data)};
+      if (!response.status) {
+        response.status = !range_str || !size ? 200 : 206;
+      }
+      response.headers = std::move(headers);
+      co_return response;
     } else {
       throw CloudException(CloudException::Type::kNotFound);
     }
@@ -277,27 +289,33 @@ class ProxyHandler {
 
   static Generator<std::string> GetDirectoryContent(
       Generator<typename CloudProvider::PageData> page_data, std::string path) {
-    co_yield R"(<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body><table><tr><td>[DIR]</td><td><a href=')" +
-        GetDirectoryPath(path) + "'>..</a></td></tr>";
+    std::stringstream header;
+    header << "<!DOCTYPE html><html><head><meta charset='UTF-8'></head>";
+    header << "<body><table>";
+    header << "<tr>";
+    header << "<td>"
+           << "<image width=64 height=64 src='" << GetDirectoryPath(path)
+           << "?thumbnail=true'/>"
+           << "</td>";
+    header << "<td><a href='" << GetDirectoryPath(path) << "'>..</a></td>";
+    header << "</tr>";
+    co_yield std::move(header).str();
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
         auto name =
             std::visit([](const auto& item) { return item.name; }, item);
-        std::string type = std::visit(
-            [](const auto& item) {
-              if constexpr (IsDirectory<decltype(item), CloudProvider>) {
-                return "DIR";
-              } else {
-                return "FILE";
-              }
-            },
-            item);
         std::string file_link = coro::http::EncodeUriPath(path + name);
         if (name.ends_with(".mpd")) {
           file_link = "/dash" + file_link;
         }
-        co_yield "<tr><td>[" + type + "]</td><td><a href='" + file_link + "'>" +
-            name + "</a></td></tr>";
+        std::stringstream row;
+        row << "<tr>";
+        row << "<td><image width=64 height=64 src='" << file_link
+            << "?thumbnail=true"
+            << "'/></td>";
+        row << "<td><a href='" << file_link << "'>" << name << "</a></td>";
+        row << "</tr>";
+        co_yield std::move(row).str();
       }
     }
     co_yield "</table></body></html>";
