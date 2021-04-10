@@ -86,6 +86,7 @@ struct YouTube {
     static constexpr int64_t size = 8096;
     std::string video_id;
     int64_t timestamp;
+    std::optional<std::string> thumbnail_url;
   };
 
   struct StreamData {
@@ -109,6 +110,12 @@ struct YouTube {
   struct FileContent {
     Generator<std::string> data;
     int64_t size;
+  };
+
+  struct Thumbnail {
+    Generator<std::string> data;
+    int64_t size;
+    std::string mime_type;
   };
 
   static Stream ToStream(const StreamDirectory&, json d);
@@ -191,6 +198,10 @@ struct YouTube::CloudProvider
               http::ParseTime(std::string(item["snippet"]["publishedAt"]));
           file.name = std::string(item["snippet"]["title"]) + ".mpd";
           file.id = directory.id + file.name;
+          if (item["snippet"]["thumbnails"].contains("default")) {
+            file.thumbnail_url =
+                item["snippet"]["thumbnails"]["default"]["url"];
+          }
           result.items.emplace_back(std::move(file));
           break;
         }
@@ -287,6 +298,11 @@ struct YouTube::CloudProvider
                                     range.start + 1));
   }
 
+  Task<Thumbnail> GetItemThumbnail(DashManifest item, http::Range range,
+                                   stdx::stop_token stop_token) {
+    return GetItemThumbnailImpl(std::move(item), range, std::move(stop_token));
+  }
+
  private:
   static constexpr std::string_view kEndpoint =
       "https://www.googleapis.com/youtube/v3";
@@ -294,6 +310,25 @@ struct YouTube::CloudProvider
 
   static std::string GetEndpoint(std::string_view path) {
     return std::string(kEndpoint) + std::string(path);
+  }
+
+  template <typename Item>
+  Task<Thumbnail> GetItemThumbnailImpl(Item item, http::Range range,
+                                       stdx::stop_token stop_token) {
+    if (!item.thumbnail_url) {
+      throw CloudException(CloudException::Type::kNotFound);
+    }
+    Request request{.url = std::move(*item.thumbnail_url),
+                    .headers = {ToRangeHeader(range)}};
+    auto response =
+        co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
+    Thumbnail result;
+    result.mime_type =
+        http::GetHeader(response.headers, "Content-Type").value();
+    result.size =
+        std::stoll(http::GetHeader(response.headers, "Content-Length").value());
+    result.data = std::move(response.body);
+    co_return result;
   }
 
   Task<std::string> GetVideoUrl(std::string video_id, int64_t itag,
