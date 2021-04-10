@@ -73,7 +73,9 @@ class HttpIO : public ::mega::HttpIO {
           throw InterruptedException();
         }
         auto content_length = GetContentLength(response.headers);
-        if (!content_length) {
+        if (!content_length &&
+            !http::HasHeader(response.headers, "Transfer-Encoding",
+                             "chunked")) {
           throw http::HttpException(http::HttpException::kMalformedResponse);
         }
         int64_t response_size = 0;
@@ -92,11 +94,11 @@ class HttpIO : public ::mega::HttpIO {
         if (stop_source.get_token().stop_requested()) {
           throw InterruptedException();
         }
-        if (*content_length != response_size) {
+        if (content_length && *content_length != response_size) {
           throw http::HttpException(http::HttpException::kMalformedResponse);
         }
         io_ready_ = true;
-        r->contentlength = *content_length;
+        r->contentlength = response_size;
         r->contenttype =
             http::GetHeader(response.headers, "Content-Type").value_or("");
         r->httpstatus = response.status;

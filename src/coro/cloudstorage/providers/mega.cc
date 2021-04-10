@@ -8,7 +8,7 @@ namespace coro::cloudstorage {
 namespace {
 
 template <typename Type>
-static Type ToItemImpl(::mega::Node* node) {
+Type ToItemImpl(::mega::Node* node) {
   Type type;
   type.name = node->displayname();
   type.id = node->nodehandle;
@@ -19,12 +19,16 @@ static Type ToItemImpl(::mega::Node* node) {
   return type;
 }
 
-static Mega::Item ToItem(::mega::Node* node) {
+Mega::Item ToItem(::mega::Node* node) {
   if (node->type == ::mega::FILENODE) {
     return ToItemImpl<Mega::File>(node);
   } else {
     return ToItemImpl<Mega::Directory>(node);
   }
+}
+
+Generator<std::string> ToGenerator(std::string string) {
+  co_yield std::move(string);
 }
 
 }  // namespace
@@ -358,6 +362,25 @@ auto Mega::CloudProvider::CreateFile(Directory parent, std::string_view name,
   }
   co_return ToItemImpl<Mega::File>(
       GetNode(std::any_cast<::mega::handle>(result)));
+}
+
+auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
+                                           stdx::stop_token stop_token)
+    -> Task<Thumbnail> {
+  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
+  auto node = GetNode(item.id);
+  std::any result = co_await Do<&::mega::MegaClient::getfa>(
+      stop_token, node->nodehandle, &node->fileattrstring, &node->nodekey,
+      ::mega::GfxProc::THUMBNAIL, /*cancel=*/false);
+  if (result.type() == typeid(::mega::error)) {
+    throw CloudException(
+        GetErrorDescription(std::any_cast<::mega::error>(result)));
+  }
+  std::string data = std::move(std::any_cast<std::string>(result));
+  Thumbnail thumbnail;
+  thumbnail.size = data.length();
+  thumbnail.data = ToGenerator(std::move(data));
+  co_return thumbnail;
 }
 
 }  // namespace coro::cloudstorage

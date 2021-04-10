@@ -71,6 +71,12 @@ struct Mega {
     int64_t space_total;
   };
 
+  struct Thumbnail {
+    Generator<std::string> data;
+    int64_t size;
+    static inline constexpr std::string_view mime_type = "image/jpeg";
+  };
+
   using FileContent = ::coro::cloudstorage::mega::FileSystemAccess::FileContent;
 
   class CloudProvider;
@@ -112,6 +118,8 @@ class Mega::CloudProvider
                                         coro::stdx::stop_token);
   Task<File> CreateFile(Directory parent, std::string_view name,
                         FileContent content, stdx::stop_token);
+  Task<Thumbnail> GetItemThumbnail(File item, http::Range range,
+                                   stdx::stop_token stop_token);
 
   template <typename EventLoop, http::HttpClient HttpClient>
   static Task<std::string> GetSession(
@@ -242,6 +250,21 @@ class Mega::CloudProvider
       ::coro::Invoke(Retry(time, /*abortbackoff=*/false));
     }
 
+    void fa_complete(::mega::handle, ::mega::fatype, const char* data,
+                     uint32_t size) final {
+      SetResult(std::string(data, size));
+    }
+
+    int fa_failed(::mega::handle, ::mega::fatype, int retry_count,
+                  ::mega::error e) final {
+      if (retry_count < 7) {
+        SetResult(e);
+        return 1;
+      } else {
+        return 0;
+      }
+    }
+
     Task<> Retry(::mega::dstime time, bool abortbackoff = true) {
       std::cerr << "[MEGA] RETRYING IN " << time * 100 << "\n";
       co_await d->wait_(100 * time, d->stop_source.get_token());
@@ -306,6 +329,13 @@ class Mega::CloudProvider
                                    decltype((mega_client.*Method)(args...))>) {
         if (!(mega_client.*Method)(args...)) {
           throw CloudException("unknown mega error");
+        }
+      } else if constexpr (std::is_same_v<::mega::error,
+                                          decltype((mega_client.*
+                                                    Method)(args...))>) {
+        if (auto error = (mega_client.*Method)(args...);
+            error != ::mega::error::API_OK) {
+          throw CloudException(GetErrorDescription(error));
         }
       } else {
         (mega_client.*Method)(args...);
