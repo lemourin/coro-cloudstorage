@@ -218,7 +218,10 @@ class ProxyHandler {
         headers.emplace_back("Content-Length",
                              std::to_string(*range.end - range.start + 1));
         if (range_str) {
-          headers.emplace_back(http::ToRangeHeader(range));
+          std::stringstream stream;
+          stream << "bytes " << range.start << "-" << *range.end << "/"
+                 << *size;
+          headers.emplace_back("Content-Range", std::move(stream).str());
         }
       }
       co_return Response{
