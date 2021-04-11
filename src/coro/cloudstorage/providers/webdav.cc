@@ -21,6 +21,9 @@ int64_t ParseTime(std::string str) {
 Generator<std::string> GenerateLoginPage() {
   co_yield R"(
     <html>
+      <head>
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
+      </head>
       <body>
         <form method="post">
           <table>

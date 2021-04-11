@@ -459,6 +459,9 @@ class MegaAuthHandler {
   Generator<std::string> GenerateLoginPage() const {
     co_yield R"(
       <html>
+        <head>
+          <meta name='viewport' content='width=device-width, initial-scale=1'>
+        </head>
         <body>
           <form method="post">
             <table>

@@ -332,7 +332,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
   Generator<std::string> GetHomePage() {
     std::stringstream result;
-    result << "<html><body><table><tr><th colspan='2'>AVAILABLE "
+    result << "<html><meta name='viewport' content='width=device-width, "
+              "initial-scale=1'><body><table><tr><th colspan='2'>AVAILABLE "
               "PROVIDERS</th></tr>";
     (AppendAuthUrl<CloudProviders>(d_->factory, result), ...);
     result << "</table><table><tr><th colspan='2'>ACCOUNT LIST</th></tr>";

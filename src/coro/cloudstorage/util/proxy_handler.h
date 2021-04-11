@@ -337,13 +337,13 @@ class ProxyHandler {
         coro::http::EncodeUriPath(std::string(path) + item.name);
     std::stringstream row;
     row << "<tr>";
-    row << "<td><image class='thumbnail' src='" << file_link
-        << "?thumbnail=true"
+    row << "<td class='thumbnail-container'><image class='thumbnail' src='"
+        << file_link << "?thumbnail=true"
         << "'/></td>";
     if (item.name.ends_with(".mpd")) {
       file_link = "/dash" + file_link;
     }
-    row << "<td><table>";
+    row << "<td class='item-metadata'><table>";
     row << "<tr><td><a class='title' href='" << file_link << "'>" << item.name
         << "</a></td></tr>";
     row << "<tr><td><small>"
@@ -361,35 +361,58 @@ class ProxyHandler {
       std::string path) const {
     std::stringstream header;
     header << "<!DOCTYPE html><html><head>";
-    header << "<meta charset='UTF-8'>";
+    header << "<meta charset='UTF-8'>"
+              "<meta name='viewport' content='width=device-width, "
+              "initial-scale=1'>";
     header << "<style>";
-    header << ".thumbnail {"
+    header << ".thumbnail-container {"
+              "  padding: 8px;"
               "  height: 64px;"
               "  width: 64px;"
+           << "}";
+    header << ".thumbnail {"
+              "  height: 100%;"
+              "  width: 100%;"
               "  object-fit: cover;"
               "}";
-    header << ".title {"
+    header << "body {"
+              "  width: 920px;"
+              "  max-width: 100%;"
+              "  margin: 0;"
+              "}"
+              "table {"
+              "  width: 100%;"
+              "  box-sizing: border-box;"
+              "  table-layout: fixed;"
+              "}"
+              ".content-table {"
+              "  padding: 16px;"
+              "}"
+              ".item-metadata {"
+              "  white-space: nowrap;"
+              "}"
+              ".title {"
               "  display: block;"
               "  text-overflow: ellipsis;"
               "  overflow: hidden;"
               "  white-space: nowrap;"
-              "  width: 400px;"
-              "}";
-    header << ".size {"
+              "}"
+              ".size {"
               "  vertical-align: text-top;"
               "  text-align: right;"
               "  width: 64px;"
               "}";
     header << "</style>";
     header << "</head>";
-    header << "<body><table>";
+    header << "<body><table class='content-table'>";
     header << "<tr>";
-    header << "<td>"
+    header << "<td class='thumbnail-container'>"
            << "<image class='thumbnail' src='"
            << (IsRoot(path) ? path : GetDirectoryPath(path))
            << "?thumbnail=true'/>"
            << "</td>";
-    header << "<td><a href='" << GetDirectoryPath(path) << "'>..</a></td>";
+    header << "<td class='item-metadata'><a href='" << GetDirectoryPath(path)
+           << "'>..</a></td><td class='size'/>";
     header << "</tr>";
     co_yield std::move(header).str();
     FOR_CO_AWAIT(const auto& page, page_data) {
