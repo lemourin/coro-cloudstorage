@@ -6,6 +6,7 @@
 #include <coro/http/http_parse.h>
 #include <coro/util/lru_cache.h>
 
+#include <iomanip>
 #include <sstream>
 
 namespace coro::cloudstorage::util {
@@ -99,6 +100,7 @@ class ProxyHandler {
           case FileType::kVideo:
             return assets_video_svg;
         }
+        throw std::runtime_error("invalid file type");
       }();
     } else {
       content = assets_folder_svg;
@@ -301,6 +303,59 @@ class ProxyHandler {
     return path.length() - path_prefix_.length() <= 1;
   }
 
+  static std::string TimeStampToString(std::optional<int64_t> size) {
+    if (!size) {
+      return "";
+    }
+    std::tm tm = http::gmtime(static_cast<time_t>(*size));
+    std::stringstream ss;
+    ss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+    return std::move(ss).str();
+  }
+
+  static std::string SizeToString(std::optional<int64_t> size) {
+    if (!size) {
+      return "";
+    }
+    std::stringstream stream;
+    stream << std::setprecision(2) << std::fixed;
+    if (*size < 1'000) {
+      stream << *size << "B";
+    } else if (*size < 1'000'000) {
+      stream << *size * 1e-3 << "KB";
+    } else if (*size < 1'000'000'000) {
+      stream << *size * 1e-6 << "MB";
+    } else {
+      stream << *size * 1e-9 << "GB";
+    }
+    return std::move(stream).str();
+  }
+
+  template <typename Item>
+  std::string GetItemEntry(const Item& item, std::string_view path) const {
+    std::string file_link =
+        coro::http::EncodeUriPath(std::string(path) + item.name);
+    std::stringstream row;
+    row << "<tr>";
+    row << "<td><image class='thumbnail' src='" << file_link
+        << "?thumbnail=true"
+        << "'/></td>";
+    if (item.name.ends_with(".mpd")) {
+      file_link = "/dash" + file_link;
+    }
+    row << "<td><table>";
+    row << "<tr><td><a class='title' href='" << file_link << "'>" << item.name
+        << "</a></td></tr>";
+    row << "<tr><td><small>"
+        << TimeStampToString(CloudProvider::GetTimestamp(item))
+        << "</small></td></tr>";
+    row << "</table></td>";
+    row << "<td class='size'><small>"
+        << SizeToString(CloudProvider::GetSize(item)) << "</small></td>";
+    row << "</tr>";
+    return std::move(row).str();
+  }
+
   Generator<std::string> GetDirectoryContent(
       Generator<typename CloudProvider::PageData> page_data,
       std::string path) const {
@@ -312,6 +367,18 @@ class ProxyHandler {
               "  height: 64px;"
               "  width: 64px;"
               "  object-fit: cover;"
+              "}";
+    header << ".title {"
+              "  display: block;"
+              "  text-overflow: ellipsis;"
+              "  overflow: hidden;"
+              "  white-space: nowrap;"
+              "  width: 400px;"
+              "}";
+    header << ".size {"
+              "  vertical-align: text-top;"
+              "  text-align: right;"
+              "  width: 64px;"
               "}";
     header << "</style>";
     header << "</head>";
@@ -327,20 +394,8 @@ class ProxyHandler {
     co_yield std::move(header).str();
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
-        auto name =
-            std::visit([](const auto& item) { return item.name; }, item);
-        std::string file_link = coro::http::EncodeUriPath(path + name);
-        std::stringstream row;
-        row << "<tr>";
-        row << "<td><image class='thumbnail' src='" << file_link
-            << "?thumbnail=true"
-            << "'/></td>";
-        if (name.ends_with(".mpd")) {
-          file_link = "/dash" + file_link;
-        }
-        row << "<td><a href='" << file_link << "'>" << name << "</a></td>";
-        row << "</tr>";
-        co_yield std::move(row).str();
+        co_yield std::visit(
+            [&](const auto& item) { return GetItemEntry(item, path); }, item);
       }
     }
     co_yield "</table></body></html>";
