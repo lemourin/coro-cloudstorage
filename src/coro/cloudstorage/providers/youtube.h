@@ -76,7 +76,6 @@ struct YouTube {
   struct Stream : ItemData {
     std::string video_id;
     std::string mime_type;
-    int64_t timestamp;
     int64_t size;
     int64_t itag;
   };
