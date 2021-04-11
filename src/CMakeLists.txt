@@ -88,6 +88,9 @@ embed_resource(
     INPUT 
         assets/folder.svg 
         assets/gtk-file.svg
+        assets/audio-x-generic.svg
+        assets/image.svg
+        assets/video.svg
 )
 
 target_sources(coro-cloudstorage PRIVATE 

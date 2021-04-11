@@ -85,10 +85,21 @@ class ProxyHandler {
   }
 
   template <typename Item>
-  static Response GetIcon() {
+  static Response GetIcon(const Item& item) {
     std::string_view content;
     if constexpr (IsFile<Item, CloudProvider>) {
-      content = assets_gtk_file_svg;
+      content = [&] {
+        switch (CloudProvider::GetFileType(item)) {
+          case FileType::kUnknown:
+            return assets_gtk_file_svg;
+          case FileType::kImage:
+            return assets_image_svg;
+          case FileType::kAudio:
+            return assets_audio_x_generic_svg;
+          case FileType::kVideo:
+            return assets_video_svg;
+        }
+      }();
     } else {
       content = assets_folder_svg;
     }
@@ -116,10 +127,10 @@ class ProxyHandler {
                         {"Content-Length", std::to_string(thumbnail.size)}},
             .body = std::move(thumbnail.data)};
       } catch (...) {
-        co_return GetIcon<Item>();
+        co_return GetIcon(d);
       }
     } else {
-      co_return GetIcon<Item>();
+      co_return GetIcon(d);
     }
   }
 

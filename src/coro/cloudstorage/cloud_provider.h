@@ -105,6 +105,8 @@ concept HasThumbnail = requires(
   ->stdx::convertible_to<typename CloudProvider::Type::Thumbnail>;
 };
 
+enum class FileType { kUnknown, kVideo, kAudio, kImage };
+
 template <typename CloudProviderT, typename ImplT = CloudProviderT>
 class CloudProvider {
  public:
@@ -164,6 +166,20 @@ class CloudProvider {
       return d.timestamp;
     } else {
       return std::nullopt;
+    }
+  }
+
+  template <IsFile<CloudProvider> T>
+  static FileType GetFileType(const T& d) {
+    auto mime_type = GetMimeType(d);
+    if (mime_type.find("audio") == 0) {
+      return FileType::kAudio;
+    } else if (mime_type.find("image") == 0) {
+      return FileType::kImage;
+    } else if (mime_type.find("video") == 0) {
+      return FileType::kVideo;
+    } else {
+      return FileType::kUnknown;
     }
   }
 
