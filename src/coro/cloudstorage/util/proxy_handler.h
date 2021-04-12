@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_PROXY_HANDLER_H
 
 #include <coro/cloudstorage/util/assets.h>
+#include <coro/cloudstorage/util/generate_thumbnail.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http_parse.h>
 #include <coro/util/lru_cache.h>
@@ -86,41 +87,56 @@ class ProxyHandler {
   }
 
   template <typename Item>
-  static Response GetIcon(const Item& item) {
-    std::string_view content;
+  Task<Response> GetIcon(const Item& item, stdx::stop_token stop_token) const {
+    std::string content;
+    std::string mime_type = "image/svg+xml";
     if constexpr (IsFile<Item, CloudProvider>) {
-      content = [&] {
+      try {
         switch (CloudProvider::GetFileType(item)) {
-          case FileType::kUnknown:
-            return assets_gtk_file_svg;
           case FileType::kImage:
-            return assets_image_svg;
-          case FileType::kAudio:
-            return assets_audio_x_generic_svg;
-          case FileType::kVideo:
-            return assets_video_svg;
+          case FileType::kVideo: {
+            content = co_await util::GenerateThumbnail(*provider_, item,
+                                                       std::move(stop_token));
+            mime_type = "image/png";
+          }
+          default:
+            throw CloudException(CloudException::Type::kNotFound);
         }
-        throw std::runtime_error("invalid file type");
-      }();
+      } catch (...) {
+        throw;
+        content = [&] {
+          switch (CloudProvider::GetFileType(item)) {
+            case FileType::kUnknown:
+              return assets_gtk_file_svg;
+            case FileType::kImage:
+              return assets_image_svg;
+            case FileType::kAudio:
+              return assets_audio_x_generic_svg;
+            case FileType::kVideo:
+              return assets_video_svg;
+          }
+          throw std::runtime_error("invalid file type");
+        }();
+      }
     } else {
       content = assets_folder_svg;
     }
-    return Response{
+    co_return Response{
         .status = 200,
         .headers = {{"Cache-Control", "private"},
                     {"Cache-Control", "max-age=604800"},
-                    {"Content-Type", "image/svg+xml"},
+                    {"Content-Type", std::move(mime_type)},
                     {"Content-Length", std::to_string(content.size())}},
         .body = GetGenerator(std::string(content))};
   }
 
   template <typename Item>
   Task<Response> GetItemThumbnail(Request request, Item d,
-                                  stdx::stop_token stop_token) {
+                                  stdx::stop_token stop_token) const {
     if constexpr (HasThumbnail<Item, CloudProvider>) {
       try {
-        auto thumbnail = co_await provider_->GetItemThumbnail(
-            d, http::Range{}, std::move(stop_token));
+        auto thumbnail =
+            co_await provider_->GetItemThumbnail(d, http::Range{}, stop_token);
         co_return Response{
             .status = 200,
             .headers = {{"Cache-Control", "private"},
@@ -129,11 +145,9 @@ class ProxyHandler {
                         {"Content-Length", std::to_string(thumbnail.size)}},
             .body = std::move(thumbnail.data)};
       } catch (...) {
-        co_return GetIcon(d);
       }
-    } else {
-      co_return GetIcon(d);
     }
+    co_return co_await GetIcon(d, std::move(stop_token));
   }
 
   template <typename Item>

@@ -13,3 +13,9 @@
 [submodule "contrib/pugixml"]
 	path = contrib/pugixml
 	url = https://github.com/zeux/pugixml
+[submodule "contrib/ffmpeg"]
+	path = contrib/ffmpeg
+	url = https://github.com/FFmpeg/FFmpeg
+[submodule "contrib/zlib-ng"]
+	path = contrib/zlib-ng
+	url = https://github.com/zlib-ng/zlib-ng
