@@ -1,5 +1,5 @@
 #include <coro/cloudstorage/cloud_factory.h>
-#include <coro/cloudstorage/providers/google_drive.h>
+#include <coro/cloudstorage/providers/mega.h>
 #include <coro/cloudstorage/util/account_manager_handler.h>
 #include <coro/http/cache_http.h>
 #include <coro/http/curl_http.h>
@@ -18,7 +18,7 @@ using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
 using ::coro::util::MakePointer;
 
-using CloudProviders = ::coro::util::TypeList<coro::cloudstorage::GoogleDrive>;
+using CloudProviders = ::coro::util::TypeList<coro::cloudstorage::Mega>;
 
 template <typename CloudFactory>
 class HttpHandler {

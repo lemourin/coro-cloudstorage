@@ -46,6 +46,7 @@ target_link_libraries(coro-cloudstorage PUBLIC
     avcodec 
     avutil
     avformat
+    swscale
 )
 
 function(embed_resource)

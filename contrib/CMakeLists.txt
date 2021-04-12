@@ -51,15 +51,15 @@ set(FFMPEG_DEFINITIONS
     _FILE_OFFSET_BITS=64
     _LARGEFILE_SOURCE
     _USE_MATH_DEFINES
-    _WIN32_WINNT=0x0600
+    # _WIN32_WINNT=0x0600
     HAVE_AV_CONFIG_H
 )
 set(FFMPEG_PUBLIC_INCLUDES
-    ffmpeg/build-win
+    ffmpeg/build
     ffmpeg
 )
 set(FFMPEG_PRIVATE_INCLUDES
-    ffmpeg/compat/atomics/win32
+    # ffmpeg/compat/atomics/win32
 )
 set(FFMPEG_DEPENDENCIES zlib)
 
@@ -1484,5 +1484,29 @@ target_link_libraries(avformat PRIVATE ${FFMPEG_DEPENDENCIES})
 target_compile_definitions(avformat PRIVATE ${FFMPEG_DEFINITIONS})
 target_include_directories(avformat 
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES} 
+    PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
+)
+
+add_library(swscale
+    ffmpeg/libswscale/hscale_fast_bilinear.c
+    ffmpeg/libswscale/utils.c
+    ffmpeg/libswscale/hscale.c
+    ffmpeg/libswscale/log2_tab.c
+    ffmpeg/libswscale/alphablend.c
+    ffmpeg/libswscale/swscale.c
+    ffmpeg/libswscale/vscale.c
+    ffmpeg/libswscale/gamma.c
+    ffmpeg/libswscale/input.c
+    ffmpeg/libswscale/rgb2rgb.c
+    ffmpeg/libswscale/slice.c
+    ffmpeg/libswscale/output.c
+    ffmpeg/libswscale/yuv2rgb.c
+    ffmpeg/libswscale/options.c
+    ffmpeg/libswscale/swscale_unscaled.c
+)
+target_link_libraries(swscale PRIVATE ${FFMPEG_DEPENDENCIES})
+target_compile_definitions(swscale PRIVATE ${FFMPEG_DEFINITIONS})
+target_include_directories(swscale
+    PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
 )
