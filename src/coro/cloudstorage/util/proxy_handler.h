@@ -2,7 +2,7 @@
 #define CORO_CLOUDSTORAGE_PROXY_HANDLER_H
 
 #include <coro/cloudstorage/util/assets.h>
-#include <coro/cloudstorage/util/generate_thumbnail.h>
+#include <coro/cloudstorage/util/thumbnail_generator.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http_parse.h>
 #include <coro/util/lru_cache.h>
@@ -18,8 +18,10 @@ class ProxyHandler {
   using Request = http::Request<>;
   using Response = http::Response<>;
 
-  ProxyHandler(CloudProvider* provider, std::string path_prefix)
-      : provider_(provider),
+  ProxyHandler(const ThumbnailGenerator& thumbnail_generator,
+               CloudProvider* provider, std::string path_prefix)
+      : thumbnail_generator_(&thumbnail_generator),
+        provider_(provider),
         path_prefix_(std::move(path_prefix)),
         item_cache_(32, GetItem{provider_}) {}
 
@@ -95,15 +97,15 @@ class ProxyHandler {
         switch (CloudProvider::GetFileType(item)) {
           case FileType::kImage:
           case FileType::kVideo: {
-            content = co_await util::GenerateThumbnail(*provider_, item,
-                                                       std::move(stop_token));
+            content = co_await(*thumbnail_generator_)(provider_, item,
+                                                      std::move(stop_token));
             mime_type = "image/png";
+            break;
           }
           default:
             throw CloudException(CloudException::Type::kNotFound);
         }
       } catch (...) {
-        throw;
         content = [&] {
           switch (CloudProvider::GetFileType(item)) {
             case FileType::kUnknown:
@@ -578,6 +580,7 @@ class ProxyHandler {
     CloudProvider* provider;
   };
 
+  const ThumbnailGenerator* thumbnail_generator_;
   CloudProvider* provider_;
   std::string path_prefix_;
   ::coro::util::LRUCache<std::string, GetItem> item_cache_;

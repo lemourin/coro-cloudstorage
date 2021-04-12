@@ -5,3 +5,7 @@ if(MSVC)
 endif()
 
 target_link_libraries(cloudstorage PRIVATE coro-cloudstorage coro-http)
+
+if(UNIX)
+    target_link_libraries(cloudstorage PRIVATE event_pthreads)
+endif()

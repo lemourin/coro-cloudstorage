@@ -51,7 +51,7 @@ set(FFMPEG_DEFINITIONS
     _FILE_OFFSET_BITS=64
     _LARGEFILE_SOURCE
     _USE_MATH_DEFINES
-    # _WIN32_WINNT=0x0600
+    _WIN32_WINNT=0x0600
     HAVE_AV_CONFIG_H
 )
 set(FFMPEG_PUBLIC_INCLUDES
@@ -152,6 +152,50 @@ target_include_directories(avutil
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
 )
 
+add_library(swscale
+    ffmpeg/libswscale/hscale_fast_bilinear.c
+    ffmpeg/libswscale/utils.c
+    ffmpeg/libswscale/hscale.c
+    ffmpeg/libswscale/log2_tab.c
+    ffmpeg/libswscale/alphablend.c
+    ffmpeg/libswscale/swscale.c
+    ffmpeg/libswscale/vscale.c
+    ffmpeg/libswscale/gamma.c
+    ffmpeg/libswscale/input.c
+    ffmpeg/libswscale/rgb2rgb.c
+    ffmpeg/libswscale/slice.c
+    ffmpeg/libswscale/output.c
+    ffmpeg/libswscale/yuv2rgb.c
+    ffmpeg/libswscale/options.c
+    ffmpeg/libswscale/swscale_unscaled.c
+)
+target_link_libraries(swscale PRIVATE ${FFMPEG_DEPENDENCIES})
+target_compile_definitions(swscale PRIVATE ${FFMPEG_DEFINITIONS})
+target_include_directories(swscale
+    PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
+    PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
+)
+
+add_library(swresample
+    ffmpeg/libswresample/swresample.c
+    ffmpeg/libswresample/swresample_frame.c
+    ffmpeg/libswresample/soxr_resample.c
+    ffmpeg/libswresample/swresampleres.rc
+    ffmpeg/libswresample/resample.c
+    ffmpeg/libswresample/dither.c
+    ffmpeg/libswresample/audioconvert.c
+    ffmpeg/libswresample/log2_tab.c
+    ffmpeg/libswresample/rematrix.c
+    ffmpeg/libswresample/resample_dsp.c
+    ffmpeg/libswresample/options.c
+)
+target_link_libraries(swresample PRIVATE ${FFMPEG_DEPENDENCIES})
+target_compile_definitions(swresample PRIVATE ${FFMPEG_DEFINITIONS})
+target_include_directories(swresample
+    PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
+    PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
+)
+
 add_library(avcodec
     ffmpeg/libavcodec/012v.c
     ffmpeg/libavcodec/4xm.c
@@ -168,6 +212,7 @@ add_library(avcodec
     ffmpeg/libavcodec/aacenc_pred.c
     ffmpeg/libavcodec/aacenc_tns.c
     ffmpeg/libavcodec/aacps.c
+    ffmpeg/libavcodec/aacps_common.c
     ffmpeg/libavcodec/aacpsdsp_fixed.c
     ffmpeg/libavcodec/aacpsdsp_float.c
     ffmpeg/libavcodec/aacpsy.c
@@ -265,6 +310,7 @@ add_library(avcodec
     ffmpeg/libavcodec/binkdsp.c
     ffmpeg/libavcodec/bintext.c
     ffmpeg/libavcodec/bitpacked.c
+    ffmpeg/libavcodec/bitstream.c
     ffmpeg/libavcodec/bitstream_filter.c
     ffmpeg/libavcodec/bitstream_filters.c
     ffmpeg/libavcodec/blockdsp.c
@@ -284,6 +330,7 @@ add_library(avcodec
     ffmpeg/libavcodec/cavsdec.c
     ffmpeg/libavcodec/cavsdsp.c
     ffmpeg/libavcodec/cavs_parser.c
+    ffmpeg/libavcodec/cbrt_data.c
     ffmpeg/libavcodec/ccaption_dec.c
     ffmpeg/libavcodec/cdgraphics.c
     ffmpeg/libavcodec/cdtoons.c
@@ -635,6 +682,7 @@ add_library(avcodec
     ffmpeg/libavcodec/mpegaudio.c
     ffmpeg/libavcodec/mpegaudiodata.c
     ffmpeg/libavcodec/mpegaudiodecheader.c
+    ffmpeg/libavcodec/mpegaudiodec_common.c
     ffmpeg/libavcodec/mpegaudiodec_fixed.c
     ffmpeg/libavcodec/mpegaudiodec_float.c
     ffmpeg/libavcodec/mpegaudiodsp.c
@@ -810,6 +858,7 @@ add_library(avcodec
     ffmpeg/libavcodec/sheervideo.c
     ffmpeg/libavcodec/shorten.c
     ffmpeg/libavcodec/simple_idct.c
+    ffmpeg/libavcodec/sinewin.c
     ffmpeg/libavcodec/sipr.c
     ffmpeg/libavcodec/sipr16k.c
     ffmpeg/libavcodec/sipr_parser.c
@@ -989,7 +1038,7 @@ add_library(avcodec
     ffmpeg/libavcodec/yuv4enc.c
     ffmpeg/libavcodec/zerocodec.c
 )
-target_link_libraries(avcodec PRIVATE ${FFMPEG_DEPENDENCIES})
+target_link_libraries(avcodec PRIVATE ${FFMPEG_DEPENDENCIES} swscale swresample)
 target_compile_definitions(avcodec PRIVATE ${FFMPEG_DEFINITIONS})
 target_include_directories(avcodec 
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES} 
@@ -1480,33 +1529,9 @@ add_library(avformat
     ffmpeg/libavformat/yuv4mpegdec.c
     ffmpeg/libavformat/yuv4mpegenc.c
 )
-target_link_libraries(avformat PRIVATE ${FFMPEG_DEPENDENCIES})
+target_link_libraries(avformat PRIVATE ${FFMPEG_DEPENDENCIES} swscale avutil avcodec)
 target_compile_definitions(avformat PRIVATE ${FFMPEG_DEFINITIONS})
 target_include_directories(avformat 
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES} 
-    PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
-)
-
-add_library(swscale
-    ffmpeg/libswscale/hscale_fast_bilinear.c
-    ffmpeg/libswscale/utils.c
-    ffmpeg/libswscale/hscale.c
-    ffmpeg/libswscale/log2_tab.c
-    ffmpeg/libswscale/alphablend.c
-    ffmpeg/libswscale/swscale.c
-    ffmpeg/libswscale/vscale.c
-    ffmpeg/libswscale/gamma.c
-    ffmpeg/libswscale/input.c
-    ffmpeg/libswscale/rgb2rgb.c
-    ffmpeg/libswscale/slice.c
-    ffmpeg/libswscale/output.c
-    ffmpeg/libswscale/yuv2rgb.c
-    ffmpeg/libswscale/options.c
-    ffmpeg/libswscale/swscale_unscaled.c
-)
-target_link_libraries(swscale PRIVATE ${FFMPEG_DEPENDENCIES})
-target_compile_definitions(swscale PRIVATE ${FFMPEG_DEFINITIONS})
-target_include_directories(swscale
-    PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
 )

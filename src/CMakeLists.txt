@@ -11,7 +11,7 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/util/webdav_utils.h
     coro/cloudstorage/util/auth_data.h
     coro/cloudstorage/util/generator_utils.h
-    coro/cloudstorage/util/generate_thumbnail.h
+    coro/cloudstorage/util/thumbnail_generator.h
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
     coro/cloudstorage/cloud_provider.h
@@ -31,7 +31,7 @@ set(coro-cloudstorage-SOURCES
     coro/cloudstorage/util/webdav_utils.cc
     coro/cloudstorage/util/auth_token_manager.cc
     coro/cloudstorage/util/generator_utils.cc
-    coro/cloudstorage/util/generate_thumbnail.cc
+    coro/cloudstorage/util/thumbnail_generator.cc
     coro/cloudstorage/providers/mega.cc
     coro/cloudstorage/providers/webdav.cc
 )
@@ -39,7 +39,7 @@ set(coro-cloudstorage-SOURCES
 target_sources(coro-cloudstorage PRIVATE ${coro-cloudstorage-HEADERS} ${coro-cloudstorage-SOURCES})
 target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(coro-cloudstorage PUBLIC 
-    coro-http 
+    coro-http
     nlohmann_json::nlohmann_json 
     Mega 
     pugixml::pugixml 
@@ -47,6 +47,7 @@ target_link_libraries(coro-cloudstorage PUBLIC
     avutil
     avformat
     swscale
+    avfilter
 )
 
 function(embed_resource)

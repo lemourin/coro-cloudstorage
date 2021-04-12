@@ -59,9 +59,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
                                  template CloudProviderT<CloudProviders>...>>;
 
   struct Data {
-    Data(const CloudFactory& factory, AccountListener account_listener,
-         AuthTokenManagerT auth_token_manager)
+    Data(const CloudFactory& factory,
+         const ThumbnailGenerator& thumbnail_generator,
+         AccountListener account_listener, AuthTokenManagerT auth_token_manager)
         : factory(factory),
+          thumbnail_generator(thumbnail_generator),
           account_listener(std::move(account_listener)),
           auth_token_manager(std::move(auth_token_manager)) {}
 
@@ -172,10 +174,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       auto* provider =
           &std::get<typename CloudProviderAccount::template CloudProviderT<
               CloudProvider>>(accounts.back().provider);
-      handlers.emplace_back(
-          Handler{.id = account_id,
-                  .prefix = "/" + account_id,
-                  .handler = ProxyHandler(provider, "/" + account_id)});
+      handlers.emplace_back(Handler{
+          .id = account_id,
+          .prefix = "/" + account_id,
+          .handler =
+              ProxyHandler(thumbnail_generator, provider, "/" + account_id)});
       account_listener.OnCreate(&accounts.back());
     }
 
@@ -190,6 +193,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     };
 
     const CloudFactory& factory;
+    const ThumbnailGenerator& thumbnail_generator;
     std::vector<Handler> handlers;
     AccountListener account_listener;
     AuthTokenManagerT auth_token_manager;
@@ -197,9 +201,12 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   };
 
   AccountManagerHandler(
-      const CloudFactory& factory, AccountListener account_listener,
+      const CloudFactory& factory,
+      const ThumbnailGenerator& thumbnail_generator,
+      AccountListener account_listener,
       AuthTokenManagerT auth_token_manager = AuthTokenManagerT{})
-      : d_(std::make_unique<Data>(factory, std::move(account_listener),
+      : d_(std::make_unique<Data>(factory, thumbnail_generator,
+                                  std::move(account_listener),
                                   std::move(auth_token_manager))) {
     (d_->template AddAuthHandler<CloudProviders>(), ...);
     for (const auto& any_token : d_->auth_token_manager.template LoadTokenData<

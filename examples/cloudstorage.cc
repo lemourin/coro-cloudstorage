@@ -6,6 +6,7 @@
 #include <coro/http/http_server.h>
 #include <coro/stdx/coroutine.h>
 #include <coro/util/event_loop.h>
+#include <event2/thread.h>
 
 #include <csignal>
 #include <iostream>
@@ -13,10 +14,12 @@
 using ::coro::Promise;
 using ::coro::Task;
 using ::coro::cloudstorage::util::AccountManagerHandler;
+using ::coro::cloudstorage::util::ThumbnailGenerator;
 using ::coro::http::CacheHttp;
 using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
 using ::coro::util::MakePointer;
+using ::coro::util::ThreadPool;
 
 using CloudProviders = ::coro::util::TypeList<coro::cloudstorage::Mega>;
 
@@ -26,8 +29,11 @@ class HttpHandler {
   using Request = coro::http::Request<>;
   using Response = coro::http::Response<>;
 
-  HttpHandler(const CloudFactory& factory, Promise<void>* quit)
-      : auth_handler_(factory, AccountListener{}), quit_(quit) {}
+  HttpHandler(const CloudFactory& factory,
+              const ThumbnailGenerator& thumbnail_generator,
+              Promise<void>* quit)
+      : auth_handler_(factory, thumbnail_generator, AccountListener{}),
+        quit_(quit) {}
 
   Task<Response> operator()(Request request,
                             coro::stdx::stop_token stop_token) {
@@ -66,11 +72,14 @@ Task<> CoMain(event_base* event_base) noexcept {
   try {
     CacheHttp<CurlHttp> http{CurlHttp(event_base)};
     coro::util::EventLoop event_loop(event_base);
+    ThreadPool thread_pool(event_loop);
+    ThumbnailGenerator thumbnail_generator(&thread_pool, &event_loop);
     coro::cloudstorage::CloudFactory cloud_factory(event_loop, http);
 
     Promise<void> quit;
-    HttpServer http_server(event_base, {.address = "127.0.0.1", .port = 12345},
-                           HttpHandler(cloud_factory, &quit));
+    HttpServer http_server(
+        event_base, {.address = "127.0.0.1", .port = 12345},
+        HttpHandler(cloud_factory, thumbnail_generator, &quit));
     co_await quit;
     co_await http_server.Quit();
   } catch (const std::exception& exception) {
@@ -84,6 +93,9 @@ int main() {
   WSADATA wsa_data;
 
   (void)WSAStartup(version_requested, &wsa_data);
+  evthread_use_windows_threads();
+#else
+  evthread_use_pthreads();
 #endif
 
 #ifdef SIGPIPE
