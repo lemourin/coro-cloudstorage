@@ -46,22 +46,65 @@ add_subdirectory(zlib-ng EXCLUDE_FROM_ALL)
 
 set(FFMPEG_DEFINITIONS
     _ISOC99_SOURCE
-    _CRT_SECURE_NO_WARNINGS
-    _CRT_NONSTDC_NO_WARNINGS
     _FILE_OFFSET_BITS=64
     _LARGEFILE_SOURCE
     _USE_MATH_DEFINES
-    _WIN32_WINNT=0x0600
     HAVE_AV_CONFIG_H
 )
 set(FFMPEG_PUBLIC_INCLUDES
-    ffmpeg/build
+    ${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-config
+    ffmpeg-config
     ffmpeg
 )
-set(FFMPEG_PRIVATE_INCLUDES
-    # ffmpeg/compat/atomics/win32
-)
+if(WIN32)
+    set(FFMPEG_PRIVATE_INCLUDES
+        ffmpeg/compat/atomics/win32
+    )
+    list(APPEND FFMPEG_DEFINITIONS 
+        _CRT_SECURE_NO_WARNINGS
+        _CRT_NONSTDC_NO_WARNINGS
+        _WIN32_WINNT=0x0600
+    )
+    if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+        string(REPLACE "/RTC1" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
+        string(REPLACE "/Od" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
+        set(FFMPEG_COMPILE_OPTIONS "/O1")
+    endif()
+endif()
 set(FFMPEG_DEPENDENCIES zlib)
+
+include(TestBigEndian)
+test_big_endian(AV_HAVE_BIGENDIAN)
+configure_file(ffmpeg-config/libavutil/avconfig.h.in ffmpeg-config/libavutil/avconfig.h)
+
+if(WIN32)
+    set(OS_NAME "win32")
+    set(HAVE_WINDOWS_H 1)
+    set(HAVE_WINSOCK2_H 1)
+    set(HAVE_W32THREADS 1)
+    set(HAVE_VIRTUALALLOC 1)
+    set(HAVE_BCRYPT 1)
+    set(HAVE_IO_H 0)
+    set(HAVE_GETSYSTEMTIMEASFILETIME 1)
+    set(HAVE_MAPVIEWOFFILE 1)
+    if(MSVC)
+        set(HAVE_LIBC_MSVCRT 1)
+    endif()
+else()
+    set(HAVE_UNISTD_H 1)
+    set(HAVE_PTHREADS 1)
+    set(HAVE_GETTIMEOFDAY 1)
+    if(UNIX)
+        set(OS_NAME "linux")
+    elseif(ANDROID)
+        set(OS_NAME "android")
+    elseif(APPLE)
+        set(OS_NAME "apple")
+    else()
+        set(OS_NAME "unknown")
+    endif()
+endif()
+configure_file(ffmpeg-config/config.h.in ffmpeg-config/config.h)
 
 add_library(avutil 
     ffmpeg/libavutil/adler32.c
@@ -147,6 +190,7 @@ add_library(avutil
 )
 target_link_libraries(avutil PRIVATE ${FFMPEG_DEPENDENCIES})
 target_compile_definitions(avutil PRIVATE ${FFMPEG_DEFINITIONS})
+target_compile_options(avutil PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(avutil 
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES} 
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
@@ -171,6 +215,7 @@ add_library(swscale
 )
 target_link_libraries(swscale PRIVATE ${FFMPEG_DEPENDENCIES})
 target_compile_definitions(swscale PRIVATE ${FFMPEG_DEFINITIONS})
+target_compile_options(swscale PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(swscale
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
@@ -179,7 +224,6 @@ target_include_directories(swscale
 add_library(swresample
     ffmpeg/libswresample/swresample.c
     ffmpeg/libswresample/swresample_frame.c
-    ffmpeg/libswresample/soxr_resample.c
     ffmpeg/libswresample/swresampleres.rc
     ffmpeg/libswresample/resample.c
     ffmpeg/libswresample/dither.c
@@ -191,6 +235,7 @@ add_library(swresample
 )
 target_link_libraries(swresample PRIVATE ${FFMPEG_DEPENDENCIES})
 target_compile_definitions(swresample PRIVATE ${FFMPEG_DEFINITIONS})
+target_compile_options(swresample PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(swresample
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
@@ -411,6 +456,7 @@ add_library(avcodec
     ffmpeg/libavcodec/dstdec.c
     ffmpeg/libavcodec/dump_extradata_bsf.c
     ffmpeg/libavcodec/dv.c
+    ffmpeg/libavcodec/dv_profile.c
     ffmpeg/libavcodec/dvaudiodec.c
     ffmpeg/libavcodec/dvaudio_parser.c
     ffmpeg/libavcodec/dvbsubdec.c
@@ -1040,6 +1086,7 @@ add_library(avcodec
 )
 target_link_libraries(avcodec PRIVATE ${FFMPEG_DEPENDENCIES} swscale swresample)
 target_compile_definitions(avcodec PRIVATE ${FFMPEG_DEFINITIONS})
+target_compile_options(avcodec PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(avcodec 
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES} 
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
@@ -1531,6 +1578,7 @@ add_library(avformat
 )
 target_link_libraries(avformat PRIVATE ${FFMPEG_DEPENDENCIES} swscale avutil avcodec)
 target_compile_definitions(avformat PRIVATE ${FFMPEG_DEFINITIONS})
+target_compile_options(avformat PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(avformat 
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES} 
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
@@ -1662,7 +1710,6 @@ add_library(avfilter
     ffmpeg/libavfilter/f_sendcmd.c
     ffmpeg/libavfilter/f_sidedata.c
     ffmpeg/libavfilter/f_streamselect.c
-    ffmpeg/libavfilter/f_zmq.c
     ffmpeg/libavfilter/fifo.c
     ffmpeg/libavfilter/formats.c
     ffmpeg/libavfilter/framepool.c
@@ -1734,8 +1781,6 @@ add_library(avfilter
     ffmpeg/libavfilter/vf_decimate.c
     ffmpeg/libavfilter/vf_dedot.c
     ffmpeg/libavfilter/vf_deflicker.c
-    ffmpeg/libavfilter/vf_deinterlace_qsv.c
-    ffmpeg/libavfilter/vf_deinterlace_vaapi.c
     ffmpeg/libavfilter/vf_dejudder.c
     ffmpeg/libavfilter/vf_delogo.c
     ffmpeg/libavfilter/vf_derain.c
@@ -1806,7 +1851,6 @@ add_library(avfilter
     ffmpeg/libavfilter/vf_mestimate.c
     ffmpeg/libavfilter/vf_midequalizer.c
     ffmpeg/libavfilter/vf_minterpolate.c
-    ffmpeg/libavfilter/vf_misc_vaapi.c
     ffmpeg/libavfilter/vf_mix.c
     ffmpeg/libavfilter/vf_monochrome.c
     ffmpeg/libavfilter/vf_mpdecimate.c
@@ -1861,7 +1905,6 @@ add_library(avfilter
     ffmpeg/libavfilter/vf_ssim.c
     ffmpeg/libavfilter/vf_stack.c
     ffmpeg/libavfilter/vf_stereo3d.c
-    ffmpeg/libavfilter/vf_subtitles.c
     ffmpeg/libavfilter/vf_super2xsai.c
     ffmpeg/libavfilter/vf_swaprect.c
     ffmpeg/libavfilter/vf_swapuv.c
@@ -1883,12 +1926,9 @@ add_library(avfilter
     ffmpeg/libavfilter/vf_vflip.c
     ffmpeg/libavfilter/vf_vfrdet.c
     ffmpeg/libavfilter/vf_vibrance.c
-    ffmpeg/libavfilter/vf_vidstabdetect.c
-    ffmpeg/libavfilter/vf_vidstabtransform.c
     ffmpeg/libavfilter/vf_vif.c
     ffmpeg/libavfilter/vf_vignette.c
     ffmpeg/libavfilter/vf_vmafmotion.c
-    ffmpeg/libavfilter/vf_vpp_qsv.c
     ffmpeg/libavfilter/vf_w3fdif.c
     ffmpeg/libavfilter/vf_waveform.c
     ffmpeg/libavfilter/vf_weave.c
@@ -1898,9 +1938,7 @@ add_library(avfilter
     ffmpeg/libavfilter/vf_yadif.c
     ffmpeg/libavfilter/vf_yaepblur.c
     ffmpeg/libavfilter/vf_zoompan.c
-    ffmpeg/libavfilter/vf_zscale.c
     ffmpeg/libavfilter/video.c
-    ffmpeg/libavfilter/vidstabutils.c
     ffmpeg/libavfilter/vsink_nullsink.c
     ffmpeg/libavfilter/vsrc_cellauto.c
     ffmpeg/libavfilter/vsrc_gradients.c
@@ -1917,6 +1955,7 @@ target_compile_definitions(avfilter PRIVATE
     M_PI_4=0.785398163397448309616
     M_2_PI=0.636619772367581343076
 )
+target_compile_options(avfilter PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(avfilter
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}

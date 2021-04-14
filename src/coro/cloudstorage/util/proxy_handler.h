@@ -106,6 +106,7 @@ class ProxyHandler {
             throw CloudException(CloudException::Type::kNotFound);
         }
       } catch (...) {
+        throw;
         content = [&] {
           switch (CloudProvider::GetFileType(item)) {
             case FileType::kUnknown:
