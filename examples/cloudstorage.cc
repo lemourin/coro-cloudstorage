@@ -74,7 +74,8 @@ Task<> CoMain(event_base* event_base) noexcept {
     coro::util::EventLoop event_loop(event_base);
     ThreadPool thread_pool(event_loop);
     ThumbnailGenerator thumbnail_generator(&thread_pool, &event_loop);
-    coro::cloudstorage::CloudFactory cloud_factory(event_loop, http);
+    coro::cloudstorage::CloudFactory cloud_factory(event_loop, http,
+                                                   thumbnail_generator);
 
     Promise<void> quit;
     HttpServer http_server(

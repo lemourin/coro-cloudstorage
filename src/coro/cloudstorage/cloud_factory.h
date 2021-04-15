@@ -4,6 +4,7 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
+#include <coro/cloudstorage/util/thumbnail_generator.h>
 #include <coro/http/http.h>
 #include <coro/util/type_list.h>
 
@@ -24,9 +25,11 @@ class CloudFactory {
   using AuthData = AuthDataT;
 
   CloudFactory(const EventLoop& event_loop, const Http& http,
+               const util::ThumbnailGenerator& thumbnail_generator,
                AuthData auth_data = AuthData{})
       : event_loop_(&event_loop),
         http_(&http),
+        thumbnail_generator_(&thumbnail_generator),
         auth_data_(std::move(auth_data)) {}
 
   template <typename CloudProvider, typename... Args>
@@ -61,6 +64,7 @@ class CloudFactory {
 
   const EventLoop* event_loop_;
   const Http* http_;
+  const util::ThumbnailGenerator* thumbnail_generator_;
   AuthData auth_data_;
 };
 
