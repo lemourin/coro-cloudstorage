@@ -97,8 +97,10 @@ class ProxyHandler {
         switch (CloudProvider::GetFileType(item)) {
           case FileType::kImage:
           case FileType::kVideo: {
-            content = co_await(*thumbnail_generator_)(provider_, item,
-                                                      std::move(stop_token));
+            content = co_await(*thumbnail_generator_)(
+                provider_, item,
+                ThumbnailOptions{.codec = ThumbnailOptions::Codec::PNG},
+                std::move(stop_token));
             mime_type = "image/png";
             break;
           }

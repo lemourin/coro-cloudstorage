@@ -178,6 +178,21 @@ void Mega::CloudProvider::Data::OnEvent() {
   }
 }
 
+Task<> Mega::CloudProvider::SetThumbnail(const File& file,
+                                         std::string thumbnail,
+                                         stdx::stop_token stop_token) {
+  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
+  auto node = GetNode(file.id);
+  std::any result = co_await Do<&::mega::MegaClient::putfa>(
+      stop_token, node->nodehandle, ::mega::GfxProc::THUMBNAIL,
+      node->nodecipher(), new std::string(std::move(thumbnail)),
+      /*checkAccess=*/false);
+  if (result.type() == typeid(::mega::error)) {
+    throw CloudException(
+        GetErrorDescription(std::any_cast<::mega::error>(result)));
+  }
+}
+
 Task<Mega::PageData> Mega::CloudProvider::ListDirectoryPage(
     Directory directory, std::optional<std::string>,
     coro::stdx::stop_token stop_token) {
@@ -354,14 +369,44 @@ auto Mega::CloudProvider::CreateFile(Directory parent, std::string_view name,
   file.localname = std::to_string(reinterpret_cast<intptr_t>(&content));
   file.size = content.size;
   std::any result = co_await Do<&::mega::MegaClient::startxfer>(
-      std::move(stop_token), ::mega::PUT, &file, /*skipdupes=*/false,
+      stop_token, ::mega::PUT, &file, /*skipdupes=*/false,
       /*startfirst=*/false);
   if (result.type() == typeid(::mega::error)) {
     throw CloudException(
         GetErrorDescription(std::any_cast<::mega::error>(result)));
   }
-  co_return ToItemImpl<Mega::File>(
-      GetNode(std::any_cast<::mega::handle>(result)));
+  auto n = std::any_cast<::mega::Node*>(result);
+  ::mega::handle h = n->nodehandle;
+  ::mega::Node* ntmp;
+  for (ntmp = n;
+       ((ntmp->parent != nullptr) && (ntmp->parent->nodehandle != parent.id));
+       ntmp = ntmp->parent)
+    ;
+  if ((ntmp->parent != nullptr) && (ntmp->parent->nodehandle == parent.id)) {
+    h = ntmp->nodehandle;
+  }
+  auto node = GetNode(h);
+  auto new_file = ToItemImpl<Mega::File>(node);
+
+  switch (GetFileType(new_file)) {
+    case FileType::kImage:
+    case FileType::kVideo: {
+      try {
+        auto thumbnail = co_await(*thumbnail_generator_)(
+            this, new_file,
+            util::ThumbnailOptions{
+                .size = 120, .codec = util::ThumbnailOptions::Codec::JPEG},
+            stop_token);
+        co_await SetThumbnail(new_file, std::move(thumbnail), stop_token);
+      } catch (...) {
+      }
+      break;
+    }
+    default:
+      break;
+  }
+
+  co_return new_file;
 }
 
 auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
@@ -369,14 +414,38 @@ auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
     -> Task<Thumbnail> {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
   auto node = GetNode(item.id);
-  std::any result = co_await Do<&::mega::MegaClient::getfa>(
-      stop_token, node->nodehandle, &node->fileattrstring, &node->nodekey,
-      ::mega::GfxProc::THUMBNAIL, /*cancel=*/false);
-  if (result.type() == typeid(::mega::error)) {
-    throw CloudException(
-        GetErrorDescription(std::any_cast<::mega::error>(result)));
+  std::any result;
+  try {
+    result = co_await Do<&::mega::MegaClient::getfa>(
+        stop_token, node->nodehandle, &node->fileattrstring, &node->nodekey,
+        ::mega::GfxProc::THUMBNAIL, /*cancel=*/false);
+  } catch (...) {
+    result = ::mega::error::API_ENOENT;
   }
-  std::string data = std::move(std::any_cast<std::string>(result));
+  std::string data;
+  if (result.type() == typeid(::mega::error)) {
+    switch (GetFileType(item)) {
+      case FileType::kImage:
+      case FileType::kVideo: {
+        try {
+          auto thumbnail = co_await(*thumbnail_generator_)(
+              this, item,
+              util::ThumbnailOptions{
+                  .size = 120, .codec = util::ThumbnailOptions::Codec::JPEG},
+              stop_token);
+          co_await SetThumbnail(item, thumbnail, stop_token);
+          data = std::move(thumbnail);
+        } catch (...) {
+        }
+        break;
+      }
+      default:
+        throw CloudException(
+            GetErrorDescription(std::any_cast<::mega::error>(result)));
+    }
+  } else {
+    data = std::move(std::any_cast<std::string>(result));
+  }
   if (!range.end) {
     range.end = data.length() - 1;
   }

@@ -7,6 +7,7 @@
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
+#include <coro/cloudstorage/util/thumbnail_generator.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/util/function_traits.h>
 #include <coro/util/raii_utils.h>
@@ -93,8 +94,10 @@ class Mega::CloudProvider
 
   template <typename EventLoop, http::HttpClient HttpClient>
   CloudProvider(const EventLoop& event_loop, const HttpClient& http,
+                const util::ThumbnailGenerator& thumbnail_generator,
                 AuthToken auth_token, const AuthData& auth_data)
       : auth_token_(std::move(auth_token)),
+        thumbnail_generator_(&thumbnail_generator),
         d_(std::make_unique<Data>(event_loop, http, auth_data)) {}
 
   template <auto Method, typename... Args>
@@ -184,11 +187,24 @@ class Mega::CloudProvider
       SetResult(std::make_tuple(handle, e));
     }
 
+    void putfa_result(::mega::handle, ::mega::fatype, ::mega::error e) final {
+      std::cerr << "PUT FA FAILURE\n";
+      SetResult(e);
+    }
+
+    void putfa_result(::mega::handle, ::mega::fatype, const char*) final {
+      std::cerr << "PUT FA SUCCESS\n";
+      SetResult(std::monostate());
+    }
+
     void putnodes_result(::mega::error e, ::mega::targettype_t,
                          ::mega::NewNode* nodes) final {
       if (e == ::mega::API_OK) {
         delete[] nodes;
-        SetResult(client->nodenotify.back()->nodehandle);
+        auto n = client->nodenotify.back();
+        n->applykey();
+        n->setattr();
+        SetResult(n);
       } else {
         SetResult(e);
       }
@@ -385,8 +401,11 @@ class Mega::CloudProvider
   }
 
   ::mega::Node* GetNode(::mega::handle) const;
+  Task<> SetThumbnail(const File& file, std::string thumbnail,
+                      stdx::stop_token);
 
   AuthToken auth_token_;
+  const util::ThumbnailGenerator* thumbnail_generator_;
   std::unique_ptr<Data> d_;
 };
 
@@ -395,9 +414,9 @@ struct CreateCloudProvider<Mega> {
   template <typename CloudFactory, typename... Args>
   auto operator()(const CloudFactory& factory, Mega::Auth::AuthToken auth_token,
                   Args&&...) const {
-    return Mega::CloudProvider(*factory.event_loop_, *factory.http_,
-                               std::move(auth_token),
-                               factory.auth_data_.template operator()<Mega>());
+    return Mega::CloudProvider(
+        *factory.event_loop_, *factory.http_, *factory.thumbnail_generator_,
+        std::move(auth_token), factory.auth_data_.template operator()<Mega>());
   }
 };
 

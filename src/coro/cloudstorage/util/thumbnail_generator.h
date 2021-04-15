@@ -30,14 +30,12 @@ class ThumbnailGenerator {
 
   template <typename CloudProvider, IsFile<CloudProvider> File>
   Task<std::string> operator()(CloudProvider* provider, File file,
+                               ThumbnailOptions options,
                                stdx::stop_token stop_token) const {
     auto io_context =
         CreateIOContext(provider, std::move(file), std::move(stop_token));
-    co_return co_await thread_pool_->Invoke([&] {
-      return GenerateThumbnail(
-          io_context.get(),
-          ThumbnailOptions{.codec = ThumbnailOptions::Codec::PNG});
-    });
+    co_return co_await thread_pool_->Invoke(
+        [&] { return GenerateThumbnail(io_context.get(), options); });
   }
 
  private:

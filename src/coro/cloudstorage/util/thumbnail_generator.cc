@@ -193,6 +193,7 @@ std::string EncodeFrame(AVFrame* input_frame, ThumbnailOptions options) {
   context->pix_fmt = AVPixelFormat(frame->format);
   context->width = frame->width;
   context->height = frame->height;
+  context->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
   Check(avcodec_open2(context.get(), codec, nullptr), "avcodec_open2");
   auto packet = CreatePacket();
   bool frame_sent = false, flush_sent = false;

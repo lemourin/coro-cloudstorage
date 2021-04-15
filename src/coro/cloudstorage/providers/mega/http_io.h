@@ -58,7 +58,7 @@ class HttpIO : public ::mega::HttpIO {
       request.headers.emplace_back("Content-Type", "application/octet-stream");
     }
     if (data && size > 0) {
-      request.body = data;
+      request.body = std::string(data, size);
     } else if (!r->out->empty()) {
       request.body = *r->out;
     }
