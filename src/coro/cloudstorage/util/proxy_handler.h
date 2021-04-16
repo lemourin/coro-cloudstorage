@@ -22,8 +22,7 @@ class ProxyHandler {
                CloudProvider* provider, std::string path_prefix)
       : thumbnail_generator_(&thumbnail_generator),
         provider_(provider),
-        path_prefix_(std::move(path_prefix)),
-        item_cache_(32, GetItem{provider_}) {}
+        path_prefix_(std::move(path_prefix)) {}
 
   Task<Response> operator()(Request request, stdx::stop_token stop_token) {
     auto uri = http::ParseUri(request.url);
@@ -39,10 +38,9 @@ class ProxyHandler {
             it != query.end() && it->second == "true") {
           co_return co_await std::visit(
               [&](const auto& d) {
-                return GetItemThumbnail(std::move(request), d,
-                                        std::move(stop_token));
+                return GetItemThumbnail(std::move(request), d, stop_token);
               },
-              co_await item_cache_.Get(path, stop_token));
+              co_await provider_->GetItemByPath(std::move(path), stop_token));
         }
       }
       if (request.method == http::Method::kMkcol) {
@@ -59,18 +57,11 @@ class ProxyHandler {
                                       co_await provider_->GetItemByPath(
                                           GetDirectoryPath(path), stop_token));
       }
-      if ((request.method == http::Method::kPropfind &&
-           ::coro::http::GetHeader(request.headers, "Depth") == "0") ||
-          request.method == http::Method::kMove ||
-          request.method == http::Method::kDelete) {
-        item_cache_.Invalidate(path);
-      }
       co_return co_await std::visit(
           [&](const auto& d) {
-            return HandleExistingItem(std::move(request), std::move(path), d,
-                                      std::move(stop_token));
+            return HandleExistingItem(std::move(request), path, d, stop_token);
           },
-          co_await item_cache_.Get(path, stop_token));
+          co_await provider_->GetItemByPath(path, stop_token));
     } catch (const CloudException& e) {
       switch (e.type()) {
         case CloudException::Type::kNotFound:
@@ -184,7 +175,7 @@ class ProxyHandler {
       typename CloudProvider::Item new_item = d;
       if (GetDirectoryPath(path) != destination_path) {
         auto destination_directory =
-            co_await item_cache_.Get(destination_path, stop_token);
+            co_await provider_->GetItemByPath(destination_path, stop_token);
         auto move_item = stdx::BindFront(MoveItemF{}, provider_, d, stop_token);
         auto item =
             co_await std::visit(std::move(move_item), destination_directory);
@@ -585,7 +576,6 @@ class ProxyHandler {
   const ThumbnailGenerator* thumbnail_generator_;
   CloudProvider* provider_;
   std::string path_prefix_;
-  ::coro::util::LRUCache<std::string, GetItem> item_cache_;
 };
 
 }  // namespace coro::cloudstorage::util

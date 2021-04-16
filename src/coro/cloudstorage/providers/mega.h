@@ -188,12 +188,10 @@ class Mega::CloudProvider
     }
 
     void putfa_result(::mega::handle, ::mega::fatype, ::mega::error e) final {
-      std::cerr << "PUT FA FAILURE\n";
       SetResult(e);
     }
 
     void putfa_result(::mega::handle, ::mega::fatype, const char*) final {
-      std::cerr << "PUT FA SUCCESS\n";
       SetResult(std::monostate());
     }
 
