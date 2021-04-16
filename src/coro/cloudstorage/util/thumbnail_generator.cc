@@ -158,6 +158,9 @@ auto ConvertFrame(AVFrame* frame, ImageSize size, AVPixelFormat format) {
   std::unique_ptr<SwsContext, SwsContextDeleter> sws_context(sws_getContext(
       frame->width, frame->height, AVPixelFormat(frame->format), size.width,
       size.height, format, SWS_BICUBIC, nullptr, nullptr, nullptr));
+  if (!sws_context) {
+    throw std::runtime_error("sws_getContext returned null");
+  }
   std::unique_ptr<AVFrame, AVFrameConvertedDeleter> rgb_frame(av_frame_alloc());
   av_frame_copy_props(rgb_frame.get(), frame);
   rgb_frame->format = format;
