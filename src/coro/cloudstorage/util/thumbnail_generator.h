@@ -75,11 +75,11 @@ class ThumbnailGenerator {
                     data->stop_token);
                 data->it = co_await data->generator->begin();
               }
-              auto buffer = co_await http::GetBody(
-                  util::Take(*data->generator, *data->it, buf_size));
+              auto buffer = co_await http::GetBody(util::Take(
+                  *data->generator, *data->it, static_cast<size_t>(buf_size)));
               data->offset += buffer.size();
               memcpy(buf, buffer.data(), buffer.size());
-              promise.set_value(buffer.size());
+              promise.set_value(static_cast<int>(buffer.size()));
             } catch (...) {
               promise.set_value(-1);
             }
