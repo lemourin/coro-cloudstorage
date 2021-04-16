@@ -185,10 +185,17 @@ std::string EncodeFrame(AVFrame* input_frame, ThumbnailOptions options) {
     throw std::logic_error("codec not found");
   }
   int loss_ptr;
+  std::vector<AVPixelFormat> supported;
+  for (auto p = codec->pix_fmts; p && *p != -1; p++) {
+    if (sws_isSupportedOutput(*p)) {
+      supported.emplace_back(*p);
+    }
+  }
+  supported.emplace_back(AVPixelFormat(-1));
   auto frame =
       ConvertFrame(input_frame, size,
                    avcodec_find_best_pix_fmt_of_list(
-                       codec->pix_fmts, AVPixelFormat(input_frame->format),
+                       supported.data(), AVPixelFormat(input_frame->format),
                        false, &loss_ptr));
   std::unique_ptr<AVCodecContext, AVCodecContextDeleter> context(
       avcodec_alloc_context3(codec));
