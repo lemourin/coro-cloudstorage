@@ -11,6 +11,7 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/util/webdav_utils.h
     coro/cloudstorage/util/auth_data.h
     coro/cloudstorage/util/generator_utils.h
+    coro/cloudstorage/util/avio_context.h
     coro/cloudstorage/util/thumbnail_generator.h
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
