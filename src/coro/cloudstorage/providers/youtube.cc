@@ -55,6 +55,36 @@ std::string Find(std::string_view text,
 
 }  // namespace
 
+nlohmann::json YouTube::StreamData::GetBestVideo() const {
+  std::optional<json> json;
+  for (const auto& d : adaptive_formats) {
+    std::string mime_type = d["mimeType"];
+    if (mime_type.find("video/webm") != std::string::npos &&
+        (!json || d["bitrate"] > (*json)["bitrate"])) {
+      json = d;
+    }
+  }
+  if (!json) {
+    throw CloudException("video not found");
+  }
+  return *json;
+}
+
+nlohmann::json YouTube::StreamData::GetBestAudio() const {
+  std::optional<json> json;
+  for (const auto& d : adaptive_formats) {
+    std::string mime_type = d["mimeType"];
+    if (mime_type.find("audio/webm") != std::string::npos &&
+        (!json || d["bitrate"] > (*json)["bitrate"])) {
+      json = d;
+    }
+  }
+  if (!json) {
+    throw CloudException("audio not found");
+  }
+  return *json;
+}
+
 YouTube::Stream YouTube::ToStream(const StreamDirectory& directory, json d) {
   std::string mime_type = d["mimeType"];
   std::string extension(mime_type.begin() + mime_type.find('/') + 1,
