@@ -6,6 +6,7 @@ extern "C" {
 #include <libavformat/avformat.h>
 }
 
+#include <memory>
 #include <string_view>
 
 namespace coro::cloudstorage::util {

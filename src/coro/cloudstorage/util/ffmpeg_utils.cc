@@ -1,12 +1,26 @@
 #include "ffmpeg_utils.h"
 
+#include <memory>
+#include <stdexcept>
 #include <string>
 
 namespace coro::cloudstorage::util {
 
+namespace {
+
+std::string GetAvError(int err) {
+  char buffer[AV_ERROR_MAX_STRING_SIZE + 1] = {};
+  if (av_strerror(err, buffer, AV_ERROR_MAX_STRING_SIZE) < 0)
+    return "invalid error";
+  else
+    return buffer;
+}
+
+}  // namespace
+
 void CheckAVError(int code, std::string_view call) {
   if (code < 0) {
-    throw std::runtime_error(std::string(call) + " (" + av_err2str(code) + ")");
+    throw std::runtime_error(std::string(call) + " (" + GetAvError(code) + ")");
   }
 }
 
