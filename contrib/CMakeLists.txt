@@ -292,6 +292,7 @@ add_library(avcodec
     ffmpeg/libavcodec/dvdsub.c
     ffmpeg/libavcodec/dvdsubdec.c
     ffmpeg/libavcodec/dynamic_hdr10_plus.c
+    ffmpeg/libavcodec/eac3_data.c
     ffmpeg/libavcodec/encode.c
     ffmpeg/libavcodec/error_resilience.c
     ffmpeg/libavcodec/exif.c
