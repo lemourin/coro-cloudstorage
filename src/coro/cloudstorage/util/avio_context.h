@@ -43,6 +43,9 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
         std::promise<int> promise;
         data->event_loop->RunOnEventLoop([&]() -> Task<> {
           try {
+            if (data->offset == CloudProvider::GetSize(data->file)) {
+              co_return promise.set_value(AVERROR_EOF);
+            }
             if (!data->generator) {
               data->generator = data->provider->GetFileContent(
                   data->file, http::Range{.start = data->offset},

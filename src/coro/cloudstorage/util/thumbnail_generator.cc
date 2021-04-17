@@ -11,6 +11,8 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
+#include <coro/cloudstorage/util/ffmpeg_utils.h>
+
 namespace coro::cloudstorage::util {
 
 namespace {
@@ -20,27 +22,8 @@ struct ImageSize {
   int height;
 };
 
-struct AVCodecContextDeleter {
-  void operator()(AVCodecContext* context) const {
-    avcodec_free_context(&context);
-  }
-};
-
-struct AVFormatContextDeleter {
-  void operator()(AVFormatContext* context) const {
-    avformat_close_input(&context);
-  }
-};
-
-struct AVPacketDeleter {
-  void operator()(AVPacket* packet) const { av_packet_free(&packet); }
-};
-
 struct AVFrameDeleter {
-  void operator()(AVFrame* frame) const {
-    // av_freep(&frame->data);
-    av_frame_free(&frame);
-  }
+  void operator()(AVFrame* frame) const { av_frame_free(&frame); }
 };
 
 struct AVFrameConvertedDeleter {
@@ -62,56 +45,6 @@ struct AVFilterGraphDeleter {
   void operator()(AVFilterGraph* graph) const { avfilter_graph_free(&graph); }
 };
 
-std::string av_error(int err) {
-  char buffer[AV_ERROR_MAX_STRING_SIZE + 1] = {};
-  if (av_strerror(err, buffer, AV_ERROR_MAX_STRING_SIZE) < 0)
-    return "invalid error";
-  else
-    return buffer;
-}
-
-void Check(int code, const std::string& call) {
-  if (code < 0) {
-    throw std::logic_error(call + " (" + av_error(code) + ")");
-  }
-}
-
-auto CreateFormatContext(AVIOContext* io_context) {
-  auto context = avformat_alloc_context();
-  context->interrupt_callback.opaque = nullptr;
-  context->interrupt_callback.callback = [](void* t) -> int { return 0; };
-  context->pb = io_context;
-  int e = 0;
-  if ((e = avformat_open_input(&context, nullptr, nullptr, nullptr)) < 0) {
-    avformat_free_context(context);
-    Check(e, "avformat_open_input");
-  } else if ((e = avformat_find_stream_info(context, nullptr)) < 0) {
-    avformat_close_input(&context);
-    Check(e, "avformat_find_stream_info");
-  }
-  return std::unique_ptr<AVFormatContext, AVFormatContextDeleter>(context);
-}
-
-std::unique_ptr<AVCodecContext, AVCodecContextDeleter> CreateCodecContext(
-    AVFormatContext* context, int stream_index) {
-  auto codec =
-      avcodec_find_decoder(context->streams[stream_index]->codecpar->codec_id);
-  if (!codec) {
-    throw std::logic_error("decoder not found");
-  }
-  std::unique_ptr<AVCodecContext, AVCodecContextDeleter> codec_context(
-      avcodec_alloc_context3(codec));
-  Check(avcodec_parameters_to_context(codec_context.get(),
-                                      context->streams[stream_index]->codecpar),
-        "avcodec_parameters_to_context");
-  Check(avcodec_open2(codec_context.get(), codec, nullptr), "avcodec_open2");
-  return codec_context;
-}
-
-auto CreatePacket() {
-  return std::unique_ptr<AVPacket, AVPacketDeleter>(av_packet_alloc());
-}
-
 auto DecodeFrame(AVFormatContext* context, AVCodecContext* codec_context,
                  int stream_index) {
   std::unique_ptr<AVFrame, AVFrameDeleter> result_frame;
@@ -119,7 +52,7 @@ auto DecodeFrame(AVFormatContext* context, AVCodecContext* codec_context,
     auto packet = CreatePacket();
     auto read_packet = av_read_frame(context, packet.get());
     if (read_packet != 0 && read_packet != AVERROR_EOF) {
-      Check(read_packet, "av_read_frame");
+      CheckAVError(read_packet, "av_read_frame");
     } else {
       if (read_packet == 0 && packet->stream_index != stream_index) {
         continue;
@@ -127,7 +60,7 @@ auto DecodeFrame(AVFormatContext* context, AVCodecContext* codec_context,
       auto send_packet = avcodec_send_packet(
           codec_context, read_packet == AVERROR_EOF ? nullptr : packet.get());
       if (send_packet != AVERROR_EOF) {
-        Check(send_packet, "avcodec_send_packet");
+        CheckAVError(send_packet, "avcodec_send_packet");
       }
     }
     std::unique_ptr<AVFrame, AVFrameDeleter> frame(av_frame_alloc());
@@ -137,7 +70,7 @@ auto DecodeFrame(AVFormatContext* context, AVCodecContext* codec_context,
     } else if (code == AVERROR_EOF) {
       break;
     } else if (code != AVERROR(EAGAIN)) {
-      Check(code, "avcodec_receive_frame");
+      CheckAVError(code, "avcodec_receive_frame");
     }
   }
   return result_frame;
@@ -166,12 +99,12 @@ auto ConvertFrame(AVFrame* frame, ImageSize size, AVPixelFormat format) {
   rgb_frame->format = format;
   rgb_frame->width = size.width;
   rgb_frame->height = size.height;
-  Check(av_image_alloc(rgb_frame->data, rgb_frame->linesize, size.width,
-                       size.height, format, 32),
-        "av_image_alloc");
-  Check(sws_scale(sws_context.get(), frame->data, frame->linesize, 0,
-                  frame->height, rgb_frame->data, rgb_frame->linesize),
-        "sws_scale");
+  CheckAVError(av_image_alloc(rgb_frame->data, rgb_frame->linesize, size.width,
+                              size.height, format, 32),
+               "av_image_alloc");
+  CheckAVError(sws_scale(sws_context.get(), frame->data, frame->linesize, 0,
+                         frame->height, rgb_frame->data, rgb_frame->linesize),
+               "sws_scale");
   return rgb_frame;
 }
 
@@ -203,17 +136,18 @@ std::string EncodeFrame(AVFrame* input_frame, ThumbnailOptions options) {
   context->width = frame->width;
   context->height = frame->height;
   context->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
-  Check(avcodec_open2(context.get(), codec, nullptr), "avcodec_open2");
+  CheckAVError(avcodec_open2(context.get(), codec, nullptr), "avcodec_open2");
   auto packet = CreatePacket();
   bool frame_sent = false, flush_sent = false;
   std::string result;
   while (true) {
     if (!frame_sent) {
-      Check(avcodec_send_frame(context.get(), frame.get()),
-            "avcodec_send_frame");
+      CheckAVError(avcodec_send_frame(context.get(), frame.get()),
+                   "avcodec_send_frame");
       frame_sent = true;
     } else if (!flush_sent) {
-      Check(avcodec_send_frame(context.get(), nullptr), "avcodec_send_frame");
+      CheckAVError(avcodec_send_frame(context.get(), nullptr),
+                   "avcodec_send_frame");
       flush_sent = true;
     }
     auto err = avcodec_receive_packet(context.get(), packet.get());
@@ -221,7 +155,7 @@ std::string EncodeFrame(AVFrame* input_frame, ThumbnailOptions options) {
       if (err == AVERROR_EOF) {
         break;
       } else {
-        Check(err, "avcodec_receive_packet");
+        CheckAVError(err, "avcodec_receive_packet");
       }
     } else {
       result +=
@@ -251,7 +185,7 @@ auto CreateSourceFilter(AVFormatContext* format_context, int stream,
       0);
   auto err = avfilter_init_dict(filter.get(), &d);
   av_dict_free(&d);
-  Check(err, "avfilter_init_dict source");
+  CheckAVError(err, "avfilter_init_dict source");
   return filter;
 }
 
@@ -262,7 +196,7 @@ auto CreateSinkFilter(AVFilterGraph* graph) {
   if (!filter) {
     throw std::logic_error("filter buffersink unavailable");
   }
-  Check(avfilter_init_dict(filter.get(), nullptr), "avfilter_init_dict");
+  CheckAVError(avfilter_init_dict(filter.get(), nullptr), "avfilter_init_dict");
   return filter;
 }
 
@@ -273,7 +207,7 @@ auto CreateThumbnailFilter(AVFilterGraph* graph) {
   if (!filter) {
     throw std::logic_error("filter thumbnail unavailable");
   }
-  Check(avfilter_init_dict(filter.get(), nullptr), "avfilter_init_dict");
+  CheckAVError(avfilter_init_dict(filter.get(), nullptr), "avfilter_init_dict");
   return filter;
 }
 
@@ -289,7 +223,7 @@ auto CreateScaleFilter(AVFilterGraph* graph, ImageSize size) {
   av_dict_set_int(&d, "height", size.height, 0);
   auto err = avfilter_init_dict(filter.get(), &d);
   av_dict_free(&d);
-  Check(err, "avfilter_init_dict");
+  CheckAVError(err, "avfilter_init_dict");
   return filter;
 }
 
@@ -297,10 +231,10 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options) {
   auto context = CreateFormatContext(io_context);
   auto stream = av_find_best_stream(context.get(), AVMEDIA_TYPE_VIDEO, -1, -1,
                                     nullptr, 0);
-  Check(stream, "av_find_best_stream");
+  CheckAVError(stream, "av_find_best_stream");
   if (context->duration > 0) {
-    Check(av_seek_frame(context.get(), -1, context->duration / 10, 0),
-          "av_seek_frame");
+    CheckAVError(av_seek_frame(context.get(), -1, context->duration / 10, 0),
+                 "av_seek_frame");
   }
   auto codec_context = CreateCodecContext(context.get(), stream);
   auto size = GetThumbnailSize({codec_context->width, codec_context->height},
@@ -312,27 +246,27 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options) {
   auto sink_filter = CreateSinkFilter(filter_graph.get());
   auto thumbnail_filter = CreateThumbnailFilter(filter_graph.get());
   auto scale_filter = CreateScaleFilter(filter_graph.get(), size);
-  Check(avfilter_link(source_filter.get(), 0, scale_filter.get(), 0),
-        "avfilter_link");
-  Check(avfilter_link(scale_filter.get(), 0, thumbnail_filter.get(), 0),
-        "avfilter_link");
-  Check(avfilter_link(thumbnail_filter.get(), 0, sink_filter.get(), 0),
-        "avfilter_link");
-  Check(avfilter_graph_config(filter_graph.get(), nullptr),
-        "avfilter_graph_config");
+  CheckAVError(avfilter_link(source_filter.get(), 0, scale_filter.get(), 0),
+               "avfilter_link");
+  CheckAVError(avfilter_link(scale_filter.get(), 0, thumbnail_filter.get(), 0),
+               "avfilter_link");
+  CheckAVError(avfilter_link(thumbnail_filter.get(), 0, sink_filter.get(), 0),
+               "avfilter_link");
+  CheckAVError(avfilter_graph_config(filter_graph.get(), nullptr),
+               "avfilter_graph_config");
   std::unique_ptr<AVFrame, AVFrameDeleter> frame;
   while (auto current =
              DecodeFrame(context.get(), codec_context.get(), stream)) {
     frame = std::move(current);
-    Check(av_buffersrc_write_frame(source_filter.get(), frame.get()),
-          "av_buffersrc_write_frame");
+    CheckAVError(av_buffersrc_write_frame(source_filter.get(), frame.get()),
+                 "av_buffersrc_write_frame");
     std::unique_ptr<AVFrame, AVFrameDeleter> received_frame(av_frame_alloc());
     auto err = av_buffersink_get_frame(sink_filter.get(), received_frame.get());
     if (err == 0) {
       frame = std::move(received_frame);
       break;
     } else if (err != AVERROR(EAGAIN)) {
-      Check(err, "av_buffersink_get_frame");
+      CheckAVError(err, "av_buffersink_get_frame");
     }
   }
   if (!frame) {

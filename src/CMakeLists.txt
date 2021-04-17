@@ -13,6 +13,7 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/util/generator_utils.h
     coro/cloudstorage/util/avio_context.h
     coro/cloudstorage/util/thumbnail_generator.h
+    coro/cloudstorage/util/muxer.h
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
     coro/cloudstorage/cloud_provider.h
@@ -33,18 +34,20 @@ set(coro-cloudstorage-SOURCES
     coro/cloudstorage/util/auth_token_manager.cc
     coro/cloudstorage/util/generator_utils.cc
     coro/cloudstorage/util/thumbnail_generator.cc
+    coro/cloudstorage/util/muxer.cc
+    coro/cloudstorage/util/ffmpeg_utils.cc
     coro/cloudstorage/providers/mega.cc
     coro/cloudstorage/providers/webdav.cc
 )
 
 target_sources(coro-cloudstorage PRIVATE ${coro-cloudstorage-HEADERS} ${coro-cloudstorage-SOURCES})
 target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(coro-cloudstorage PUBLIC 
+target_link_libraries(coro-cloudstorage PUBLIC
     coro-http
-    nlohmann_json::nlohmann_json 
-    Mega 
-    pugixml::pugixml 
-    avcodec 
+    nlohmann_json::nlohmann_json
+    Mega
+    pugixml::pugixml
+    avcodec
     avutil
     avformat
     swscale
@@ -57,8 +60,8 @@ function(embed_resource)
     set(OUTPUT_HEADER "${EMBED_OUTPUT}.h")
     string(REGEX REPLACE "[^A-Za-z0-9_]" "_" HEADER_GUARD ${OUTPUT_HEADER})
 
-    string(APPEND HEADER_CONTENT 
-        "#ifndef ${HEADER_GUARD}\n" 
+    string(APPEND HEADER_CONTENT
+        "#ifndef ${HEADER_GUARD}\n"
         "#define ${HEADER_GUARD}\n"
         "#include <string_view>\n"
         "namespace coro::cloudstorage::util {\n")
@@ -74,7 +77,7 @@ function(embed_resource)
         string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1, " CONTENT "${CONTENT}")
 
         string(REGEX REPLACE ", $" "" CONTENT "${CONTENT}")
-        
+
         string(REGEX REPLACE "[\-\.\/]" "_" ENTRY ${ENTRY})
         string(APPEND IMPL_CONTENT
             "static const char ${ENTRY}_data[] = { ${CONTENT} };\n"
@@ -85,7 +88,7 @@ function(embed_resource)
             "extern std::string_view ${ENTRY};"
         )
     endforeach()
-    string(APPEND HEADER_CONTENT 
+    string(APPEND HEADER_CONTENT
         "} // namespace coro::cloudstorage::util\n"
         "#endif // ${HEADER_GUARD}\n")
     string(APPEND IMPL_CONTENT
@@ -96,17 +99,17 @@ function(embed_resource)
 endfunction()
 
 embed_resource(
-    OUTPUT 
-        ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets 
-    INPUT 
-        assets/folder.svg 
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets
+    INPUT
+        assets/folder.svg
         assets/gtk-file.svg
         assets/audio-x-generic.svg
         assets/image.svg
         assets/video.svg
 )
 
-target_sources(coro-cloudstorage PRIVATE 
+target_sources(coro-cloudstorage PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets.h
     ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets.cc
 )

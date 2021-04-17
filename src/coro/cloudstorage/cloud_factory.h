@@ -4,6 +4,7 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
+#include <coro/cloudstorage/util/muxer.h>
 #include <coro/cloudstorage/util/thumbnail_generator.h>
 #include <coro/http/http.h>
 #include <coro/util/type_list.h>
@@ -12,8 +13,7 @@ namespace coro::cloudstorage {
 
 template <typename T>
 concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
-  { v.GetAuthorizationUrl({}) }
-  ->stdx::convertible_to<std::string>;
+  { v.GetAuthorizationUrl({}) } -> stdx::convertible_to<std::string>;
 };
 
 template <typename EventLoopT, coro::http::HttpClient HttpT,
@@ -26,10 +26,11 @@ class CloudFactory {
 
   CloudFactory(const EventLoop& event_loop, const Http& http,
                const util::ThumbnailGenerator& thumbnail_generator,
-               AuthData auth_data = AuthData{})
+               const util::Muxer& muxer, AuthData auth_data = AuthData{})
       : event_loop_(&event_loop),
         http_(&http),
         thumbnail_generator_(&thumbnail_generator),
+        muxer_(&muxer),
         auth_data_(std::move(auth_data)) {}
 
   template <typename CloudProvider, typename... Args>
@@ -65,6 +66,7 @@ class CloudFactory {
   const EventLoop* event_loop_;
   const Http* http_;
   const util::ThumbnailGenerator* thumbnail_generator_;
+  const util::Muxer* muxer_;
   AuthData auth_data_;
 };
 

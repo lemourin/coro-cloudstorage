@@ -14,6 +14,7 @@
 using ::coro::Promise;
 using ::coro::Task;
 using ::coro::cloudstorage::util::AccountManagerHandler;
+using ::coro::cloudstorage::util::Muxer;
 using ::coro::cloudstorage::util::ThumbnailGenerator;
 using ::coro::http::CacheHttp;
 using ::coro::http::CurlHttp;
@@ -74,8 +75,9 @@ Task<> CoMain(event_base* event_base) noexcept {
     coro::util::EventLoop event_loop(event_base);
     ThreadPool thread_pool(event_loop);
     ThumbnailGenerator thumbnail_generator(&thread_pool, &event_loop);
+    Muxer muxer(&event_loop, &thread_pool);
     coro::cloudstorage::CloudFactory cloud_factory(event_loop, http,
-                                                   thumbnail_generator);
+                                                   thumbnail_generator, muxer);
 
     Promise<void> quit;
     HttpServer http_server(

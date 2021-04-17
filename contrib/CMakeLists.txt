@@ -248,6 +248,7 @@ target_include_directories(swresample
 
 add_library(avcodec
     ffmpeg/libavcodec/aac_ac3_parser.c
+    ffmpeg/libavcodec/aac_adtstoasc_bsf.c
     ffmpeg/libavcodec/aacdec.c
     ffmpeg/libavcodec/aacps_common.c
     ffmpeg/libavcodec/aacps_float.c
@@ -463,6 +464,7 @@ add_library(avcodec
     ffmpeg/libavcodec/vp8dsp.c
     ffmpeg/libavcodec/vp9.c
     ffmpeg/libavcodec/vp9_parser.c
+    ffmpeg/libavcodec/vp9_superframe_bsf.c
     ffmpeg/libavcodec/vp9_superframe_split_bsf.c
     ffmpeg/libavcodec/vp9block.c
     ffmpeg/libavcodec/vp9data.c
@@ -495,16 +497,22 @@ target_include_directories(avcodec
 add_library(avformat
     ffmpeg/libavformat/ac3dec.c
     ffmpeg/libavformat/allformats.c
+    ffmpeg/libavformat/av1.c
+    ffmpeg/libavformat/avc.c
+    ffmpeg/libavformat/avlanguage.c
     ffmpeg/libavformat/avidec.c
     ffmpeg/libavformat/avio.c
     ffmpeg/libavformat/aviobuf.c
     ffmpeg/libavformat/dump.c
     ffmpeg/libavformat/flac_picture.c
     ffmpeg/libavformat/flacdec.c
+    ffmpeg/libavformat/flacenc.c
+    ffmpeg/libavformat/flacenc_header.c
     ffmpeg/libavformat/format.c
     ffmpeg/libavformat/gifdec.c
     ffmpeg/libavformat/http.c
     ffmpeg/libavformat/httpauth.c
+    ffmpeg/libavformat/hevc.c
     ffmpeg/libavformat/id3v1.c
     ffmpeg/libavformat/id3v2.c
     ffmpeg/libavformat/img2.c
@@ -513,8 +521,12 @@ add_library(avformat
     ffmpeg/libavformat/isom_tags.c
     ffmpeg/libavformat/matroska.c
     ffmpeg/libavformat/matroskadec.c
+    ffmpeg/libavformat/matroskaenc.c
     ffmpeg/libavformat/metadata.c
     ffmpeg/libavformat/mov.c
+    ffmpeg/libavformat/movenc.c
+    ffmpeg/libavformat/movenccenc.c
+    ffmpeg/libavformat/movenchint.c
     ffmpeg/libavformat/mov_chan.c
     ffmpeg/libavformat/mov_esds.c
     ffmpeg/libavformat/mp3dec.c
@@ -538,17 +550,23 @@ add_library(avformat
     ffmpeg/libavformat/protocols.c
     ffmpeg/libavformat/qtpalette.c
     ffmpeg/libavformat/rawdec.c
+    ffmpeg/libavformat/rawutils.c
     ffmpeg/libavformat/replaygain.c
     ffmpeg/libavformat/riff.c
     ffmpeg/libavformat/riffdec.c
+    ffmpeg/libavformat/riffenc.c
     ffmpeg/libavformat/rmsipr.c
+    ffmpeg/libavformat/rtp.c
+    ffmpeg/libavformat/rtpenc_chain.c
     ffmpeg/libavformat/sdp.c
     ffmpeg/libavformat/tcp.c
     ffmpeg/libavformat/url.c
     ffmpeg/libavformat/urldecode.c
     ffmpeg/libavformat/utils.c
     ffmpeg/libavformat/vorbiscomment.c
+    ffmpeg/libavformat/vpcc.c
     ffmpeg/libavformat/wavdec.c
+    ffmpeg/libavformat/wv.c
 )
 target_link_libraries(avformat PRIVATE ${FFMPEG_DEPENDENCIES} swscale avutil avcodec)
 target_compile_definitions(avformat PRIVATE ${FFMPEG_DEFINITIONS})
