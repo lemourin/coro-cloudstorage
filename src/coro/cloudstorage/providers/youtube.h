@@ -3,6 +3,8 @@
 
 #include <coro/cloudstorage/cloud_exception.h>
 #include <coro/cloudstorage/providers/google_drive.h>
+#include <coro/cloudstorage/util/avio_context.h>
+#include <coro/cloudstorage/util/muxer.h>
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
 #include <coro/task.h>
@@ -52,7 +54,7 @@ struct YouTube {
   template <typename AuthManager>
   struct CloudProvider;
 
-  enum class Presentation { kDash, kStream };
+  enum class Presentation { kDash, kStream, kMuxedStream };
 
   struct ItemData {
     std::string id;
@@ -71,6 +73,12 @@ struct YouTube {
   struct Playlist : ItemData {
     std::string playlist_id;
     Presentation presentation;
+  };
+
+  struct MuxedStream : ItemData {
+    std::string video_id;
+    int64_t timestamp;
+    std::optional<std::string> thumbnail_url;
   };
 
   struct Stream : ItemData {
@@ -92,9 +100,12 @@ struct YouTube {
     json adaptive_formats;
     json formats;
     std::optional<std::function<std::string(std::string_view)>> descrambler;
+
+    json GetBestVideo() const;
+    json GetBestAudio() const;
   };
 
-  using Item = std::variant<DashManifest, RootDirectory, Stream,
+  using Item = std::variant<DashManifest, RootDirectory, Stream, MuxedStream,
                             StreamDirectory, Playlist>;
 
   struct PageData {
@@ -127,8 +138,9 @@ struct YouTube::CloudProvider
     : coro::cloudstorage::CloudProvider<YouTube, CloudProvider<AuthManager>> {
   using Request = http::Request<std::string>;
 
-  explicit CloudProvider(AuthManager auth_manager)
+  explicit CloudProvider(AuthManager auth_manager, const util::Muxer& muxer)
       : auth_manager_(std::move(auth_manager)),
+        muxer_(&muxer),
         stream_cache_(32, GetStreamData{auth_manager_.GetHttp()}) {}
 
   Task<RootDirectory> GetRoot(stdx::stop_token) {
@@ -175,11 +187,25 @@ struct YouTube::CloudProvider
       headers.emplace_back("pageToken", *page_token);
     }
     Request request = {.url = GetEndpoint("/playlistItems") + "?" +
-                              http::FormDataToString(std::move(headers))};
+                              http::FormDataToString(headers)};
     auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                      std::move(stop_token));
     for (const auto& item : response["items"]) {
       switch (directory.presentation) {
+        case Presentation::kMuxedStream: {
+          MuxedStream stream;
+          stream.video_id = item["snippet"]["resourceId"]["videoId"];
+          stream.timestamp =
+              http::ParseTime(std::string(item["snippet"]["publishedAt"]));
+          stream.name = std::string(item["snippet"]["title"]) + ".webm";
+          stream.id = directory.id + stream.name;
+          if (item["snippet"]["thumbnails"].contains("default")) {
+            stream.thumbnail_url =
+                item["snippet"]["thumbnails"]["default"]["url"];
+          }
+          result.items.emplace_back(std::move(stream));
+          break;
+        }
         case Presentation::kStream: {
           StreamDirectory streams;
           streams.video_id = item["snippet"]["resourceId"]["videoId"];
@@ -233,6 +259,8 @@ struct YouTube::CloudProvider
     if (directory.presentation == Presentation::kDash) {
       result.items.emplace_back(RootDirectory{
           {.id = "/streams/", .name = "streams"}, Presentation::kStream});
+      result.items.emplace_back(RootDirectory{
+          {.id = "/muxed/", .name = "muxed"}, Presentation::kMuxedStream});
     }
     co_return result;
   }
@@ -263,9 +291,9 @@ struct YouTube::CloudProvider
     while (response.status == 302 && max_redirect_count-- > 0) {
       auto redirect_request = Request{
           .url = coro::http::GetHeader(response.headers, "Location").value(),
-          .headers = {{"Range", std::move(range_header).str()}}};
+          .headers = {{"Range", range_header.str()}}};
       response = co_await auth_manager_.GetHttp().Fetch(
-          std::move(redirect_request), std::move(stop_token));
+          std::move(redirect_request), stop_token);
     }
     if (response.status / 100 != 2) {
       throw http::HttpException(response.status);
@@ -273,6 +301,26 @@ struct YouTube::CloudProvider
 
     FOR_CO_AWAIT(std::string & body, response.body) {
       co_yield std::move(body);
+    }
+  }
+
+  Generator<std::string> GetFileContent(MuxedStream file, http::Range range,
+                                        stdx::stop_token stop_token) {
+    StreamData data = co_await stream_cache_.Get(file.video_id, stop_token);
+    Stream video_stream{};
+    video_stream.video_id = file.video_id;
+    auto best_video = data.GetBestVideo();
+    video_stream.itag = best_video["itag"];
+    video_stream.size = std::stoll(std::string(best_video["contentLength"]));
+    Stream audio_stream{};
+    audio_stream.video_id = std::move(file.video_id);
+    auto best_audio = data.GetBestAudio();
+    audio_stream.itag = best_audio["itag"];
+    audio_stream.size = std::stoll(std::string(best_audio["contentLength"]));
+    FOR_CO_AWAIT(std::string & chunk,
+                 (*muxer_)(this, std::move(video_stream), this,
+                           std::move(audio_stream), std::move(stop_token))) {
+      co_yield std::move(chunk);
     }
   }
 
@@ -298,6 +346,11 @@ struct YouTube::CloudProvider
   }
 
   Task<Thumbnail> GetItemThumbnail(DashManifest item, http::Range range,
+                                   stdx::stop_token stop_token) {
+    return GetItemThumbnailImpl(std::move(item), range, std::move(stop_token));
+  }
+
+  Task<Thumbnail> GetItemThumbnail(MuxedStream item, http::Range range,
                                    stdx::stop_token stop_token) {
     return GetItemThumbnailImpl(std::move(item), range, std::move(stop_token));
   }
@@ -348,7 +401,7 @@ struct YouTube::CloudProvider
     if (!url) {
       throw CloudException(CloudException::Type::kNotFound);
     }
-    co_return* url;
+    co_return *url;
   }
 
   struct GetStreamData {
@@ -366,7 +419,7 @@ struct YouTube::CloudProvider
             auto response = co_await http.Fetch(GetPlayerUrl(page), stop_token);
             result.descrambler = GetDescrambler(
                 co_await http::GetBody(std::move(response.body)));
-            break;
+            co_return result;
           }
         }
       }
@@ -376,7 +429,23 @@ struct YouTube::CloudProvider
   };
 
   AuthManager auth_manager_;
+  const util::Muxer* muxer_;
   coro::util::LRUCache<std::string, GetStreamData> stream_cache_;
+};
+
+template <>
+struct CreateCloudProvider<YouTube> {
+  template <typename CloudFactory, typename OnAuthTokenChanged>
+  auto operator()(const CloudFactory& factory,
+                  YouTube::Auth::AuthToken auth_token,
+                  OnAuthTokenChanged on_auth_token_changed) const {
+    util::AuthManager<typename CloudFactory::Http, YouTube::Auth,
+                      OnAuthTokenChanged>
+        auth_manager(*factory.http_, std::move(auth_token),
+                     factory.auth_data_.template operator()<YouTube>(),
+                     std::move(on_auth_token_changed));
+    return YouTube::CloudProvider(std::move(auth_manager), *factory.muxer_);
+  }
 };
 
 namespace util {
