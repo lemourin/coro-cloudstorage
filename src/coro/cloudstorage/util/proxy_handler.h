@@ -264,7 +264,7 @@ class ProxyHandler {
         .timestamp = CloudProvider::GetTimestamp(item)};
     if constexpr (IsFile<Item, CloudProvider>) {
       current_element_data.mime_type = CloudProvider::GetMimeType(item);
-      current_element_data.size = item.size;
+      current_element_data.size = CloudProvider::GetSize(item);
     }
     co_yield GetElement(std::move(current_element_data));
     co_yield "</d:multistatus>";
@@ -297,7 +297,7 @@ class ProxyHandler {
               [&](const auto& item) {
                 if constexpr (IsFile<decltype(item), CloudProvider>) {
                   element_data.mime_type = CloudProvider::GetMimeType(item);
-                  element_data.size = item.size;
+                  element_data.size = CloudProvider::GetSize(item);
                 }
               },
               item);
