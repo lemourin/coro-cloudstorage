@@ -231,18 +231,12 @@ class CloudProvider {
 
 template <typename CloudProvider>
 struct CreateCloudProvider {
-  template <typename CloudFactory, typename OnTokenUpdated = void (*)(
-                                       typename CloudProvider::Auth::AuthToken)>
-  auto operator()(
-      const CloudFactory& factory,
-      typename CloudProvider::Auth::AuthToken auth_token,
-      OnTokenUpdated on_token_updated =
-          [](typename CloudProvider::Auth::AuthToken) {}) const {
-    util::AuthManager<std::remove_pointer_t<decltype(factory.http_)>,
-                      typename CloudProvider::Auth, OnTokenUpdated>
-        auth_manager(*factory.http_, std::move(auth_token),
-                     factory.auth_data_.template operator()<CloudProvider>(),
-                     std::move(on_token_updated));
+  template <typename CloudFactory, typename OnTokenUpdated>
+  auto operator()(const CloudFactory& factory,
+                  typename CloudProvider::Auth::AuthToken auth_token,
+                  OnTokenUpdated on_token_updated) const {
+    auto auth_manager = factory.CreateAuthManager<CloudProvider>(
+        std::move(auth_token), std::move(on_token_updated));
     using Impl =
         typename CloudProvider::template CloudProvider<decltype(auth_manager)>;
     return Impl(std::move(auth_manager));

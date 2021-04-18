@@ -4,8 +4,6 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
-#include <coro/cloudstorage/util/muxer.h>
-#include <coro/cloudstorage/util/thumbnail_generator.h>
 #include <coro/http/http.h>
 #include <coro/util/type_list.h>
 
@@ -13,10 +11,12 @@ namespace coro::cloudstorage {
 
 template <typename T>
 concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
-  { v.GetAuthorizationUrl({}) } -> stdx::convertible_to<std::string>;
+  { v.GetAuthorizationUrl({}) }
+  ->stdx::convertible_to<std::string>;
 };
 
 template <typename EventLoopT, coro::http::HttpClient HttpT,
+          typename ThumbnailGenerator, typename Muxer,
           typename AuthDataT = coro::cloudstorage::util::AuthData>
 class CloudFactory {
  public:
@@ -25,8 +25,8 @@ class CloudFactory {
   using AuthData = AuthDataT;
 
   CloudFactory(const EventLoop& event_loop, const Http& http,
-               const util::ThumbnailGenerator& thumbnail_generator,
-               const util::Muxer& muxer, AuthData auth_data = AuthData{})
+               const ThumbnailGenerator& thumbnail_generator,
+               const Muxer& muxer, AuthData auth_data = AuthData{})
       : event_loop_(&event_loop),
         http_(&http),
         thumbnail_generator_(&thumbnail_generator),
@@ -56,6 +56,16 @@ class CloudFactory {
     }
   }
 
+  template <typename CloudProvider, typename OnTokenUpdated>
+  auto CreateAuthManager(typename CloudProvider::Auth::AuthToken auth_token,
+                         OnTokenUpdated on_token_updated) const {
+    return util::AuthManager<Http, typename CloudProvider::Auth,
+                             OnTokenUpdated>(
+        *http_, std::move(auth_token),
+        auth_data_.template operator()<CloudProvider>(),
+        std::move(on_token_updated));
+  }
+
  private:
   template <typename>
   friend struct CreateCloudProvider;
@@ -65,8 +75,8 @@ class CloudFactory {
 
   const EventLoop* event_loop_;
   const Http* http_;
-  const util::ThumbnailGenerator* thumbnail_generator_;
-  const util::Muxer* muxer_;
+  const ThumbnailGenerator* thumbnail_generator_;
+  const Muxer* muxer_;
   AuthData auth_data_;
 };
 
