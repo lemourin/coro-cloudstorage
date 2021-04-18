@@ -14,6 +14,8 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/util/avio_context.h
     coro/cloudstorage/util/thumbnail_generator.h
     coro/cloudstorage/util/muxer.h
+    coro/cloudstorage/util/file_utils.h
+    coro/cloudstorage/util/string_utils.h
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
     coro/cloudstorage/cloud_provider.h
@@ -36,6 +38,7 @@ set(coro-cloudstorage-SOURCES
     coro/cloudstorage/util/thumbnail_generator.cc
     coro/cloudstorage/util/muxer.cc
     coro/cloudstorage/util/ffmpeg_utils.cc
+    coro/cloudstorage/util/file_utils.cc
     coro/cloudstorage/providers/mega.cc
     coro/cloudstorage/providers/webdav.cc
 )
