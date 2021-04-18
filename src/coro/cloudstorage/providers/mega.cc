@@ -8,11 +8,6 @@
 
 #include <random>
 
-#ifdef WIN32
-#undef CreateDirectory
-#undef CreateFile
-#endif
-
 namespace coro::cloudstorage {
 
 namespace {

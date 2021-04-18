@@ -17,6 +17,7 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/util/muxer.h
     coro/cloudstorage/util/file_utils.h
     coro/cloudstorage/util/string_utils.h
+    coro/cloudstorage/util/pch.h
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
     coro/cloudstorage/cloud_provider.h
@@ -46,6 +47,7 @@ set(coro-cloudstorage-SOURCES
 
 target_sources(coro-cloudstorage PRIVATE ${coro-cloudstorage-HEADERS} ${coro-cloudstorage-SOURCES})
 target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR})
+target_precompile_headers(coro-cloudstorage PUBLIC coro/cloudstorage/util/pch.h)
 target_link_libraries(coro-cloudstorage PUBLIC
     coro-http
     nlohmann_json::nlohmann_json

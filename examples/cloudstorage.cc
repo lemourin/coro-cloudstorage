@@ -1,6 +1,8 @@
 #include <coro/cloudstorage/cloud_factory.h>
 #include <coro/cloudstorage/providers/mega.h>
 #include <coro/cloudstorage/util/account_manager_handler.h>
+#include <coro/cloudstorage/util/muxer.h>
+#include <coro/cloudstorage/util/thumbnail_generator.h>
 #include <coro/http/cache_http.h>
 #include <coro/http/curl_http.h>
 #include <coro/http/http_server.h>

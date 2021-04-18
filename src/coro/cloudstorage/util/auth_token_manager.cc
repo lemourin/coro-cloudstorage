@@ -3,7 +3,6 @@
 #ifdef WIN32
 #include <direct.h>
 #include <shlobj.h>
-#undef CreateDirectory
 #else
 #include <sys/stat.h>
 #include <unistd.h>
