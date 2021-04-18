@@ -3,6 +3,7 @@
 
 #include <coro/cloudstorage/util/avio_context.h>
 #include <coro/cloudstorage/util/ffmpeg_utils.h>
+#include <coro/cloudstorage/util/file_utils.h>
 #include <coro/generator.h>
 #include <coro/util/event_loop.h>
 #include <coro/util/thread_pool.h>
@@ -43,7 +44,7 @@ class MuxerContext {
   Stream CreateStream(AVIOContext* video, AVMediaType type) const;
 
   coro::util::ThreadPool* thread_pool_;
-  std::unique_ptr<std::string> buffer_;
+  std::unique_ptr<std::FILE, FileDeleter> file_;
   std::unique_ptr<AVIOContext, AVIOContextDeleter> io_context_;
   std::unique_ptr<AVFormatContext, AVFormatWriteContextDeleter> format_context_;
   std::vector<Stream> streams_;

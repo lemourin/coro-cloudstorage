@@ -4,19 +4,22 @@ namespace coro::cloudstorage::util {
 
 namespace {
 
-auto CreateMuxerIOContext(std::string* d) {
+auto CreateMuxerIOContext(std::FILE* file) {
   const int kBufferSize = 4 * 1024;
   auto buffer = static_cast<uint8_t*>(av_malloc(kBufferSize));
   return avio_alloc_context(
-      buffer, kBufferSize, /*write_flag=*/1, d,
+      buffer, kBufferSize, /*write_flag=*/1, file,
       /*read_packet=*/nullptr,
       /*write_packet=*/
       [](void* opaque, uint8_t* buf, int buf_size) -> int {
-        *reinterpret_cast<std::string*>(opaque) +=
-            std::string(reinterpret_cast<const char*>(buf), buf_size);
-        return buf_size;
+        return static_cast<int>(fwrite(buf, 1, static_cast<size_t>(buf_size),
+                                       reinterpret_cast<std::FILE*>(opaque)));
       },
-      /*seek=*/nullptr);
+      [](void* opaque, int64_t offset, int whence) -> int64_t {
+        auto file = reinterpret_cast<std::FILE*>(opaque);
+        whence &= ~AVSEEK_FORCE;
+        return Fseek(file, offset, whence);
+      });
 }
 
 }  // namespace
@@ -24,8 +27,8 @@ auto CreateMuxerIOContext(std::string* d) {
 MuxerContext::MuxerContext(::coro::util::ThreadPool* thread_pool,
                            AVIOContext* video, AVIOContext* audio)
     : thread_pool_(thread_pool),
-      buffer_(std::make_unique<std::string>()),
-      io_context_(CreateMuxerIOContext(buffer_.get())),
+      file_(CreateTmpFile()),
+      io_context_(CreateMuxerIOContext(file_.get())),
       format_context_([&] {
         AVFormatContext* format_context;
         CheckAVError(avformat_alloc_output_context2(&format_context,
@@ -66,9 +69,6 @@ MuxerContext::Stream MuxerContext::CreateStream(AVIOContext* io_context,
 }
 
 Generator<std::string> MuxerContext::GetContent() {
-  co_yield std::move(*buffer_);
-  buffer_->clear();
-
   while (true) {
     for (auto& stream : streams_) {
       if (!stream.is_eof && !stream.packet) {
@@ -118,15 +118,15 @@ Generator<std::string> MuxerContext::GetContent() {
         av_write_frame(format_context_.get(), picked_stream->packet.get()),
         "av_write_frame");
     picked_stream->packet.reset();
-    co_yield std::move(*buffer_);
-    buffer_->clear();
   }
 
   CheckAVError(av_write_frame(format_context_.get(), nullptr),
                "av_write_frame");
   CheckAVError(av_write_trailer(format_context_.get()), "av_write_trailer");
 
-  co_yield std::move(*buffer_);
+  FOR_CO_AWAIT(std::string & chunk, ReadFile(thread_pool_, file_.get())) {
+    co_yield std::move(chunk);
+  }
 }
 
 }  // namespace coro::cloudstorage::util
