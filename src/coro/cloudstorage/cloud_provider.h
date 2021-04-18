@@ -235,7 +235,7 @@ struct CreateCloudProvider {
   auto operator()(const CloudFactory& factory,
                   typename CloudProvider::Auth::AuthToken auth_token,
                   OnTokenUpdated on_token_updated) const {
-    auto auth_manager = factory.CreateAuthManager<CloudProvider>(
+    auto auth_manager = factory.template CreateAuthManager<CloudProvider>(
         std::move(auth_token), std::move(on_token_updated));
     using Impl =
         typename CloudProvider::template CloudProvider<decltype(auth_manager)>;
