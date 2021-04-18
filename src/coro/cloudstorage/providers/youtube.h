@@ -80,6 +80,7 @@ struct YouTube {
   };
 
   struct MuxedStream : ItemData {
+    static constexpr std::string_view mime_type = "application/octet-stream";
     std::string video_id;
     int64_t timestamp;
     std::optional<std::string> thumbnail_url;
