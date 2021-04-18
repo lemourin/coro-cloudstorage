@@ -14,10 +14,6 @@
 #include <optional>
 #include <string>
 
-#ifdef CreateDirectory
-#undef CreateDirectory
-#endif
-
 namespace coro::cloudstorage {
 
 struct YouTube {
@@ -422,7 +418,7 @@ struct YouTube::CloudProvider
     if (!url) {
       throw CloudException(CloudException::Type::kNotFound);
     }
-    co_return *url;
+    co_return* url;
   }
 
   struct GetStreamData {
