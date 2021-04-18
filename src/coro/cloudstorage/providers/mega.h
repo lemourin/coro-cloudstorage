@@ -137,6 +137,7 @@ class Mega::CloudProvider
   struct Data;
   struct App;
   struct DoLogIn;
+  enum class RequestType;
 
   template <typename EventLoop, http::HttpClient HttpClient>
   static auto CreateData(const EventLoop& event_loop, const HttpClient& http,
@@ -163,7 +164,7 @@ class Mega::CloudProvider
 
   Task<> SetThumbnail(const File& file, std::string thumbnail,
                       stdx::stop_token);
-  template <auto Method, typename... Args>
+  template <auto Method, RequestType type, typename... Args>
   Task<std::any> Do(stdx::stop_token stop_token, Args&&... args);
 
   AuthToken auth_token_;

@@ -119,6 +119,8 @@ void Check(::mega::error e) {
 
 }  // namespace
 
+enum class Mega::CloudProvider::RequestType { kUpload, kOther };
+
 struct Mega::CloudProvider::DoLogIn {
   Task<> operator()();
   Data* d;
@@ -170,15 +172,29 @@ struct Mega::CloudProvider::App : ::mega::MegaApp {
 
   void putnodes_result(::mega::error e, ::mega::targettype_t,
                        ::mega::NewNode* nodes) final {
-    if (e == ::mega::API_OK) {
-      delete[] nodes;
-      auto n = client->nodenotify.back();
-      n->applykey();
-      n->setattr();
-      SetResult(n);
-    } else {
-      SetResult(e);
+    auto it = request.find(client->restag);
+    if (it == std::end(request)) {
+      return;
     }
+    if (it->second->type == RequestType::kUpload) {
+      delete[] nodes;
+    }
+    if (e == ::mega::API_OK) {
+      if (!client->nodenotify.empty()) {
+        if (auto n = client->nodenotify.back()) {
+          n->applykey();
+          n->setattr();
+          last_result = n;
+        } else {
+          last_result = ::mega::ErrorCodes::API_EFAILED;
+        }
+      } else {
+        last_result = ::mega::ErrorCodes::API_EFAILED;
+      }
+    } else {
+      last_result = e;
+    }
+    it->second->semaphore.SetValue();
   }
 
   void unlink_result(::mega::handle handle, ::mega::error e) final {
@@ -204,7 +220,7 @@ struct Mega::CloudProvider::App : ::mega::MegaApp {
       it->second->semaphore.SetValue();
       return ~static_cast<::mega::dstime>(0);
     } else {
-      ::coro::Invoke(Retry(1 << (retry / 2)));
+      coro::Invoke(Retry(1 << (retry / 2)));
       return 1 << (retry / 2);
     }
   }
@@ -234,7 +250,7 @@ struct Mega::CloudProvider::App : ::mega::MegaApp {
   }
 
   void notify_retry(::mega::dstime time, ::mega::retryreason_t reason) final {
-    ::coro::Invoke(Retry(time, /*abortbackoff=*/false));
+    coro::Invoke(Retry(time, /*abortbackoff=*/false));
   }
 
   void fa_complete(::mega::handle, ::mega::fatype, const char* data,
@@ -256,26 +272,31 @@ struct Mega::CloudProvider::App : ::mega::MegaApp {
 
   template <typename T>
   void SetResult(T result) {
-    auto it = semaphore.find(client->restag);
-    if (it != std::end(semaphore)) {
+    auto it = request.find(client->restag);
+    if (it != std::end(request)) {
       last_result = std::move(result);
-      it->second->SetValue();
+      it->second->semaphore.SetValue();
     }
   }
 
-  auto GetSemaphore(int tag) {
-    auto result = coro::util::MakePointer(new Promise<void>,
-                                          [this, tag](Promise<void>* s) {
-                                            semaphore.erase(tag);
-                                            delete s;
+  struct Request {
+    Promise<void> semaphore;
+    RequestType type;
+  };
+
+  auto GetRequest(int tag, RequestType type) {
+    auto result = coro::util::MakePointer(new Request{.type = type},
+                                          [this, tag](Request* r) {
+                                            request.erase(tag);
+                                            delete r;
                                           });
-    semaphore.insert({tag, result.get()});
+    request.insert({tag, result.get()});
     return result;
   }
 
   explicit App(Data* d) : d(d) {}
 
-  std::unordered_map<int, Promise<void>*> semaphore;
+  std::unordered_map<int, Request*> request;
   std::any last_result;
   std::unordered_map<intptr_t, std::shared_ptr<ReadData>> read_data;
   Data* d;
@@ -295,7 +316,7 @@ struct Mega::CloudProvider::Data {
 
   void OnEvent();
 
-  template <auto Method, typename... Args>
+  template <auto Method, RequestType type, typename... Args>
   Task<std::any> Do(stdx::stop_token stop_token, Args... args) {
     auto tag = mega_client.nextreqtag();
     if constexpr (std::is_same_v<bool,
@@ -314,11 +335,11 @@ struct Mega::CloudProvider::Data {
       (mega_client.*Method)(args...);
     }
     OnEvent();
-    auto semaphore = mega_app.GetSemaphore(tag);
-    stdx::stop_callback callback(
-        stop_token, [&] { semaphore->SetException(InterruptedException()); });
-    auto& semaphore_ref = *semaphore;
-    co_await semaphore_ref;
+    auto request = mega_app.GetRequest(tag, type);
+    stdx::stop_callback callback(stop_token, [&] {
+      request->semaphore.SetException(InterruptedException());
+    });
+    co_await request->semaphore;
     auto result = std::move(mega_app.last_result);
     co_await wait_(0, std::move(stop_token));
     co_return result;
@@ -382,17 +403,18 @@ Task<std::string> Mega::CloudProvider::GetSession(Data* data,
 
 void Mega::CloudProvider::DataDeleter::operator()(Data* d) const { delete d; }
 
-template <auto Method, typename... Args>
+template <auto Method, Mega::CloudProvider::RequestType Type, typename... Args>
 Task<std::any> Mega::CloudProvider::Do(stdx::stop_token stop_token,
                                        Args&&... args) {
-  return d_->Do<Method>(std::move(stop_token), std::forward<Args>(args)...);
+  return d_->Do<Method, Type>(std::move(stop_token),
+                              std::forward<Args>(args)...);
 }
 
 Task<std::string> Mega::CloudProvider::Data::GetSession(
     UserCredential credentials, stdx::stop_token stop_token) {
   auto [version, email, salt, prelogin_error] =
       std::any_cast<std::tuple<int, std::string, std::string, ::mega::error>>(
-          co_await Do<&::mega::MegaClient::prelogin>(
+          co_await Do<&::mega::MegaClient::prelogin, RequestType::kOther>(
               stop_token, credentials.email.c_str()));
   Check(prelogin_error);
   auto twofactor_ptr =
@@ -401,16 +423,18 @@ Task<std::string> Mega::CloudProvider::Data::GetSession(
     const int kHashLength = 128;
     uint8_t hashed_password[kHashLength];
     Check(mega_client.pw_key(credentials.password.c_str(), hashed_password));
-    auto login_error = std::any_cast<::mega::error>(
-        co_await Do<kLogin>(std::move(stop_token), credentials.email.c_str(),
-                            hashed_password, twofactor_ptr));
+    auto login_error =
+        std::any_cast<::mega::error>(co_await Do<kLogin, RequestType::kOther>(
+            std::move(stop_token), credentials.email.c_str(), hashed_password,
+            twofactor_ptr));
     if (login_error != ::mega::API_OK) {
       throw CloudException(CloudException::Type::kUnauthorized);
     }
   } else if (version == 2) {
-    auto login_error = std::any_cast<::mega::error>(co_await Do<kLoginWithSalt>(
-        std::move(stop_token), credentials.email.c_str(),
-        credentials.password.c_str(), &salt, twofactor_ptr));
+    auto login_error = std::any_cast<::mega::error>(
+        co_await Do<kLoginWithSalt, RequestType::kOther>(
+            std::move(stop_token), credentials.email.c_str(),
+            credentials.password.c_str(), &salt, twofactor_ptr));
     if (login_error != ::mega::API_OK) {
       throw CloudException(CloudException::Type::kUnauthorized);
     }
@@ -426,14 +450,15 @@ Task<std::string> Mega::CloudProvider::Data::GetSession(
 
 Task<> Mega::CloudProvider::Data::LogIn(std::string session) {
   auto stop_token = stop_source.get_token();
-  auto login_error = std::any_cast<::mega::error>(co_await Do<kSessionLogin>(
-      stop_token, reinterpret_cast<const uint8_t*>(session.c_str()),
-      static_cast<int>(session.size())));
+  auto login_error = std::any_cast<::mega::error>(
+      co_await Do<kSessionLogin, RequestType::kOther>(
+          stop_token, reinterpret_cast<const uint8_t*>(session.c_str()),
+          static_cast<int>(session.size())));
   if (login_error != ::mega::API_OK) {
     throw CloudException(CloudException::Type::kUnauthorized);
   }
-  auto fetch_error =
-      std::any_cast<::mega::error>(co_await Do<&::mega::MegaClient::fetchnodes>(
+  auto fetch_error = std::any_cast<::mega::error>(
+      co_await Do<&::mega::MegaClient::fetchnodes, RequestType::kOther>(
           stop_token, /*nocache=*/false));
   Check(fetch_error);
 }
@@ -466,10 +491,11 @@ Task<> Mega::CloudProvider::SetThumbnail(const File& file,
                                          stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
   auto node = d_->GetNode(file.id);
-  std::any result = co_await Do<&::mega::MegaClient::putfa>(
-      stop_token, node->nodehandle, ::mega::GfxProc::THUMBNAIL,
-      node->nodecipher(), new std::string(std::move(thumbnail)),
-      /*checkAccess=*/false);
+  std::any result =
+      co_await Do<&::mega::MegaClient::putfa, RequestType::kOther>(
+          stop_token, node->nodehandle, ::mega::GfxProc::THUMBNAIL,
+          node->nodecipher(), new std::string(std::move(thumbnail)),
+          /*checkAccess=*/false);
   if (result.type() == typeid(::mega::error)) {
     throw CloudException(
         GetErrorDescription(std::any_cast<::mega::error>(result)));
@@ -499,8 +525,9 @@ Task<Mega::Item> Mega::CloudProvider::RenameItem(
   auto node = d_->GetNode(
       std::visit([](const auto& d) { return std::cref(d.id); }, item));
   node->attrs.map['n'] = std::move(new_name);
-  std::any result = co_await Do<&::mega::MegaClient::setattr>(
-      std::move(stop_token), node, nullptr);
+  std::any result =
+      co_await Do<&::mega::MegaClient::setattr, RequestType::kOther>(
+          std::move(stop_token), node, nullptr);
   const auto& [handle, error] = std::move(
       std::any_cast<std::tuple<::mega::handle, ::mega::error>>(result));
   Check(error);
@@ -513,9 +540,10 @@ Task<Mega::Item> Mega::CloudProvider::MoveItem(
   auto source_node = d_->GetNode(
       std::visit([](const auto& d) { return std::cref(d.id); }, source));
   auto destination_node = d_->GetNode(destination.id);
-  std::any result = co_await Do<&::mega::MegaClient::rename>(
-      std::move(stop_token), source_node, destination_node,
-      ::mega::SYNCDEL_NONE, ::mega::UNDEF);
+  std::any result =
+      co_await Do<&::mega::MegaClient::rename, RequestType::kOther>(
+          std::move(stop_token), source_node, destination_node,
+          ::mega::SYNCDEL_NONE, ::mega::UNDEF);
   const auto& [handle, error] = std::move(
       std::any_cast<std::tuple<::mega::handle, ::mega::error>>(result));
   Check(error);
@@ -548,23 +576,24 @@ Task<Mega::Directory> Mega::CloudProvider::CreateDirectory(
   folder.attrstring = new std::string;
   d_->mega_client.makeattr(&key, folder.attrstring, attr_str.c_str());
 
-  std::any result =
-      co_await Do<kPutNodes>(stop_token, parent.id, &folder, 1, nullptr);
+  std::any result = co_await Do<kPutNodes, RequestType::kOther>(
+      stop_token, parent.id, &folder, 1, nullptr);
   if (result.type() == typeid(::mega::error)) {
     throw CloudException(
         GetErrorDescription(std::any_cast<::mega::error>(result)));
   }
-  co_return std::get<Directory>(
-      ToItem(d_->GetNode(std::any_cast<::mega::handle>(result))));
+  co_return std::get<Directory>(ToItem(std::any_cast<::mega::Node*>(result)));
 }
 
 Task<> Mega::CloudProvider::RemoveItem(Item item,
                                        coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
 
-  std::any result = co_await Do<&::mega::MegaClient::unlink>(
-      stop_token,
-      d_->GetNode(std::visit([](const auto& d) { return d.id; }, item)), false);
+  std::any result =
+      co_await Do<&::mega::MegaClient::unlink, RequestType::kOther>(
+          stop_token,
+          d_->GetNode(std::visit([](const auto& d) { return d.id; }, item)),
+          false);
   auto [handle, error] = std::move(
       std::any_cast<std::tuple<::mega::handle, ::mega::error>>(result));
   Check(error);
@@ -573,9 +602,10 @@ Task<> Mega::CloudProvider::RemoveItem(Item item,
 Task<Mega::GeneralData> Mega::CloudProvider::GetGeneralData(
     coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
-  std::any result = co_await Do<&::mega::MegaClient::getaccountdetails>(
-      stop_token, new ::mega::AccountDetails, true, false, false, false, false,
-      false);
+  std::any result =
+      co_await Do<&::mega::MegaClient::getaccountdetails, RequestType::kOther>(
+          stop_token, new ::mega::AccountDetails, true, false, false, false,
+          false, false);
   if (result.type() == typeid(::mega::error)) {
     throw CloudException(
         GetErrorDescription(std::any_cast<::mega::error>(result)));
@@ -651,9 +681,10 @@ auto Mega::CloudProvider::CreateFile(Directory parent, std::string_view name,
   file.h = parent.id;
   file.localname = std::to_string(reinterpret_cast<intptr_t>(&content));
   file.size = content.size;
-  std::any result = co_await Do<&::mega::MegaClient::startxfer>(
-      stop_token, ::mega::PUT, &file, /*skipdupes=*/false,
-      /*startfirst=*/false);
+  std::any result =
+      co_await Do<&::mega::MegaClient::startxfer, RequestType::kUpload>(
+          stop_token, ::mega::PUT, &file, /*skipdupes=*/false,
+          /*startfirst=*/false);
   if (result.type() == typeid(::mega::error)) {
     throw CloudException(
         GetErrorDescription(std::any_cast<::mega::error>(result)));
@@ -699,7 +730,7 @@ auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
   auto node = d_->GetNode(item.id);
   std::any result;
   try {
-    result = co_await Do<&::mega::MegaClient::getfa>(
+    result = co_await Do<&::mega::MegaClient::getfa, RequestType::kOther>(
         stop_token, node->nodehandle, &node->fileattrstring, &node->nodekey,
         ::mega::GfxProc::THUMBNAIL, /*cancel=*/false);
   } catch (...) {
