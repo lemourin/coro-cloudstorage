@@ -10,12 +10,11 @@
 
 namespace coro::cloudstorage::mega {
 
-template <http::HttpClient HttpClient>
 class HttpIO : public ::mega::HttpIO {
  public:
-  template <typename F>
-  HttpIO(const HttpClient& http, F on_event)
-      : http_(http), on_event_(std::move(on_event)) {}
+  template <typename FetchT, typename OnEventT>
+  HttpIO(FetchT fetch, OnEventT on_event)
+      : fetch_(std::move(fetch)), on_event_(std::move(on_event)) {}
 
   void post(::mega::HttpReq* r, const char* data, unsigned size) final {
     Invoke(DoRequest(r, data, size));
@@ -68,7 +67,7 @@ class HttpIO : public ::mega::HttpIO {
         r->status = ::mega::REQ_INFLIGHT;
         r->httpiohandle = &stop_source;
         auto response =
-            co_await http_.Fetch(std::move(request), stop_source.get_token());
+            co_await fetch_(std::move(request), stop_source.get_token());
         if (stop_source.get_token().stop_requested()) {
           throw InterruptedException();
         }
@@ -136,10 +135,12 @@ class HttpIO : public ::mega::HttpIO {
     return content_length;
   }
 
-  const HttpClient& http_;
   bool io_ready_ = false;
   bool success_ = false;
   std::optional<std::string> useragent_;
+  std::function<Task<http::Response<>>(http::Request<std::string>,
+                                       stdx::stop_token)>
+      fetch_;
   std::function<void()> on_event_;
 };
 

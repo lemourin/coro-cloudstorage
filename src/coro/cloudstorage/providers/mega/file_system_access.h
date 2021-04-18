@@ -1,6 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_FILE_SYSTEM_ACCESS_H
 #define CORO_CLOUDSTORAGE_FILE_SYSTEM_ACCESS_H
 
+#include <coro/cloudstorage/providers/mega.h>
 #include <coro/task.h>
 #include <mega.h>
 
@@ -10,10 +11,7 @@ namespace coro::cloudstorage::mega {
 
 class FileSystemAccess : public ::mega::FileSystemAccess {
  public:
-  struct FileContent {
-    Generator<std::string> data;
-    int64_t size;
-  };
+  using FileContent = coro::cloudstorage::Mega::FileContent;
 
   class NoopWaiter : public ::mega::Waiter {
    public:

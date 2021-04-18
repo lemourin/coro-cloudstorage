@@ -2,8 +2,6 @@
 #define CORO_CLOUDSTORAGE_MEGA_H
 
 #include <coro/cloudstorage/cloud_provider.h>
-#include <coro/cloudstorage/providers/mega/file_system_access.h>
-#include <coro/cloudstorage/providers/mega/http_io.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
@@ -12,19 +10,13 @@
 #include <coro/util/function_traits.h>
 #include <coro/util/raii_utils.h>
 #include <coro/util/type_list.h>
-#include <mega.h>
-
-#ifdef CreateDirectory
+#ifdef WIN32
 #undef CreateDirectory
-#endif
-
-#ifdef CreateFile
 #undef CreateFile
 #endif
 
 #include <any>
 #include <optional>
-#include <random>
 
 namespace coro::cloudstorage {
 
@@ -48,7 +40,7 @@ struct Mega {
   };
 
   struct ItemData {
-    ::mega::handle id;
+    uint64_t id;
     std::string name;
     int64_t timestamp;
   };
@@ -78,7 +70,10 @@ struct Mega {
     static inline constexpr std::string_view mime_type = "image/jpeg";
   };
 
-  using FileContent = ::coro::cloudstorage::mega::FileSystemAccess::FileContent;
+  struct FileContent {
+    Generator<std::string> data;
+    int64_t size;
+  };
 
   class CloudProvider;
 
@@ -95,15 +90,10 @@ class Mega::CloudProvider
   template <typename EventLoop, http::HttpClient HttpClient>
   CloudProvider(const EventLoop& event_loop, const HttpClient& http,
                 const util::ThumbnailGenerator& thumbnail_generator,
-                AuthToken auth_token, const AuthData& auth_data)
+                AuthToken auth_token, AuthData auth_data)
       : auth_token_(std::move(auth_token)),
         thumbnail_generator_(&thumbnail_generator),
-        d_(std::make_unique<Data>(event_loop, http, auth_data)) {}
-
-  template <auto Method, typename... Args>
-  auto Do(stdx::stop_token stop_token, Args&&... args) {
-    return d_->Do<Method>(std::move(stop_token), std::forward<Args>(args)...);
-  }
+        d_(CreateData(event_loop, http, std::move(auth_data))) {}
 
   Task<Item> RenameItem(Item item, std::string new_name,
                         coro::stdx::stop_token);
@@ -129,282 +119,51 @@ class Mega::CloudProvider
       const EventLoop& event_loop, const HttpClient& http,
       UserCredential credential, AuthData auth_data,
       stdx::stop_token stop_token = stdx::stop_token()) {
-    Data d(event_loop, http, auth_data);
-    co_return co_await d.GetSession(credential, std::move(stop_token));
+    auto d = CreateData(event_loop, http, std::move(auth_data));
+    co_return co_await GetSession(d.get(), credential, std::move(stop_token));
   }
 
  private:
-  static constexpr auto kLogin = static_cast<void (::mega::MegaClient::*)(
-      const char*, const uint8_t*, const char*)>(&::mega::MegaClient::login);
-  static constexpr auto kLoginWithSalt =
-      static_cast<void (::mega::MegaClient::*)(const char*, const char*,
-                                               std::string*, const char*)>(
-          &::mega::MegaClient::login2);
-  static constexpr auto kSessionLogin =
-      static_cast<void (::mega::MegaClient::*)(const uint8_t*, int)>(
-          &::mega::MegaClient::login);
-  static constexpr auto kPutNodes = static_cast<void (::mega::MegaClient::*)(
-      ::mega::handle, ::mega::NewNode*, int, const char*)>(
-      &::mega::MegaClient::putnodes);
+  using WaitT = std::function<Task<>(int ms, stdx::stop_token)>;
+  using FetchT = std::function<Task<http::Response<>>(
+      http::Request<std::string>, stdx::stop_token)>;
 
-  struct ReadData {
-    std::deque<std::string> buffer;
-    std::exception_ptr exception;
-    Promise<void> semaphore;
-    bool paused = true;
-    int size = 0;
-  };
-
+  struct ReadData;
   struct Data;
+  struct App;
+  struct DoLogIn;
 
-  struct App : ::mega::MegaApp {
-    static constexpr int kBufferSize = 1 << 20;
-
-    void prelogin_result(int version, std::string* email, std::string* salt,
-                         ::mega::error e) final {
-      SetResult(std::make_tuple(version, *email, *salt, e));
-    }
-
-    void login_result(::mega::error e) final { SetResult(e); }
-
-    void fetchnodes_result(::mega::error e) final {
-      SetResult(::mega::error(e));
-    }
-
-    void account_details(::mega::AccountDetails* details, bool, bool, bool,
-                         bool, bool, bool) final {
-      SetResult(std::move(*details));
-      delete details;
-    }
-
-    void account_details(::mega::AccountDetails* details,
-                         ::mega::error e) final {
-      delete details;
-      SetResult(e);
-    }
-
-    void setattr_result(::mega::handle handle, ::mega::error e) final {
-      SetResult(std::make_tuple(handle, e));
-    }
-
-    void putfa_result(::mega::handle, ::mega::fatype, ::mega::error e) final {
-      SetResult(e);
-    }
-
-    void putfa_result(::mega::handle, ::mega::fatype, const char*) final {
-      SetResult(std::monostate());
-    }
-
-    void putnodes_result(::mega::error e, ::mega::targettype_t,
-                         ::mega::NewNode* nodes) final {
-      if (e == ::mega::API_OK) {
-        delete[] nodes;
-        auto n = client->nodenotify.back();
-        n->applykey();
-        n->setattr();
-        SetResult(n);
-      } else {
-        SetResult(e);
-      }
-    }
-
-    void unlink_result(::mega::handle handle, ::mega::error e) final {
-      SetResult(std::make_tuple(handle, e));
-    }
-
-    void rename_result(::mega::handle handle, ::mega::error e) final {
-      SetResult(std::make_tuple(handle, e));
-    }
-
-    ::mega::dstime pread_failure(::mega::error e, int retry, void* user_data,
-                                 ::mega::dstime) final {
-      const int kMaxRetryCount = 14;
-      std::cerr << "[MEGA] PREAD FAILURE " << GetErrorDescription(e) << " "
-                << retry << "\n";
-      auto it = read_data.find(reinterpret_cast<intptr_t>(user_data));
-      if (it == std::end(read_data)) {
-        return ~static_cast<::mega::dstime>(0);
-      }
-      if (retry >= kMaxRetryCount) {
-        it->second->exception =
-            std::make_exception_ptr(CloudException(GetErrorDescription(e)));
-        it->second->semaphore.SetValue();
-        return ~static_cast<::mega::dstime>(0);
-      } else {
-        ::coro::Invoke(Retry(1 << (retry / 2)));
-        return 1 << (retry / 2);
-      }
-    }
-
-    bool pread_data(uint8_t* data, m_off_t length, m_off_t, m_off_t, m_off_t,
-                    void* user_data) final {
-      auto it = read_data.find(reinterpret_cast<intptr_t>(user_data));
-      if (it == std::end(read_data)) {
-        return false;
-      }
-      it->second->buffer.emplace_back(reinterpret_cast<const char*>(data),
-                                      static_cast<size_t>(length));
-      it->second->size += static_cast<int>(length);
-      if (it->second->size >= kBufferSize) {
-        it->second->paused = true;
-        it->second->semaphore.SetValue();
-        return false;
-      }
-      it->second->semaphore.SetValue();
-      return true;
-    }
-
-    void transfer_failed(::mega::Transfer* d, ::mega::error e,
-                         ::mega::dstime time) final {
-      client->restag = d->tag;
-      SetResult(e);
-    }
-
-    void notify_retry(::mega::dstime time, ::mega::retryreason_t reason) final {
-      ::coro::Invoke(Retry(time, /*abortbackoff=*/false));
-    }
-
-    void fa_complete(::mega::handle, ::mega::fatype, const char* data,
-                     uint32_t size) final {
-      SetResult(std::string(data, size));
-    }
-
-    int fa_failed(::mega::handle, ::mega::fatype, int retry_count,
-                  ::mega::error e) final {
-      if (retry_count < 7) {
-        SetResult(e);
-        return 1;
-      } else {
-        return 0;
-      }
-    }
-
-    Task<> Retry(::mega::dstime time, bool abortbackoff = true) {
-      std::cerr << "[MEGA] RETRYING IN " << time * 100 << "\n";
-      co_await d->wait_(100 * time, d->stop_source.get_token());
-      if (abortbackoff) {
-        d->mega_client.abortbackoff();
-      }
-      std::cerr << "[MEGA] RETRYING NOW\n";
-      d->OnEvent();
-    }
-
-    template <typename T>
-    void SetResult(T result) {
-      auto it = semaphore.find(client->restag);
-      if (it != std::end(semaphore)) {
-        last_result = std::move(result);
-        it->second->SetValue();
-      }
-    }
-
-    auto GetSemaphore(int tag) {
-      auto result = coro::util::MakePointer(new Promise<void>,
-                                            [this, tag](Promise<void>* s) {
-                                              semaphore.erase(tag);
-                                              delete s;
-                                            });
-      semaphore.insert({tag, result.get()});
-      return result;
-    }
-
-    explicit App(Data* d) : d(d) {}
-
-    std::unordered_map<int, Promise<void>*> semaphore;
-    std::any last_result;
-    std::unordered_map<intptr_t, std::shared_ptr<ReadData>> read_data;
-    Data* d;
-  };
-
-  struct DoLogIn {
-    Task<> operator()() { co_await d->LogIn(std::move(session)); }
-    Data* d;
-    std::string session;
-  };
-
-  struct Data {
-    stdx::stop_source stop_source;
-    std::function<Task<>(int ms, stdx::stop_token)> wait_;
-    App mega_app;
-    std::unique_ptr<::mega::HttpIO> http_io;
-    mega::FileSystemAccess fs;
-    ::mega::MegaClient mega_client;
-    bool exec_pending = false;
-    bool recursive_exec = false;
-    std::optional<SharedPromise<DoLogIn>> current_login;
-    std::default_random_engine random_engine;
-
-    void OnEvent();
-
-    template <auto Method, typename... Args>
-    Task<std::any> Do(stdx::stop_token stop_token, Args... args) {
-      auto tag = mega_client.nextreqtag();
-      if constexpr (std::is_same_v<bool,
-                                   decltype((mega_client.*Method)(args...))>) {
-        if (!(mega_client.*Method)(args...)) {
-          throw CloudException("unknown mega error");
-        }
-      } else if constexpr (std::is_same_v<::mega::error,
-                                          decltype((mega_client.*
-                                                    Method)(args...))>) {
-        if (auto error = (mega_client.*Method)(args...);
-            error != ::mega::error::API_OK) {
-          throw CloudException(GetErrorDescription(error));
-        }
-      } else {
-        (mega_client.*Method)(args...);
-      }
-      OnEvent();
-      auto semaphore = mega_app.GetSemaphore(tag);
-      stdx::stop_callback callback(
-          stop_token, [&] { semaphore->SetException(InterruptedException()); });
-      auto& semaphore_ref = *semaphore;
-      co_await semaphore_ref;
-      auto result = std::move(mega_app.last_result);
-      co_await wait_(0, std::move(stop_token));
-      co_return result;
-    }
-
-    Task<std::string> GetSession(UserCredential credentials,
-                                 stdx::stop_token stop_token);
-    Task<> EnsureLoggedIn(std::string session, stdx::stop_token);
-    Task<> LogIn(std::string session);
-
-    template <typename EventLoop, http::HttpClient HttpClient>
-    Data(const EventLoop& event_loop, const HttpClient& http,
-         const AuthData& auth_data)
-        : stop_source(),
-          wait_([event_loop = &event_loop](
-                    int ms, stdx::stop_token stop_token) -> Task<> {
-            co_await event_loop->Wait(ms, std::move(stop_token));
-          }),
-          mega_app(this),
-          http_io(std::make_unique<mega::HttpIO<HttpClient>>(
-              http, [this] { OnEvent(); })),
-          mega_client(&mega_app, /*waiter=*/nullptr, /*http_io=*/http_io.get(),
-                      /*fs=*/&fs, /*db_access=*/nullptr,
-                      /*gfx_proc=*/nullptr, auth_data.api_key.c_str(),
-                      auth_data.app_name.c_str()),
-          random_engine(std::random_device()()) {}
-
-    ~Data() { stop_source.request_stop(); }
-  };
-
-  static const char* GetErrorDescription(::mega::error e);
-
-  static void Check(::mega::error e) {
-    if (e != ::mega::API_OK) {
-      throw CloudException(GetErrorDescription(e));
-    }
+  template <typename EventLoop, http::HttpClient HttpClient>
+  static auto CreateData(const EventLoop& event_loop, const HttpClient& http,
+                         const AuthData& auth_data) {
+    return CreateDataImpl(
+        [event_loop = &event_loop](int ms, stdx::stop_token stop_token)
+            -> Task<> { co_await event_loop->Wait(ms, std::move(stop_token)); },
+        [http = &http](http::Request<std::string> request,
+                       stdx::stop_token stop_token) -> Task<http::Response<>> {
+          co_return co_await http->Fetch(std::move(request),
+                                         std::move(stop_token));
+        },
+        std::move(auth_data));
   }
 
-  ::mega::Node* GetNode(::mega::handle) const;
+  struct DataDeleter {
+    void operator()(Data*) const;
+  };
+
+  static std::unique_ptr<Data, DataDeleter> CreateDataImpl(WaitT, FetchT,
+                                                           const AuthData&);
+  static Task<std::string> GetSession(Data* data, UserCredential credential,
+                                      stdx::stop_token stop_token);
+
   Task<> SetThumbnail(const File& file, std::string thumbnail,
                       stdx::stop_token);
+  template <auto Method, typename... Args>
+  Task<std::any> Do(stdx::stop_token stop_token, Args&&... args);
 
   AuthToken auth_token_;
   const util::ThumbnailGenerator* thumbnail_generator_;
-  std::unique_ptr<Data> d_;
+  std::unique_ptr<Data, DataDeleter> d_;
 };
 
 template <>
