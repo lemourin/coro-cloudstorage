@@ -13,6 +13,7 @@ set(coro-cloudstorage-HEADERS
     coro/cloudstorage/util/generator_utils.h
     coro/cloudstorage/util/avio_context.h
     coro/cloudstorage/util/thumbnail_generator.h
+    coro/cloudstorage/util/thumbnail_options.h
     coro/cloudstorage/util/muxer.h
     coro/cloudstorage/util/file_utils.h
     coro/cloudstorage/util/string_utils.h

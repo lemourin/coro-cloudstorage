@@ -680,7 +680,7 @@ auto Mega::CloudProvider::CreateFile(Directory parent, std::string_view name,
     case FileType::kImage:
     case FileType::kVideo: {
       try {
-        auto thumbnail = co_await(*thumbnail_generator_)(
+        auto thumbnail = co_await thumbnail_generator_(
             this, new_file,
             util::ThumbnailOptions{
                 .size = 120, .codec = util::ThumbnailOptions::Codec::JPEG},
@@ -716,7 +716,7 @@ auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
       case FileType::kImage:
       case FileType::kVideo: {
         try {
-          auto thumbnail = co_await(*thumbnail_generator_)(
+          auto thumbnail = co_await thumbnail_generator_(
               this, item,
               util::ThumbnailOptions{
                   .size = 120, .codec = util::ThumbnailOptions::Codec::JPEG},

@@ -5,15 +5,11 @@
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
-#include <coro/cloudstorage/util/thumbnail_generator.h>
+#include <coro/cloudstorage/util/thumbnail_options.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/util/function_traits.h>
 #include <coro/util/raii_utils.h>
 #include <coro/util/type_list.h>
-#ifdef WIN32
-#undef CreateDirectory
-#undef CreateFile
-#endif
 
 #include <any>
 #include <optional>
@@ -87,12 +83,19 @@ class Mega::CloudProvider
   using AuthData = Auth::AuthData;
   using UserCredential = Auth::UserCredential;
 
-  template <typename EventLoop, http::HttpClient HttpClient>
+  template <typename EventLoop, http::HttpClient HttpClient,
+            typename ThumbnailGenerator>
   CloudProvider(const EventLoop& event_loop, const HttpClient& http,
-                const util::ThumbnailGenerator& thumbnail_generator,
+                const ThumbnailGenerator& thumbnail_generator,
                 AuthToken auth_token, AuthData auth_data)
       : auth_token_(std::move(auth_token)),
-        thumbnail_generator_(&thumbnail_generator),
+        thumbnail_generator_(
+            [&](CloudProvider* provider, File file,
+                util::ThumbnailOptions options,
+                stdx::stop_token stop_token) -> Task<std::string> {
+              co_return co_await thumbnail_generator(
+                  provider, std::move(file), options, std::move(stop_token));
+            }),
         d_(CreateData(event_loop, http, std::move(auth_data))) {}
 
   Task<Item> RenameItem(Item item, std::string new_name,
@@ -127,6 +130,8 @@ class Mega::CloudProvider
   using WaitT = std::function<Task<>(int ms, stdx::stop_token)>;
   using FetchT = std::function<Task<http::Response<>>(
       http::Request<std::string>, stdx::stop_token)>;
+  using ThumbnailGeneratorT = std::function<Task<std::string>(
+      CloudProvider*, File, util::ThumbnailOptions, stdx::stop_token)>;
 
   struct ReadData;
   struct Data;
@@ -162,7 +167,7 @@ class Mega::CloudProvider
   Task<std::any> Do(stdx::stop_token stop_token, Args&&... args);
 
   AuthToken auth_token_;
-  const util::ThumbnailGenerator* thumbnail_generator_;
+  ThumbnailGeneratorT thumbnail_generator_;
   std::unique_ptr<Data, DataDeleter> d_;
 };
 

@@ -4,6 +4,7 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/util/avio_context.h>
 #include <coro/cloudstorage/util/generator_utils.h>
+#include <coro/cloudstorage/util/thumbnail_options.h>
 #include <coro/task.h>
 #include <coro/util/thread_pool.h>
 
@@ -15,18 +16,13 @@ extern "C" {
 
 namespace coro::cloudstorage::util {
 
-struct ThumbnailOptions {
-  int size = 256;
-  enum class Codec { PNG, JPEG } codec;
-};
-
 std::string GenerateThumbnail(AVIOContext* io_context,
                               ThumbnailOptions options);
 
 class ThumbnailGenerator {
  public:
-  ThumbnailGenerator(::coro::util::ThreadPool* thread_pool,
-                     ::coro::util::EventLoop* event_loop)
+  ThumbnailGenerator(coro::util::ThreadPool* thread_pool,
+                     coro::util::EventLoop* event_loop)
       : thread_pool_(thread_pool), event_loop_(event_loop) {}
 
   template <typename CloudProvider, IsFile<CloudProvider> File>
@@ -40,8 +36,8 @@ class ThumbnailGenerator {
   }
 
  private:
-  ::coro::util::ThreadPool* thread_pool_;
-  ::coro::util::EventLoop* event_loop_;
+  coro::util::ThreadPool* thread_pool_;
+  coro::util::EventLoop* event_loop_;
 };
 
 }  // namespace coro::cloudstorage::util
