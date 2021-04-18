@@ -1,5 +1,7 @@
 #include "youtube.h"
 
+#include <coro/cloudstorage/util/string_utils.h>
+
 #include <regex>
 #include <sstream>
 
@@ -9,23 +11,8 @@ namespace {
 
 enum class TransformType { kReverse, kSplice, kSwap };
 
-template <typename T>
-std::string ToString(T d) {
-  std::stringstream stream;
-  stream << std::move(d);
-  return std::move(stream).str();
-}
-
-std::string ToString(std::string_view sv) { return std::string(sv); }
-
-std::string StrCat() { return ""; }
-
-template <typename Head, typename... Tail>
-std::string StrCat(Head&& head, Tail&&... tail) {
-  std::string result = ToString(std::forward<Head>(head));
-  result += StrCat(std::forward<Tail>(tail)...);
-  return result;
-}
+using ::coro::cloudstorage::util::StrCat;
+using ::coro::cloudstorage::util::ToString;
 
 std::string XmlAttributes(
     const std::vector<std::pair<std::string, std::string>>& args) {
