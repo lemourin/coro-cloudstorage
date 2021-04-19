@@ -365,9 +365,13 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     std::string url =
         factory.template GetAuthorizationUrl<CloudProvider>().value_or(
             "/auth/" + id);
-    stream << "<tr><td><a href='" << url << "'>"
-           << GetCloudProviderId<CloudProvider>() << "</a></td>";
-    stream << "</tr>";
+    stream << "<div class='thumbnail-container'>"
+              "<a href='"
+           << url
+           << "'>"
+              "<img class='provider-icon' src='/static/"
+           << GetCloudProviderId<CloudProvider>() << ".png'></a>";
+    stream << "</div>";
   }
 
   Generator<std::string> GetHomePage() {
@@ -378,10 +382,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
               "<body>"
               "<table class='content-table'>"
               "<tr><td>"
-              "<h3 class='table-header'>AVAILABLE PROVIDERS</h3>"
-              "</td></tr>";
+              "<h3 class='table-header'>ADD CLOUD PROVIDERS</h3>"
+              "</td></tr>"
+              "<tr><td><div class='supported-providers'>";
     (AppendAuthUrl<CloudProviders>(d_->factory, result), ...);
-    result << "</table>"
+    result << "</div></td></tr></table>"
               "<h3 class='table-header'>ACCOUNT LIST</h3>"
               "<table class='content-table'>";
     for (const auto& account : d_->accounts) {

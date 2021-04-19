@@ -55,3 +55,7 @@ table {
   padding-left: 16px;
   padding-right: 16px;
 }
+.supported-providers {
+  display: flex;
+  flex-flow: row wrap;
+}
