@@ -300,6 +300,7 @@ add_resource_library(
         kGoogleDriveIcon ../assets/providers/google.png
         kMegaIcon ../assets/providers/mega.png
         kAmazonS3Icon ../assets/providers/amazons3.png
+        kYouTubeIcon ../assets/providers/youtube.png
         kLocalDriveIcon ../assets/providers/local.png
         kOpenStackIcon ../assets/providers/openstack.png
         kLayoutCss ../assets/styles/layout.css
