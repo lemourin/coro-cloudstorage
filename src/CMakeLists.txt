@@ -58,6 +58,7 @@ set(CORO_CLOUDSTORAGE_ASSETS
     ../assets/providers/webdav.png
     ../assets/providers/google.png
     ../assets/providers/mega.png
+    ../assets/styles/default.css
 )
 
 target_sources(coro-cloudstorage PRIVATE
@@ -79,59 +80,11 @@ target_link_libraries(coro-cloudstorage PUBLIC
     avfilter
 )
 
-function(embed_resource)
-    cmake_parse_arguments(EMBED "" "OUTPUT" "INPUT" ${ARGN})
-
-    set(OUTPUT_HEADER "${EMBED_OUTPUT}.h")
-    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" HEADER_GUARD ${OUTPUT_HEADER})
-
-    string(APPEND HEADER_CONTENT
-        "#ifndef ${HEADER_GUARD}\n"
-        "#define ${HEADER_GUARD}\n"
-        "#include <string_view>\n"
-        "namespace coro::cloudstorage::util {\n")
-    string(APPEND IMPL_CONTENT
-        "#include \"${OUTPUT_HEADER}\"\n"
-        "namespace coro::cloudstorage::util {\n"
-    )
-    foreach(ENTRY ${EMBED_INPUT})
-        file(READ "${ENTRY}" HEX_CONTENT HEX)
-        string(REPEAT "[0-9a-f]" 32 PATTERN)
-        string(REGEX REPLACE "(${PATTERN})" "\\1\n" CONTENT "${HEX_CONTENT}")
-
-        string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1, " CONTENT "${CONTENT}")
-
-        string(REGEX REPLACE ", $" "" CONTENT "${CONTENT}")
-
-        string(REGEX REPLACE "[\-\.\/]" "_" ENTRY ${ENTRY})
-        string(REGEX REPLACE "(_+)(.*)$" "\\2" ENTRY ${ENTRY})
-        string(APPEND IMPL_CONTENT
-            "static const unsigned char ${ENTRY}_data[] = { ${CONTENT} };\n"
-            "const std::string_view ${ENTRY}(reinterpret_cast<const char*>(${ENTRY}_data), sizeof(${ENTRY}_data));\n"
-        )
-
-        string(APPEND HEADER_CONTENT
-            "extern const std::string_view ${ENTRY};\n"
-        )
-    endforeach()
-    string(APPEND HEADER_CONTENT
-        "} // namespace coro::cloudstorage::util\n"
-        "#endif // ${HEADER_GUARD}\n")
-    string(APPEND IMPL_CONTENT
-        "} // namespace coro::cloudstorage::util\n"
-    )
-    file(GENERATE OUTPUT "${OUTPUT_HEADER}" CONTENT "${HEADER_CONTENT}")
-    file(GENERATE OUTPUT "${EMBED_OUTPUT}.cc" CONTENT "${IMPL_CONTENT}")
-endfunction()
+include(../cmake/embed_resource.cmake)
 
 embed_resource(
-    OUTPUT
-        ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets
-    INPUT
-        ${CORO_CLOUDSTORAGE_ASSETS}
-)
-
-target_sources(coro-cloudstorage PRIVATE
-    ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets.h
-    ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets.cc
+    TARGET coro-cloudstorage
+    NAMESPACE coro::cloudstorage::util
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets
+    INPUT ${CORO_CLOUDSTORAGE_ASSETS}
 )

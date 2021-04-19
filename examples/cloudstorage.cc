@@ -58,11 +58,11 @@ class HttpHandler {
   struct AccountListener {
     template <typename CloudAccount>
     void OnCreate(CloudAccount* d) {
-      std::cerr << "CREATED " << d->id << "\n";
+      std::cerr << "CREATED " << d->username << "\n";
     }
     template <typename CloudAccount>
     void OnDestroy(CloudAccount* d) {
-      std::cerr << "REMOVED " << d->id << "\n";
+      std::cerr << "REMOVED " << d->username << "\n";
     }
   };
 

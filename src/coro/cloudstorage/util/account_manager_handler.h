@@ -52,7 +52,17 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
             std::declval<typename T::Auth::AuthToken>(),
             std::declval<OnAuthTokenChanged<T>>()));
 
-    std::string id;
+    std::string GetId() const {
+      return StrCat("[",
+                    std::visit(
+                        [](const auto& p) {
+                          return std::remove_cvref_t<decltype(p)>::Type::kId;
+                        },
+                        provider),
+                    "] ", username);
+    }
+
+    std::string username;
     std::variant<CloudProviderT<CloudProviders>...> provider;
     stdx::stop_source stop_source;
   };
@@ -82,7 +92,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     template <typename CloudProvider>
     void RemoveCloudProvider(std::string id) {
       for (auto it = std::begin(accounts); it != std::end(accounts);) {
-        if (it->id == id) {
+        if (it->GetId() == id) {
           it->stop_source.request_stop();
           account_listener.OnDestroy(&*it);
           it = accounts.erase(it);
@@ -113,17 +123,26 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       }
 
       Task<Response> operator()(Request request, stdx::stop_token) const {
-        std::optional<std::string_view> icon;
-        (GetIcon<CloudProviders>(request.url, icon) || ...);
-        if (!icon) {
-          co_return Response{.status = 404};
-        } else {
-          co_return Response{.status = 200,
-                             .headers = {{"Content-Type", "image/png"},
-                                         {"Cache-Control", "public"},
-                                         {"Cache-Control", "max-age=604800"}},
-                             .body = CreateBody(std::string(*icon))};
+        std::optional<std::string_view> content;
+        std::string mime_type;
+        (GetIcon<CloudProviders>(request.url, content) || ...);
+        if (content) {
+          mime_type = "image/png";
         }
+        if (request.url == "/static/default.css") {
+          content = util::assets_styles_default_css;
+          mime_type = "text/css";
+        }
+        if (!content) {
+          co_return Response{.status = 404};
+        }
+        co_return Response{
+            .status = 200,
+            .headers = {{"Content-Type", std::move(mime_type)},
+                        {"Content-Length", std::to_string(content->size())},
+                        {"Cache-Control", "public"},
+                        {"Cache-Control", "max-age=604800"}},
+            .body = CreateBody(std::string(*content))};
       }
     };
 
@@ -152,8 +171,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
             auth_token, OnAuthTokenChanged<CloudProvider>{d, account_id});
         auto general_data =
             co_await provider.GetGeneralData(std::move(stop_token));
-        *account_id = "[" + std::string(GetCloudProviderId<CloudProvider>()) +
-                      "] " + std::move(general_data.username);
+        *account_id = std::move(general_data.username);
         d->template RemoveCloudProvider<CloudProvider>(**account_id);
         d->auth_token_manager.template SaveToken<CloudProvider>(
             std::move(auth_token), **account_id);
@@ -187,31 +205,33 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
     template <typename CloudProvider, typename CloudProviderT>
     void OnCloudProviderCreated(CloudProviderT provider_impl,
-                                std::string account_id) {
+                                std::string_view account_id) {
       if (account_id.empty()) {
         return;
       }
       for (const auto& entry : accounts) {
-        if (entry.id == account_id) {
+        if (entry.GetId() == account_id) {
           return;
         }
       }
-      handlers.emplace_back(Handler{.id = account_id,
-                                    .prefix = "/remove/" + account_id,
-                                    .handler = OnRemoveHandler<CloudProvider>{
-                                        .d = this, .id = account_id}});
+      handlers.emplace_back(
+          Handler{.id = std::string(account_id),
+                  .prefix = StrCat("/remove/", account_id),
+                  .handler = OnRemoveHandler<CloudProvider>{
+                      .d = this, .id = std::string(account_id)}});
 
-      accounts.emplace_back(CloudProviderAccount{
-          .id = account_id, .provider = std::move(provider_impl)});
+      accounts.emplace_back(
+          CloudProviderAccount{.username = std::string(account_id),
+                               .provider = std::move(provider_impl)});
 
       auto* provider =
           &std::get<typename CloudProviderAccount::template CloudProviderT<
               CloudProvider>>(accounts.back().provider);
-      handlers.emplace_back(Handler{
-          .id = account_id,
-          .prefix = "/" + account_id,
-          .handler =
-              ProxyHandler(thumbnail_generator, provider, "/" + account_id)});
+      handlers.emplace_back(
+          Handler{.id = std::string(account_id),
+                  .prefix = StrCat("/", account_id),
+                  .handler = ProxyHandler(thumbnail_generator, provider,
+                                          StrCat("/", account_id))});
       account_listener.OnCreate(&accounts.back());
     }
 
@@ -279,9 +299,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     auto path = http::DecodeUri(std::move(*path_opt));
     for (auto& handler : d_->handlers) {
       if (path.starts_with(handler.prefix)) {
-        if (auto account_it = std::find_if(
-                d_->accounts.begin(), d_->accounts.end(),
-                [&](const auto& account) { return account.id == handler.id; });
+        if (auto account_it =
+                std::find_if(d_->accounts.begin(), d_->accounts.end(),
+                             [&](const auto& account) {
+                               return account.GetId() == handler.id;
+                             });
             account_it != d_->accounts.end()) {
           ::coro::util::StopTokenOr stop_token_or(
               account_it->stop_source.get_token(), std::move(stop_token));
@@ -308,8 +330,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         if (coro::http::GetHeader(request.headers, "Depth") == "1") {
           for (const auto& account : d_->accounts) {
             responses.push_back(
-                GetElement(ElementData{.path = "/" + account.id + "/",
-                                       .name = account.id,
+                GetElement(ElementData{.path = "/" + account.GetId() + "/",
+                                       .name = account.GetId(),
                                        .is_directory = true}));
           }
         }
@@ -341,18 +363,36 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   Generator<std::string> GetHomePage() {
     std::stringstream result;
     result << "<html><meta name='viewport' content='width=device-width, "
-              "initial-scale=1'><body><table><tr><th colspan='2'>AVAILABLE "
-              "PROVIDERS</th></tr>";
+              "initial-scale=1'>"
+              "<link rel=stylesheet href='/static/default.css'>"
+              "<body>"
+              "<table class='content-table'>"
+              "<tr><th colspan='2'>AVAILABLE PROVIDERS</th></tr>";
     (AppendAuthUrl<CloudProviders>(d_->factory, result), ...);
-    result << "</table><table><tr><th colspan='2'>ACCOUNT LIST</th></tr>";
+    result << "</table>"
+              "<table class='content-table'>";
+    //           "<tr><th colspan='3'>ACCOUNT LIST</th></tr>";
 
     for (const auto& account : d_->accounts) {
-      result << "<tr><td><a href='/" << http::EncodeUri(account.id) << "/'>"
-             << account.id << "</a></td>";
-      result << "<td><form action='/remove/" << http::EncodeUri(account.id)
-             << "' method='POST' style='margin: auto;'><input "
-                "type='submit' value='remove'/></form></td>";
-      result << "</tr>";
+      result << "<tr>";
+      std::visit(
+          [&](const auto& provider) {
+            result << "<td class='thumbnail-container'>"
+                      "<image class='thumbnail' src='/static/"
+                   << std::remove_cvref_t<decltype(provider)>::Type::kId
+                   << ".png'></td>";
+          },
+          account.provider);
+      result << "<td><a href='/" << http::EncodeUri(account.GetId()) << "/'>"
+             << account.username << "</a></td>";
+      result << "<td class='size'>"
+                "<form action='/remove/"
+             << http::EncodeUri(account.GetId())
+             << "' method='POST' style='margin: auto;'>"
+                "<input type='submit' value='remove'/>"
+                "</form>"
+                "</td>"
+                "</tr>";
     }
 
     result << "</table></body></html>";

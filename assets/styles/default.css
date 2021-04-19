@@ -1,0 +1,37 @@
+.thumbnail-container {
+  padding: 8px;
+  height: 64px;
+  width: 64px;
+}
+.thumbnail {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+body {
+  width: 920px;
+  max-width: 100%;
+  margin: 0;
+}
+table {
+  width: 100%;
+  box-sizing: border-box;
+  table-layout: fixed;
+}
+.content-table {
+  padding: 16px;
+}
+.item-metadata {
+  white-space: nowrap;
+}
+.title {
+  display: block;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.size {
+  vertical-align: text-top;
+  text-align: right;
+  width: 64px;
+}
