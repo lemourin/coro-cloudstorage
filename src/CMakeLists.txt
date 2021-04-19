@@ -45,12 +45,12 @@ set(CORO_CLOUDSTORAGE_SOURCES
     coro/cloudstorage/providers/webdav.cc
 )
 set(CORO_CLOUDSTORAGE_ASSETS
-    ../assets/folder.svg
-    ../assets/gtk-file.svg
-    ../assets/audio-x-generic.svg
-    ../assets/image.svg
-    ../assets/video.svg
-    ../assets/user-trash.svg
+    ../assets/icons/folder.svg
+    ../assets/icons/gtk-file.svg
+    ../assets/icons/audio-x-generic.svg
+    ../assets/icons/image.svg
+    ../assets/icons/video.svg
+    ../assets/icons/user-trash.svg
     ../assets/providers/box.png
     ../assets/providers/yandex.png
     ../assets/providers/dropbox.png

@@ -136,7 +136,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           content = util::assets_styles_default_css;
           mime_type = "text/css";
         } else if (request.url == "/static/user-trash.svg") {
-          content = util::assets_user_trash_svg;
+          content = util::assets_icons_user_trash_svg;
           mime_type = "image/svg+xml";
         }
         if (!content) {
