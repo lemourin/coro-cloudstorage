@@ -132,10 +132,12 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         (GetIcon<CloudProviders>(request.url, content) || ...);
         if (content) {
           mime_type = "image/png";
-        }
-        if (request.url == "/static/default.css") {
+        } else if (request.url == "/static/default.css") {
           content = util::assets_styles_default_css;
           mime_type = "text/css";
+        } else if (request.url == "/static/user-trash.svg") {
+          content = util::assets_user_trash_svg;
+          mime_type = "image/svg+xml";
         }
         if (!content) {
           co_return Response{.status = 404};
@@ -394,11 +396,13 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           account.provider);
       result << "<td><a href='/" << http::EncodeUri(account.GetId()) << "/'>"
              << account.username << "</a></td>";
-      result << "<td class='size'>"
+      result << "<td class='trash-container'>"
                 "<form action='/remove/"
              << http::EncodeUri(account.GetId())
              << "' method='POST' style='margin: auto;'>"
-                "<input type='submit' value='remove'/>"
+                "<button type='submit'>"
+                "<img class='trash-icon' src='/static/user-trash.svg'>"
+                "</input>"
                 "</form>"
                 "</td>"
                 "</tr>";

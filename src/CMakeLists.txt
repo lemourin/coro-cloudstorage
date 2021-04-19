@@ -50,6 +50,7 @@ set(CORO_CLOUDSTORAGE_ASSETS
     ../assets/audio-x-generic.svg
     ../assets/image.svg
     ../assets/video.svg
+    ../assets/user-trash.svg
     ../assets/providers/box.png
     ../assets/providers/yandex.png
     ../assets/providers/dropbox.png

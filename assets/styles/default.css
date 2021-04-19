@@ -40,6 +40,14 @@ table {
   width: 100%;
   object-fit: contain;
 }
+.trash-container {
+  text-align: right;
+  width: 64px;
+}
+.trash-icon {
+  width: 48px;
+  height: 48px;
+}
 .table-header {
   display: flex;
   align-items: center;
