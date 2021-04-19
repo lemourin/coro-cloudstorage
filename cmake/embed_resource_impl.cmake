@@ -1,4 +1,6 @@
 function(embed_resource_impl)
+    include(embed_resource_header)
+
     cmake_parse_arguments(EMBED "" "NAMESPACE;OUTPUT" "INPUT" ${ARGN})
 
     string(APPEND IMPL_CONTENT
@@ -15,11 +17,10 @@ function(embed_resource_impl)
 
         string(REGEX REPLACE ", $" "" CONTENT "${CONTENT}")
 
-        string(REGEX REPLACE "[-\\.\\/]" "_" ENTRY ${ENTRY})
-        string(REGEX REPLACE "(_+)(.*)$" "\\2" ENTRY ${ENTRY})
+        to_camel_case(ENTRY ${ENTRY})
         string(APPEND IMPL_CONTENT
-                "static const unsigned char ${ENTRY}_data[] = { ${CONTENT} };\n"
-                "const std::string_view ${ENTRY}(reinterpret_cast<const char*>(${ENTRY}_data), sizeof(${ENTRY}_data));\n"
+                "static const unsigned char ${ENTRY}Data[] = { ${CONTENT} };\n"
+                "const std::string_view ${ENTRY}(reinterpret_cast<const char*>(${ENTRY}Data), sizeof(${ENTRY}Data));\n"
         )
     endforeach()
     string(APPEND IMPL_CONTENT

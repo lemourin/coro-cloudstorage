@@ -8,6 +8,7 @@ function(embed_resource)
                 -DNAMESPACE='${EMBED_NAMESPACE}'
                 -DOUTPUT='${EMBED_OUTPUT}'
                 -DASSETS='${EMBED_INPUT}'
+                -DCMAKE_MODULE_PATH=${PROJECT_SOURCE_DIR}/cmake
                 -P '${PROJECT_SOURCE_DIR}/cmake/embed_resource_impl.cmake'
         DEPENDS
             ${EMBED_INPUT}

@@ -75,7 +75,7 @@ struct Mega {
   class CloudProvider;
 
   static constexpr std::string_view kId = "mega";
-  static inline const auto kIcon = util::assets_providers_mega_png;
+  static inline const auto kIcon = util::kAssetsProvidersMegaPng;
 };
 
 class Mega::CloudProvider

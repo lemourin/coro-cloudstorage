@@ -118,7 +118,7 @@ struct Box {
   class CloudProvider;
 
   static constexpr std::string_view kId = "box";
-  static inline const auto kIcon = util::assets_providers_box_png;
+  static inline const auto kIcon = util::kAssetsProvidersBoxPng;
 };
 
 template <typename AuthManager>

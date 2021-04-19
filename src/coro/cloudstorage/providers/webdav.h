@@ -69,7 +69,7 @@ class WebDAV {
   class CloudProvider;
 
   static constexpr std::string_view kId = "webdav";
-  static inline const auto kIcon = util::assets_providers_webdav_png;
+  static inline const auto kIcon = util::kAssetsProvidersWebdavPng;
 
  private:
   static std::optional<std::string> GetNamespace(const pugi::xml_node& node);

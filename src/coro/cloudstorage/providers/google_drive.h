@@ -131,7 +131,7 @@ struct GoogleDrive {
   };
 
   static constexpr std::string_view kId = "google";
-  static inline const auto kIcon = util::assets_providers_google_png;
+  static inline const auto kIcon = util::kAssetsProvidersGooglePng;
 };
 
 template <typename AuthManager>
