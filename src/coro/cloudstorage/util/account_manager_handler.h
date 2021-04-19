@@ -190,7 +190,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       std::variant<
           AuthHandler<CloudProviders>..., OnRemoveHandler<CloudProviders>...,
           ProxyHandler<typename CloudProviderAccount::template CloudProviderT<
-              CloudProviders>>...>
+                           CloudProviders>,
+                       ThumbnailGenerator>...>
           handler;
     };
 
@@ -228,35 +229,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
   }
 
-  static Generator<std::string> GetDashPlayer(std::string path) {
-    std::stringstream page;
-    page << "<!DOCTYPE html><html><head><meta charset='UTF-8'>";
-    page << "<meta name='viewport' content='width=device-width'>";
-    page << "<script "
-            "src=\"https://cdnjs.cloudflare.com/ajax/libs/shaka-player/3.0.6/"
-            "shaka-player.ui.min.js\" "
-            "integrity=\"sha512-"
-            "2oRLIguQ4Pb7pTcl65mpc0CDyZYtyhNUUBlIXSzwIMfPdeGuyekr0TpBwjTpFKyuS3"
-            "QNWnQnlaFzXj7VCamGSA==\" crossorigin=\"anonymous\"></script>";
-    page
-        << "<link rel=\"stylesheet\" "
-           "href=\"https://cdnjs.cloudflare.com/ajax/libs/shaka-player/3.0.6/"
-           "controls.min.css\" "
-           "integrity=\"sha512-UBpZwbEsFcjXjrXeDOl0841+"
-           "bdZTRX0g5msnfQJsaftSlLeZ/QuKMWw2MfEbOslDyngzBOcFmpiNYCAvb+oLCA==\" "
-           "crossorigin=\"anonymous\" />";
-    page << "</head>";
-    page << "<body data-shaka-player-container style='background-color:black; "
-            "overflow: hidden; margin: auto; display: flex; justify-content: "
-            "center; align-items: center; height:100vh;'>";
-    page << "<video autoplay data-shaka-player id='video' "
-            "style='margin: auto; height: 100%; width: 100%;' src='"
-         << http::EncodeUriPath(path) << "'></video>";
-    page << "</body></html>";
-
-    co_yield page.str();
-  }
-
   Task<Response> operator()(Request request,
                             coro::stdx::stop_token stop_token) {
     if (request.method == coro::http::Method::kOptions) {
@@ -274,10 +246,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       co_return Response{.status = 400};
     }
     auto path = http::DecodeUri(std::move(*path_opt));
-    if (path.starts_with("/dash")) {
-      co_return Response{.status = 200,
-                         .body = GetDashPlayer(path.substr(strlen("/dash")))};
-    }
     for (auto& handler : d_->handlers) {
       if (path.starts_with(handler.prefix)) {
         if (auto account_it = std::find_if(

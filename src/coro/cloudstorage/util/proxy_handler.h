@@ -2,7 +2,7 @@
 #define CORO_CLOUDSTORAGE_PROXY_HANDLER_H
 
 #include <coro/cloudstorage/util/assets.h>
-#include <coro/cloudstorage/util/thumbnail_generator.h>
+#include <coro/cloudstorage/util/thumbnail_options.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http_parse.h>
 #include <coro/util/lru_cache.h>
@@ -12,7 +12,7 @@
 
 namespace coro::cloudstorage::util {
 
-template <typename CloudProvider>
+template <typename CloudProvider, typename ThumbnailGenerator>
 class ProxyHandler {
  public:
   using Request = http::Request<>;
@@ -41,6 +41,13 @@ class ProxyHandler {
                 return GetItemThumbnail(std::move(request), d, stop_token);
               },
               co_await provider_->GetItemByPath(std::move(path), stop_token));
+        }
+        if (auto it = query.find("dash_player");
+            it != query.end() && it->second == "true") {
+          co_return Response{
+              .status = 200,
+              .headers = {{"Content-Type", "text/html; charset=UTF-8"}},
+              .body = GetDashPlayer(path_prefix_ + path)};
         }
       }
       if (request.method == http::Method::kMkcol) {
@@ -77,6 +84,35 @@ class ProxyHandler {
  private:
   static Generator<std::string> GetGenerator(std::string content) {
     co_yield std::move(content);
+  }
+
+  static Generator<std::string> GetDashPlayer(std::string path) {
+    std::stringstream page;
+    page << "<!DOCTYPE html><html><head><meta charset='UTF-8'>";
+    page << "<meta name='viewport' content='width=device-width'>";
+    page << "<script "
+            "src=\"https://cdnjs.cloudflare.com/ajax/libs/shaka-player/3.0.6/"
+            "shaka-player.ui.min.js\" "
+            "integrity=\"sha512-"
+            "2oRLIguQ4Pb7pTcl65mpc0CDyZYtyhNUUBlIXSzwIMfPdeGuyekr0TpBwjTpFKyuS3"
+            "QNWnQnlaFzXj7VCamGSA==\" crossorigin=\"anonymous\"></script>";
+    page
+        << "<link rel=\"stylesheet\" "
+           "href=\"https://cdnjs.cloudflare.com/ajax/libs/shaka-player/3.0.6/"
+           "controls.min.css\" "
+           "integrity=\"sha512-UBpZwbEsFcjXjrXeDOl0841+"
+           "bdZTRX0g5msnfQJsaftSlLeZ/QuKMWw2MfEbOslDyngzBOcFmpiNYCAvb+oLCA==\" "
+           "crossorigin=\"anonymous\" />";
+    page << "</head>";
+    page << "<body data-shaka-player-container style='background-color:black; "
+            "overflow: hidden; margin: auto; display: flex; justify-content: "
+            "center; align-items: center; height:100vh;'>";
+    page << "<video autoplay data-shaka-player id='video' "
+            "style='margin: auto; height: 100%; width: 100%;' src='"
+         << http::EncodeUriPath(path) << "'></video>";
+    page << "</body></html>";
+
+    co_yield page.str();
   }
 
   template <typename Item>
@@ -266,7 +302,7 @@ class ProxyHandler {
       current_element_data.mime_type = CloudProvider::GetMimeType(item);
       current_element_data.size = CloudProvider::GetSize(item);
     }
-    co_yield GetElement(std::move(current_element_data));
+    co_yield GetElement(current_element_data);
     co_yield "</d:multistatus>";
   }
 
@@ -278,7 +314,7 @@ class ProxyHandler {
     co_yield R"(<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:">)";
     ElementData current_element_data{
         .path = path, .name = directory.name, .is_directory = true};
-    co_yield GetElement(std::move(current_element_data));
+    co_yield GetElement(current_element_data);
     if (::coro::http::GetHeader(request.headers, "Depth") == "1") {
       FOR_CO_AWAIT(const auto& page, page_data) {
         for (const auto& item : page.items) {
@@ -301,7 +337,7 @@ class ProxyHandler {
                 }
               },
               item);
-          co_yield GetElement(std::move(element_data));
+          co_yield GetElement(element_data);
         }
       }
     }
@@ -350,7 +386,7 @@ class ProxyHandler {
         << file_link << "?thumbnail=true"
         << "'/></td>";
     if (item.name.ends_with(".mpd")) {
-      file_link = "/dash" + file_link;
+      file_link += "?dash_player=true";
     }
     row << "<td class='item-metadata'><table>";
     row << "<tr><td><a class='title' href='" << file_link << "'>" << item.name
