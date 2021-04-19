@@ -45,6 +45,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     std::shared_ptr<std::optional<std::string>> account_id;
   };
 
+  template <typename CloudProvider>
+  static std::string GetAccountId(std::string_view username) {
+    return StrCat("[", CloudProvider::kId, "] ", username);
+  }
+
   struct CloudProviderAccount {
     template <typename T>
     using CloudProviderT =
@@ -53,13 +58,12 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
             std::declval<OnAuthTokenChanged<T>>()));
 
     std::string GetId() const {
-      return StrCat("[",
-                    std::visit(
-                        [](const auto& p) {
-                          return std::remove_cvref_t<decltype(p)>::Type::kId;
-                        },
-                        provider),
-                    "] ", username);
+      return std::visit(
+          [&](const auto& p) {
+            return GetAccountId<
+                typename std::remove_cvref_t<decltype(p)>::Type>(username);
+          },
+          provider);
     }
 
     std::string username;
@@ -165,21 +169,24 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
             auth_token = std::move(std::get<AuthToken>(result));
           }
         }
-        auto account_id =
+        auto username =
             std::make_shared<std::optional<std::string>>(std::nullopt);
         auto provider = d->factory.template Create<CloudProvider>(
-            auth_token, OnAuthTokenChanged<CloudProvider>{d, account_id});
+            auth_token, OnAuthTokenChanged<CloudProvider>{d, username});
         auto general_data =
             co_await provider.GetGeneralData(std::move(stop_token));
-        *account_id = std::move(general_data.username);
-        d->template RemoveCloudProvider<CloudProvider>(**account_id);
+        *username = std::move(general_data.username);
+        d->template RemoveCloudProvider<CloudProvider>(
+            GetAccountId<CloudProvider>(**username));
         d->auth_token_manager.template SaveToken<CloudProvider>(
-            std::move(auth_token), **account_id);
+            std::move(auth_token), **username);
         d->OnCloudProviderCreated<CloudProvider>(std::move(provider),
-                                                 **account_id);
+                                                 **username);
         co_return Response{
             .status = 302,
-            .headers = {{"Location", "/" + http::EncodeUri(**account_id)}}};
+            .headers = {{"Location",
+                         "/" + http::EncodeUri(
+                                   GetAccountId<CloudProvider>(**username))}}};
       }
 
       Data* d;
@@ -205,10 +212,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
     template <typename CloudProvider, typename CloudProviderT>
     void OnCloudProviderCreated(CloudProviderT provider_impl,
-                                std::string_view account_id) {
-      if (account_id.empty()) {
+                                std::string_view username) {
+      if (username.empty()) {
         return;
       }
+      std::string account_id = GetAccountId<CloudProvider>(username);
       for (const auto& entry : accounts) {
         if (entry.GetId() == account_id) {
           return;
@@ -221,7 +229,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
                       .d = this, .id = std::string(account_id)}});
 
       accounts.emplace_back(
-          CloudProviderAccount{.username = std::string(account_id),
+          CloudProviderAccount{.username = std::string(username),
                                .provider = std::move(provider_impl)});
 
       auto* provider =
@@ -367,18 +375,19 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
               "<link rel=stylesheet href='/static/default.css'>"
               "<body>"
               "<table class='content-table'>"
-              "<tr><th colspan='2'>AVAILABLE PROVIDERS</th></tr>";
+              "<tr><td>"
+              "<h3 class='table-header'>AVAILABLE PROVIDERS</h3>"
+              "</td></tr>";
     (AppendAuthUrl<CloudProviders>(d_->factory, result), ...);
     result << "</table>"
+              "<h3 class='table-header'>ACCOUNT LIST</h3>"
               "<table class='content-table'>";
-    //           "<tr><th colspan='3'>ACCOUNT LIST</th></tr>";
-
     for (const auto& account : d_->accounts) {
       result << "<tr>";
       std::visit(
           [&](const auto& provider) {
             result << "<td class='thumbnail-container'>"
-                      "<image class='thumbnail' src='/static/"
+                      "<image class='provider-icon' src='/static/"
                    << std::remove_cvref_t<decltype(provider)>::Type::kId
                    << ".png'></td>";
           },
