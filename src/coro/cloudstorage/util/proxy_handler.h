@@ -405,22 +405,22 @@ class ProxyHandler {
       Generator<typename CloudProvider::PageData> page_data,
       std::string path) const {
     std::stringstream header;
-    header << "<!DOCTYPE html><html><head>";
-    header << "<meta charset='UTF-8'>"
+    header << "<!DOCTYPE html><html><head>"
+              "<meta charset='UTF-8'>"
               "<meta name='viewport' content='width=device-width, "
-              "initial-scale=1'>";
-    header << "<style>";
-    header << ".thumbnail-container {"
+              "initial-scale=1'>"
+              "<style>"
+              ".thumbnail-container {"
               "  padding: 8px;"
               "  height: 64px;"
               "  width: 64px;"
-           << "}";
-    header << ".thumbnail {"
+              "}"
+              ".thumbnail {"
               "  height: 100%;"
               "  width: 100%;"
               "  object-fit: cover;"
-              "}";
-    header << "body {"
+              "}"
+              "body {"
               "  width: 920px;"
               "  max-width: 100%;"
               "  margin: 0;"
@@ -446,19 +446,20 @@ class ProxyHandler {
               "  vertical-align: text-top;"
               "  text-align: right;"
               "  width: 64px;"
-              "}";
-    header << "</style>";
-    header << "</head>";
-    header << "<body><table class='content-table'>";
-    header << "<tr>";
-    header << "<td class='thumbnail-container'>"
-           << "<image class='thumbnail' src='"
+              "}"
+              "</style>"
+              "</head>"
+              "<body><table class='content-table'>"
+              "<tr>"
+              "<td class='thumbnail-container'>"
+              "<image class='thumbnail' src='"
            << (IsRoot(path) ? path : GetDirectoryPath(path))
            << "?thumbnail=true'/>"
-           << "</td>";
-    header << "<td class='item-metadata'><a href='" << GetDirectoryPath(path)
-           << "'>..</a></td><td class='size'/>";
-    header << "</tr>";
+              "</td>"
+              "<td class='item-metadata'><a href='"
+           << GetDirectoryPath(path)
+           << "'>..</a></td><td class='size'/>"
+              "</tr>";
     co_yield std::move(header).str();
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
@@ -600,13 +601,6 @@ class ProxyHandler {
         co_return Response{.status = 501};
       }
     }
-  };
-
-  struct GetItem {
-    auto operator()(std::string path, stdx::stop_token stop_token) {
-      return provider->GetItemByPath(std::move(path), stop_token);
-    }
-    CloudProvider* provider;
   };
 
   const ThumbnailGenerator* thumbnail_generator_;
