@@ -66,7 +66,8 @@ class HttpHandler {
     }
   };
 
-  AccountManagerHandler<CloudProviders, CloudFactory, AccountListener>
+  AccountManagerHandler<CloudProviders, CloudFactory, ThumbnailGenerator,
+                        AccountListener>
       auth_handler_;
   Promise<void>* quit_;
 };

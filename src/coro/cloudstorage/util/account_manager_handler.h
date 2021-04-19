@@ -16,14 +16,16 @@
 namespace coro::cloudstorage::util {
 
 template <typename CloudProviderTypeList, typename CloudFactory,
-          typename AccountListener,
+          typename ThumbnailGenerator, typename AccountListener,
           typename AuthTokenManagerT = AuthTokenManager>
 class AccountManagerHandler;
 
 template <typename... CloudProviders, typename CloudFactory,
-          typename AccountListener, typename AuthTokenManagerT>
+          typename ThumbnailGenerator, typename AccountListener,
+          typename AuthTokenManagerT>
 class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
-                            CloudFactory, AccountListener, AuthTokenManagerT> {
+                            CloudFactory, ThumbnailGenerator, AccountListener,
+                            AuthTokenManagerT> {
  public:
   using Request = coro::http::Request<>;
   using Response = coro::http::Response<>;
