@@ -241,28 +241,7 @@ class MegaAuthHandler {
 
  private:
   Generator<std::string> GenerateLoginPage() const {
-    co_yield R"(
-      <html>
-        <head>
-          <meta name='viewport' content='width=device-width, initial-scale=1'>
-        </head>
-        <body>
-          <form method="post">
-            <table>
-              <tr>
-                <td><label for="email">email:</label></td>
-                <td><input type="text" id="email" name="email"/></td>
-              </tr>
-              <tr>
-                <td><label for="password">password:</label></td>
-                <td><input type="password" id="password" name="password"/></td>
-              </tr>
-              <tr><td><input type="submit" value="Submit"/></td></tr>
-            </table>
-          </form>
-        </body>
-      </html>
-    )";
+    co_yield std::string(kAssetsHtmlMegaLoginHtml);
   }
 
   const EventLoop* event_loop_;

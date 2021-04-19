@@ -18,34 +18,7 @@ int64_t ParseTime(std::string str) {
   }
 }
 
-Generator<std::string> GenerateLoginPage() {
-  co_yield R"(
-    <html>
-      <head>
-        <meta name='viewport' content='width=device-width, initial-scale=1'>
-      </head>
-      <body>
-        <form method="post">
-          <table>
-            <tr>
-              <td><label for="endpoint">endpoint:</label></td>
-              <td><input type="text" id="endpoint" name="endpoint"/></td>
-            </tr>
-            <tr>
-              <td><label for="username">username:</label></td>
-              <td><input type="text" id="username" name="username"/></td>
-            </tr>
-            <tr>
-              <td><label for="password">password:</label></td>
-              <td><input type="password" id="password" name="password"/></td>
-            </tr>
-            <tr><td><input type="submit" value="Submit"/></td></tr>
-          </table>
-        </form>
-      </body>
-    </html>
-  )";
-}
+Generator<std::string> GenerateLoginPage() { co_yield std::string(util::kAssetsHtmlWebdavLoginHtml); }
 
 }  // namespace
 

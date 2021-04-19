@@ -51,6 +51,8 @@ set(CORO_CLOUDSTORAGE_ASSETS
     ../assets/icons/image.svg
     ../assets/icons/video.svg
     ../assets/icons/user-trash.svg
+    ../assets/html/mega_login.html
+    ../assets/html/webdav_login.html
     ../assets/providers/box.png
     ../assets/providers/yandex.png
     ../assets/providers/dropbox.png
