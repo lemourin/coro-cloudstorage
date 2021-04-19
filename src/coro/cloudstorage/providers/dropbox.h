@@ -101,7 +101,7 @@ struct Dropbox {
   class CloudProvider;
 
   static constexpr std::string_view kId = "dropbox";
-  static inline const auto kIcon = util::kAssetsProvidersDropboxPng;
+  static inline constexpr auto& kIcon = util::kAssetsProvidersDropboxPng;
 };
 
 template <http::HttpClient Http>

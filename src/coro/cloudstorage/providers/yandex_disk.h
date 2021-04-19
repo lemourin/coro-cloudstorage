@@ -95,7 +95,7 @@ struct YandexDisk {
   class CloudProvider;
 
   static constexpr std::string_view kId = "yandex";
-  static inline const auto kIcon = util::kAssetsProvidersYandexPng;
+  static inline constexpr auto& kIcon = util::kAssetsProvidersYandexPng;
 };
 
 template <http::HttpClient Http, typename EventLoop>

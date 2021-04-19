@@ -5,11 +5,11 @@ function(embed_resource)
         OUTPUT ${EMBED_OUTPUT}.cc
         COMMAND
             ${CMAKE_COMMAND}
-                -DNAMESPACE='${EMBED_NAMESPACE}'
-                -DOUTPUT='${EMBED_OUTPUT}'
-                -DASSETS='${EMBED_INPUT}'
-                -DCMAKE_MODULE_PATH=${PROJECT_SOURCE_DIR}/cmake
-                -P '${PROJECT_SOURCE_DIR}/cmake/embed_resource_impl.cmake'
+                -DNAMESPACE="${EMBED_NAMESPACE}"
+                -DOUTPUT="${EMBED_OUTPUT}"
+                -DASSETS="${EMBED_INPUT}"
+                -DCMAKE_MODULE_PATH="${PROJECT_SOURCE_DIR}/cmake"
+                -P "${PROJECT_SOURCE_DIR}/cmake/embed_resource_impl.cmake"
         DEPENDS
             ${EMBED_INPUT}
         WORKING_DIRECTORY

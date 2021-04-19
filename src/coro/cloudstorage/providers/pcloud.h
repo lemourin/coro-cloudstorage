@@ -96,7 +96,7 @@ struct PCloud {
   class CloudProvider;
 
   static constexpr std::string_view kId = "pcloud";
-  static inline const auto kIcon = util::kAssetsProvidersPcloudPng;
+  static inline constexpr auto& kIcon = util::kAssetsProvidersPcloudPng;
 };
 
 template <http::HttpClient Http>
