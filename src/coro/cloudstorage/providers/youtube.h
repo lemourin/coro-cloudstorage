@@ -3,6 +3,7 @@
 
 #include <coro/cloudstorage/cloud_exception.h>
 #include <coro/cloudstorage/providers/google_drive.h>
+#include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/avio_context.h>
 #include <coro/cloudstorage/util/muxer.h>
 #include <coro/http/http.h>
@@ -132,6 +133,7 @@ struct YouTube {
   static Stream ToStream(const StreamDirectory&, json d);
 
   static constexpr std::string_view kId = "youtube";
+  static inline constexpr auto& kIcon = util::kAssetsProvidersYoutubePng;
 };
 
 template <typename AuthManager>

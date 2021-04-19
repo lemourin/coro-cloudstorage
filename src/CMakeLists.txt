@@ -202,6 +202,7 @@ embed_resource(
         ../assets/providers/amazons3.png
         ../assets/providers/local.png
         ../assets/providers/hubic.png
+        ../assets/providers/youtube.png
         ../assets/styles/layout.css
         ../assets/styles/colors_light.css
         ../assets/styles/colors_dark.css
