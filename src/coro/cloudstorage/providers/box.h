@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_BOX_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/fetch_json.h>
 #include <coro/http/http.h>
@@ -117,6 +118,7 @@ struct Box {
   class CloudProvider;
 
   static constexpr std::string_view kId = "box";
+  static inline const auto kIcon = util::assets_providers_box_png;
 };
 
 template <typename AuthManager>

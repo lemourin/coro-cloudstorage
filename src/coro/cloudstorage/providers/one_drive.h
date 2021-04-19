@@ -1,6 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_ONE_DRIVE_H
 #define CORO_CLOUDSTORAGE_ONE_DRIVE_H
 
+#include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/when_all.h>
 
@@ -10,6 +11,7 @@ struct OneDrive {
   using json = nlohmann::json;
 
   static constexpr std::string_view kId = "onedrive";
+  static inline const auto kIcon = util::assets_providers_onedrive_png;
 
   struct Auth {
     struct AuthToken {

@@ -6,6 +6,7 @@
 #include <coro/cloudstorage/util/auth_token_manager.h>
 #include <coro/cloudstorage/util/proxy_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
+#include <coro/cloudstorage/util/string_utils.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
@@ -67,7 +68,10 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         : factory(factory),
           thumbnail_generator(thumbnail_generator),
           account_listener(std::move(account_listener)),
-          auth_token_manager(std::move(auth_token_manager)) {}
+          auth_token_manager(std::move(auth_token_manager)) {
+      handlers.emplace_back(
+          Handler{.prefix = "/static/", .handler = StaticFileHandler{}});
+    }
 
     ~Data() {
       for (auto& account : accounts) {
@@ -95,6 +99,33 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       }
       auth_token_manager.template RemoveToken<CloudProvider>(id);
     }
+
+    struct StaticFileHandler {
+      template <typename CloudProvider>
+      static bool GetIcon(std::string_view name,
+                          std::optional<std::string_view>& output) {
+        if (name == StrCat("/static/", CloudProvider::kId, ".png")) {
+          output = CloudProvider::kIcon;
+          return true;
+        } else {
+          return false;
+        }
+      }
+
+      Task<Response> operator()(Request request, stdx::stop_token) const {
+        std::optional<std::string_view> icon;
+        (GetIcon<CloudProviders>(request.url, icon) || ...);
+        if (!icon) {
+          co_return Response{.status = 404};
+        } else {
+          co_return Response{.status = 200,
+                             .headers = {{"Content-Type", "image/png"},
+                                         {"Cache-Control", "public"},
+                                         {"Cache-Control", "max-age=604800"}},
+                             .body = CreateBody(std::string(*icon))};
+        }
+      }
+    };
 
     template <typename CloudProvider>
     struct AuthHandler {
@@ -187,11 +218,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     struct Handler {
       std::string id;
       std::string prefix;
-      std::variant<
-          AuthHandler<CloudProviders>..., OnRemoveHandler<CloudProviders>...,
-          ProxyHandler<typename CloudProviderAccount::template CloudProviderT<
-                           CloudProviders>,
-                       ThumbnailGenerator>...>
+      std::variant<StaticFileHandler, AuthHandler<CloudProviders>...,
+                   OnRemoveHandler<CloudProviders>...,
+                   ProxyHandler<typename CloudProviderAccount::
+                                    template CloudProviderT<CloudProviders>,
+                                ThumbnailGenerator>...>
           handler;
     };
 

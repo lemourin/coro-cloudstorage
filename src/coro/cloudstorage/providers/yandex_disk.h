@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_YANDEX_DISK_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/fetch_json.h>
 #include <coro/http/http.h>
@@ -94,6 +95,7 @@ struct YandexDisk {
   class CloudProvider;
 
   static constexpr std::string_view kId = "yandex";
+  static inline const auto kIcon = util::assets_providers_yandex_png;
 };
 
 template <http::HttpClient Http, typename EventLoop>

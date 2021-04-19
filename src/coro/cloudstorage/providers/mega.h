@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_MEGA_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
@@ -74,6 +75,7 @@ struct Mega {
   class CloudProvider;
 
   static constexpr std::string_view kId = "mega";
+  static inline const auto kIcon = util::assets_providers_mega_png;
 };
 
 class Mega::CloudProvider

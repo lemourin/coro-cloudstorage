@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_GOOGLE_DRIVE_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_manager.h>
 #include <coro/cloudstorage/util/fetch_json.h>
@@ -130,6 +131,7 @@ struct GoogleDrive {
   };
 
   static constexpr std::string_view kId = "google";
+  static inline const auto kIcon = util::assets_providers_google_png;
 };
 
 template <typename AuthManager>
