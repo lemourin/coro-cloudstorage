@@ -1,8 +1,24 @@
 #include "file_utils.h"
 
+#include <cstdlib>
+
 namespace coro::cloudstorage::util {
 
+namespace {
+
 using ::coro::util::ThreadPool;
+
+#ifdef __ANDROID__
+std::string gAndroidTempDirectory;
+#endif
+
+}  // namespace
+
+#ifdef __ANDROID__
+void SetAndroidTempDirectory(std::string path) {
+  gAndroidTempDirectory = std::move(path);
+}
+#endif
 
 int64_t Ftell(std::FILE* file) {
 #ifdef WIN32
@@ -22,14 +38,26 @@ int Fseek(std::FILE* file, int64_t offset, int origin) {
 
 std::unique_ptr<std::FILE, FileDeleter> CreateTmpFile() {
   return std::unique_ptr<std::FILE, FileDeleter>([] {
-#ifdef _MSC_VER
+#if defined(__ANDROID__)
+    std::string name = gAndroidTempDirectory + "/tmp.XXXXXX";
+    int fno = mkstemp(name.data());
+    if (name.empty()) {
+      throw std::runtime_error("couldn't create tmpfile");
+    }
+    std::remove(name.c_str());
+    return fdopen(fno, "w+");
+#elif defined(_MSC_VER)
     std::FILE* file;
     if (tmpfile_s(&file) != 0) {
       throw std::runtime_error("couldn't create tmpfile");
     }
     return file;
 #else
-    return std::tmpfile();
+    std::FILE* file = std::tmpfile();
+    if (!file) {
+      throw std::runtime_error("couldn't create tmpfile");
+    }
+    return file;
 #endif
   }());
 }

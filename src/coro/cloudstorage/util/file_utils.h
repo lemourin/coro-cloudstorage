@@ -5,6 +5,7 @@
 #include <coro/util/thread_pool.h>
 
 #include <cstdio>
+#include <string>
 
 namespace coro::cloudstorage::util {
 
@@ -26,6 +27,10 @@ Generator<std::string> ReadFile(coro::util::ThreadPool* thread_pool,
                                 std::FILE* file);
 Task<std::string> ReadFile(coro::util::ThreadPool* thread_pool, std::FILE* file,
                            int64_t offset, size_t size);
+
+#ifdef __ANDROID__
+void SetAndroidTempDirectory(std::string path);
+#endif
 
 }  // namespace coro::cloudstorage::util
 
