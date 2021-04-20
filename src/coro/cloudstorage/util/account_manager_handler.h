@@ -94,9 +94,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
 
     template <typename CloudProvider>
-    void RemoveCloudProvider(std::string id) {
+    void RemoveCloudProvider(std::string_view username) {
+      auth_token_manager.template RemoveToken<CloudProvider>(username);
+      auto account_id = GetAccountId<CloudProvider>(username);
       for (auto it = std::begin(accounts); it != std::end(accounts);) {
-        if (it->GetId() == id) {
+        if (it->GetId() == account_id) {
           it->stop_source.request_stop();
           account_listener.OnDestroy(&*it);
           it = accounts.erase(it);
@@ -105,13 +107,12 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         }
       }
       for (auto it = std::begin(handlers); it != std::end(handlers);) {
-        if (it->id == id) {
+        if (it->id == account_id) {
           it = handlers.erase(it);
         } else {
           it++;
         }
       }
-      auth_token_manager.template RemoveToken<CloudProvider>(id);
     }
 
     struct StaticFileHandler {
@@ -198,11 +199,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     struct OnRemoveHandler {
       Task<Response> operator()(Request request,
                                 stdx::stop_token stop_token) const {
-        d->template RemoveCloudProvider<CloudProvider>(id);
+        d->template RemoveCloudProvider<CloudProvider>(username);
         co_return Response{.status = 302, .headers = {{"Location", "/"}}};
       }
       Data* d;
-      std::string id;
+      std::string username;
     };
 
     template <typename CloudProvider>
@@ -228,7 +229,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           Handler{.id = std::string(account_id),
                   .prefix = StrCat("/remove/", account_id),
                   .handler = OnRemoveHandler<CloudProvider>{
-                      .d = this, .id = std::string(account_id)}});
+                      .d = this, .username = std::string(username)}});
 
       accounts.emplace_back(
           CloudProviderAccount{.username = std::string(username),
