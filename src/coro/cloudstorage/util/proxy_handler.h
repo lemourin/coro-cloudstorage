@@ -104,13 +104,15 @@ class ProxyHandler {
            "bdZTRX0g5msnfQJsaftSlLeZ/QuKMWw2MfEbOslDyngzBOcFmpiNYCAvb+oLCA==\" "
            "crossorigin=\"anonymous\" />";
     page << "</head>";
-    page << "<body data-shaka-player-container style='background-color:black; "
-            "overflow: hidden; margin: auto; display: flex; justify-content: "
-            "center; align-items: center; height:100vh;'>";
+    page << "<body style='background-color:black; display: flex; margin: auto; "
+            "justify-content: center; align-items: center; width: 100vw; "
+            "height: 100vh'>";
+    page << "<div data-shaka-player-container>";
     page << "<video autoplay data-shaka-player id='video' "
-            "style='margin: auto; height: 100%; width: 100%;' src='"
+            "style='margin: auto; height: 100%; width: 100vw; max-height: "
+            "100vh;' src='"
          << http::EncodeUriPath(path) << "'></video>";
-    page << "</body></html>";
+    page << "</div></body></html>";
 
     co_yield page.str();
   }
