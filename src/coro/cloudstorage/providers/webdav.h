@@ -146,13 +146,13 @@ class WebDAV::CloudProvider
                     .method = http::Method::kPropfind,
                     .headers = {{"Depth", "0"}},
                     .body = R"(
-                                                <D:propfind xmlns:D="DAV:">
-                                                  <D:prop>
-                                                    <D:quota-available-bytes/>
-                                                    <D:quota-used-bytes/>
-                                                  </D:prop>
-                                                </D:propfind>
-                                              )"};
+                                 <D:propfind xmlns:D="DAV:">
+                                   <D:prop>
+                                     <D:quota-available-bytes/>
+                                     <D:quota-used-bytes/>
+                                   </D:prop>
+                                 </D:propfind>
+                            )"};
     auto response =
         co_await FetchXml(std::move(request), std::move(stop_token));
     auto stats = response.document_element()
