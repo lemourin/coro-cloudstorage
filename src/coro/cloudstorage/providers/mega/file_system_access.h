@@ -13,6 +13,15 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
  public:
   using FileContent = coro::cloudstorage::Mega::FileContent;
 
+  template <typename OnEventT>
+  explicit FileSystemAccess(OnEventT on_event)
+      : on_event_(std::move(on_event)) {}
+
+  FileSystemAccess(const FileSystemAccess&) = delete;
+  FileSystemAccess(FileSystemAccess&&) = delete;
+  FileSystemAccess& operator=(const FileSystemAccess&) = delete;
+  FileSystemAccess& operator=(FileSystemAccess&&) = delete;
+
   class NoopWaiter : public ::mega::Waiter {
    public:
     int wait() final { return 0; }
@@ -21,7 +30,8 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
 
   class FileAccess : public ::mega::FileAccess {
    public:
-    explicit FileAccess(::mega::Waiter* waiter) : ::mega::FileAccess(waiter) {}
+    explicit FileAccess(FileSystemAccess* fs)
+        : ::mega::FileAccess(&fs->waiter_), fs_(fs) {}
 
     void asyncsysopen(::mega::AsyncIOContext* context) final {
       std::string path(reinterpret_cast<const char*>(context->buffer),
@@ -67,6 +77,7 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
         memcpy(context->buffer, chunk.data(), chunk.size());
         if (context->userCallback) {
           context->userCallback(context->userData);
+          fs_->on_event_();
         }
       } catch (const std::exception&) {
         context->failed = true;
@@ -74,6 +85,7 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
         context->finished = true;
         if (context->userCallback) {
           context->userCallback(context->userData);
+          fs_->on_event_();
         }
       }
     }
@@ -122,6 +134,7 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
       Promise<void> semaphore;
     };
 
+    FileSystemAccess* fs_;
     FileContent* content_ = nullptr;
     int64_t last_read_ = 0;
     std::optional<Generator<std::string>::iterator> current_it_;
@@ -147,10 +160,11 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
   void path2local(std::string*, std::string*) const final {}
   size_t lastpartlocal(std::string*) const final { return 0; }
   ::mega::DirAccess* newdiraccess() final { return nullptr; }
-  ::mega::FileAccess* newfileaccess() final { return new FileAccess(&waiter_); }
+  ::mega::FileAccess* newfileaccess() final { return new FileAccess(this); }
 
  private:
   NoopWaiter waiter_;
+  std::function<void()> on_event_;
 };
 
 }  // namespace coro::cloudstorage::mega

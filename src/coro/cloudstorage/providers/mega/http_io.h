@@ -16,6 +16,11 @@ class HttpIO : public ::mega::HttpIO {
   HttpIO(FetchT fetch, OnEventT on_event)
       : fetch_(std::move(fetch)), on_event_(std::move(on_event)) {}
 
+  HttpIO(const HttpIO&) = delete;
+  HttpIO(HttpIO&&) = delete;
+  HttpIO& operator=(const HttpIO&) = delete;
+  HttpIO& operator=(HttpIO&&) = delete;
+
   void post(::mega::HttpReq* r, const char* data, unsigned size) final {
     Invoke(DoRequest(r, data, size));
   }

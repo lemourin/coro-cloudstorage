@@ -364,6 +364,7 @@ struct Mega::CloudProvider::Data {
         wait_(std::move(wait)),
         mega_app(this),
         http_io(std::move(fetch), [this] { OnEvent(); }),
+        fs([this] { OnEvent(); }),
         mega_client(&mega_app, /*waiter=*/nullptr, /*http_io=*/&http_io,
                     /*fs=*/&fs, /*db_access=*/nullptr,
                     /*gfx_proc=*/nullptr, auth_data.api_key.c_str(),
