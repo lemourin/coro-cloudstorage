@@ -16,35 +16,34 @@ namespace coro::cloudstorage {
 
 template <typename T>
 concept HasTimestamp = requires(T v) {
-  { v.timestamp }
-  ->stdx::convertible_to<std::optional<int64_t>>;
+  { v.timestamp } -> stdx::convertible_to<std::optional<int64_t>>;
 };
 
 template <typename T>
 concept HasSize = requires(T v) {
-  { v.size }
-  ->stdx::convertible_to<std::optional<int64_t>>;
+  { v.size } -> stdx::convertible_to<std::optional<int64_t>>;
 };
 
 template <typename T>
 concept HasMimeType = requires(T v) {
-  { v.mime_type }
-  ->stdx::convertible_to<std::optional<std::string_view>>;
+  { v.mime_type } -> stdx::convertible_to<std::optional<std::string_view>>;
 };
 
 template <typename T, typename CloudProvider>
 concept IsDirectory = requires(typename CloudProvider::Impl provider, T v,
                                std::optional<std::string> page_token,
                                stdx::stop_token stop_token) {
-  { provider.ListDirectoryPage(v, page_token, stop_token) }
-  ->Awaitable<typename CloudProvider::PageData>;
+  {
+    provider.ListDirectoryPage(v, page_token, stop_token)
+    } -> Awaitable<typename CloudProvider::PageData>;
 };
 
 template <typename T, typename CloudProvider>
 concept IsFile = requires(typename CloudProvider::Impl provider, T v,
                           http::Range range, stdx::stop_token stop_token) {
-  { provider.GetFileContent(v, range, stop_token) }
-  ->GeneratorLike<std::string_view>;
+  {
+    provider.GetFileContent(v, range, stop_token)
+    } -> GeneratorLike<std::string_view>;
 };
 
 template <typename Parent, typename CloudProvider>
@@ -54,8 +53,7 @@ concept CanCreateFile = requires(
     decltype(provider.CreateFile(parent, name, std::move(content),
                                  stop_token)) item_promise,
     typename decltype(item_promise)::type item) {
-  { item }
-  ->IsFile<CloudProvider>;
+  { item } -> IsFile<CloudProvider>;
 };
 
 template <typename T, typename CloudProvider>
@@ -64,15 +62,13 @@ concept CanRename = requires(
     stdx::stop_token stop_token,
     decltype(provider.RenameItem(v, new_name, stop_token)) item_promise,
     typename decltype(item_promise)::type item) {
-  { item }
-  ->stdx::convertible_to<typename CloudProvider::Item>;
+  { item } -> stdx::convertible_to<typename CloudProvider::Item>;
 };
 
 template <typename T, typename CloudProvider>
 concept CanRemove = requires(typename CloudProvider::Impl provider, T v,
                              stdx::stop_token stop_token) {
-  { provider.RemoveItem(v, stop_token) }
-  ->Awaitable<void>;
+  { provider.RemoveItem(v, stop_token) } -> Awaitable<void>;
 };
 
 template <typename Source, typename Destination, typename CloudProvider>
@@ -81,8 +77,7 @@ concept CanMove = requires(typename CloudProvider::Impl provider, Source source,
                            decltype(provider.MoveItem(source, destination,
                                                       stop_token)) item_promise,
                            typename decltype(item_promise)::type item) {
-  { item }
-  ->stdx::convertible_to<typename CloudProvider::Item>;
+  { item } -> stdx::convertible_to<typename CloudProvider::Item>;
 };
 
 template <typename Parent, typename CloudProvider>
@@ -91,8 +86,7 @@ concept CanCreateDirectory = requires(
     stdx::stop_token stop_token,
     decltype(provider.CreateDirectory(v, name, stop_token)) item_promise,
     typename decltype(item_promise)::type item) {
-  { item }
-  ->stdx::convertible_to<typename CloudProvider::Item>;
+  { item } -> stdx::convertible_to<typename CloudProvider::Item>;
 };
 
 template <typename Item, typename CloudProvider>
@@ -101,8 +95,9 @@ concept HasThumbnail = requires(
     stdx::stop_token stop_token,
     decltype(provider.GetItemThumbnail(v, range, stop_token)) thumbnail_promise,
     typename decltype(thumbnail_promise)::type thumbnail) {
-  { std::declval<decltype(thumbnail)>() }
-  ->stdx::convertible_to<typename CloudProvider::Type::Thumbnail>;
+  {
+    std::declval<decltype(thumbnail)>()
+    } -> stdx::convertible_to<typename CloudProvider::Type::Thumbnail>;
 };
 
 enum class FileType { kUnknown, kVideo, kAudio, kImage };
@@ -185,6 +180,7 @@ class CloudProvider {
 
  private:
   auto Get() { return static_cast<Impl*>(this); }
+  auto Get() const { return static_cast<const Impl*>(this); }
 
   template <typename Directory>
   Task<Item> GetItemByPath(Directory current_directory, std::string path,

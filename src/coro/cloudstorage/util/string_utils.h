@@ -1,6 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_UTIL_STRING_UTILS_H
 #define CORO_CLOUDSTORAGE_UTIL_STRING_UTILS_H
 
+#include <sstream>
 #include <string>
 #include <string_view>
 

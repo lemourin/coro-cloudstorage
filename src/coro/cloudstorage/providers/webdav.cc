@@ -18,7 +18,9 @@ int64_t ParseTime(std::string str) {
   }
 }
 
-Generator<std::string> GenerateLoginPage() { co_yield std::string(util::kAssetsHtmlWebdavLoginHtml); }
+Generator<std::string> GenerateLoginPage() {
+  co_yield std::string(util::kAssetsHtmlWebdavLoginHtml);
+}
 
 }  // namespace
 
@@ -82,7 +84,7 @@ WebDAVAuthHandler::operator()(http::Request<> request, stdx::stop_token) const {
     }
     co_return auth_token;
   } else {
-    co_return http::Response<>{.status = 501, .body = GenerateLoginPage()};
+    co_return http::Response<>{.status = 200, .body = GenerateLoginPage()};
   }
 }
 

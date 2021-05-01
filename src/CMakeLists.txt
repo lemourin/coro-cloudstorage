@@ -32,6 +32,7 @@ set(CORO_CLOUDSTORAGE_HEADERS
     coro/cloudstorage/providers/yandex_disk.h
     coro/cloudstorage/providers/pcloud.h
     coro/cloudstorage/providers/webdav.h
+    coro/cloudstorage/providers/amazon_s3.h
 )
 set(CORO_CLOUDSTORAGE_SOURCES
     coro/cloudstorage/util/webdav_utils.cc
@@ -43,6 +44,7 @@ set(CORO_CLOUDSTORAGE_SOURCES
     coro/cloudstorage/util/file_utils.cc
     coro/cloudstorage/providers/mega.cc
     coro/cloudstorage/providers/webdav.cc
+    coro/cloudstorage/providers/amazon_s3.cc
 )
 set(CORO_CLOUDSTORAGE_ASSETS
     ../assets/icons/folder.svg
@@ -53,6 +55,7 @@ set(CORO_CLOUDSTORAGE_ASSETS
     ../assets/icons/user-trash.svg
     ../assets/html/mega_login.html
     ../assets/html/webdav_login.html
+    ../assets/html/amazons3_login.html
     ../assets/providers/box.png
     ../assets/providers/yandex.png
     ../assets/providers/dropbox.png
@@ -61,6 +64,7 @@ set(CORO_CLOUDSTORAGE_ASSETS
     ../assets/providers/webdav.png
     ../assets/providers/google.png
     ../assets/providers/mega.png
+    ../assets/providers/amazons3.png
     ../assets/styles/default.css
 )
 
@@ -81,6 +85,7 @@ target_link_libraries(coro-cloudstorage PUBLIC
     avformat
     swscale
     avfilter
+    cryptopp
 )
 
 include(../cmake/embed_resource.cmake)
