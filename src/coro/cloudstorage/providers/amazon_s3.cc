@@ -6,6 +6,7 @@
 #include <cryptopp/hmac.h>
 #include <cryptopp/sha.h>
 
+#include <iomanip>
 #include <regex>
 
 namespace coro::cloudstorage {

@@ -38,6 +38,7 @@ set(CORO_CLOUDSTORAGE_SOURCES
     coro/cloudstorage/util/webdav_utils.cc
     coro/cloudstorage/util/auth_token_manager.cc
     coro/cloudstorage/util/generator_utils.cc
+    coro/cloudstorage/util/serialize_utils.cc
     coro/cloudstorage/util/thumbnail_generator.cc
     coro/cloudstorage/util/muxer.cc
     coro/cloudstorage/util/ffmpeg_utils.cc

@@ -100,6 +100,12 @@ concept HasThumbnail = requires(
     } -> stdx::convertible_to<typename CloudProvider::Type::Thumbnail>;
 };
 
+template <typename T>
+concept HasUsageData = requires(T v) {
+  { v.space_used } -> stdx::convertible_to<std::optional<int64_t>>;
+  { v.space_total } -> stdx::convertible_to<std::optional<int64_t>>;
+};
+
 enum class FileType { kUnknown, kVideo, kAudio, kImage };
 
 template <typename CloudProviderT, typename ImplT = CloudProviderT>

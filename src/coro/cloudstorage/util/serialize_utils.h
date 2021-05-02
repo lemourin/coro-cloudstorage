@@ -5,19 +5,18 @@
 #include <coro/stdx/concepts.h>
 
 #include <nlohmann/json.hpp>
+#include <optional>
 
 namespace coro::cloudstorage::util {
 
 template <typename T>
 concept HasEndpoint = requires(T v) {
-  { v.endpoint }
-  ->stdx::convertible_to<std::string>;
+  { v.endpoint } -> stdx::convertible_to<std::string>;
 };
 
 template <typename T>
 concept HasRefreshToken = requires(T v) {
-  { v.refresh_token }
-  ->stdx::convertible_to<std::string>;
+  { v.refresh_token } -> stdx::convertible_to<std::string>;
 };
 
 template <typename AuthToken>
@@ -44,6 +43,9 @@ AuthToken ToAuthToken(const nlohmann::json& json) {
   }
   return auth_token;
 }
+
+std::string TimeStampToString(std::optional<int64_t> size);
+std::string SizeToString(std::optional<int64_t> size);
 
 }  // namespace coro::cloudstorage::util
 

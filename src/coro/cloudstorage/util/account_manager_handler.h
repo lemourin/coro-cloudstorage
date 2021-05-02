@@ -11,6 +11,7 @@
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
 #include <coro/util/type_list.h>
+#include <coro/when_all.h>
 
 #include <list>
 
@@ -351,7 +352,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
             .headers = {{"Content-Type", "text/xml"}},
             .body = CreateBody(GetMultiStatusResponse(responses))};
       } else {
-        co_return Response{.status = 200, .body = GetHomePage()};
+        co_return Response{.status = 200,
+                           .body = GetHomePage(std::move(stop_token))};
       }
     } else {
       co_return Response{.status = 302, .headers = {{"Location", "/"}}};
@@ -375,7 +377,41 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     stream << "</div>";
   }
 
-  Generator<std::string> GetHomePage() {
+  struct VolumeData {
+    std::optional<int64_t> space_used;
+    std::optional<int64_t> space_total;
+  };
+
+  template <typename CloudProvider>
+  static Task<VolumeData> GetVolumeData(CloudProvider* provider,
+                                        stdx::stop_token stop_token) {
+    using CloudProviderT = typename CloudProvider::Type;
+    if constexpr (HasUsageData<typename CloudProviderT::GeneralData>) {
+      try {
+        auto data = co_await provider->GetGeneralData(stop_token);
+        co_return VolumeData{.space_used = data.space_used,
+                             .space_total = data.space_total};
+      } catch (...) {
+        co_return VolumeData{};
+      }
+    } else {
+      co_return VolumeData{};
+    }
+  }
+
+  Task<std::vector<VolumeData>> GetVolumeData(stdx::stop_token stop_token) {
+    std::vector<Task<VolumeData>> tasks;
+    for (auto& account : d_->accounts) {
+      std::visit(
+          [&](auto& provider) {
+            tasks.emplace_back(GetVolumeData(&provider, stop_token));
+          },
+          account.provider);
+    }
+    co_return co_await WhenAll(std::move(tasks));
+  }
+
+  Generator<std::string> GetHomePage(stdx::stop_token stop_token) {
     std::stringstream result;
     result << "<html><meta name='viewport' content='width=device-width, "
               "initial-scale=1'>"
@@ -390,7 +426,10 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     result << "</div></td></tr></table>"
               "<h3 class='table-header'>ACCOUNT LIST</h3>"
               "<table class='content-table'>";
+    auto volume_data = co_await GetVolumeData(std::move(stop_token));
+    int index = 0;
     for (const auto& account : d_->accounts) {
+      const auto& current_volume_data = volume_data[index++];
       result << "<tr>";
       std::visit(
           [&](const auto& provider) {
@@ -400,9 +439,26 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
                    << ".png'></td>";
           },
           account.provider);
-      result << "<td><a href='/" << http::EncodeUri(account.GetId()) << "/'>"
-             << account.username << "</a></td>";
-      result << "<td class='trash-container'>"
+      result << "<td>"
+                "<table>"
+                "<tr>"
+                "<td>"
+                "<a class='title' href='/"
+             << http::EncodeUri(account.GetId()) << "/'>" << account.username
+             << "</a>"
+                "</td>"
+                "</tr>"
+                "<tr><td><small class='title'>";
+      if (current_volume_data.space_used) {
+        result << SizeToString(*current_volume_data.space_used);
+        if (current_volume_data.space_total) {
+          result << " / " << SizeToString(*current_volume_data.space_total);
+        }
+      }
+      result << "</small></tr></td>"
+                "</table>"
+                "</td>"
+                "<td class='trash-container'>"
                 "<form action='/remove/"
              << http::EncodeUri(account.GetId())
              << "' method='POST' style='margin: auto;'>"
