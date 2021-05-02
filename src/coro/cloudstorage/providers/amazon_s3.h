@@ -194,10 +194,11 @@ class AmazonS3::CloudProvider
 
   Task<Directory> CreateDirectory(Directory parent, std::string name,
                                   stdx::stop_token stop_token) const {
-    auto id = util::StrCat(http::EncodeUriPath(parent.id), name, "/");
-    auto request = Request{.url = GetEndpoint(util::StrCat("/", id)),
-                           .method = http::Method::kPut,
-                           .headers = {{"Content-Length", "0"}}};
+    auto id = util::StrCat(parent.id, name, "/");
+    auto request =
+        Request{.url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(id))),
+                .method = http::Method::kPut,
+                .headers = {{"Content-Length", "0"}}};
     co_await Fetch(std::move(request), std::move(stop_token));
     Directory new_directory;
     new_directory.id = std::move(id);
