@@ -186,10 +186,11 @@ std::string YouTube::GenerateDashManifest(std::string_view path,
         << "/>";
       r << "</SegmentBase>";
       r << "<BaseURL>"
-        << http::EncodeUriPath(
-               std::string(path) +
-               ToStream(StreamDirectory{{.name = std::string(name)}}, stream)
-                   .name)
+        << util::StrCat(
+               path, http::EncodeUri(
+                         ToStream(StreamDirectory{{.name = std::string(name)}},
+                                  stream)
+                             .name))
         << "</BaseURL>";
       r << "</Representation>";
     }
