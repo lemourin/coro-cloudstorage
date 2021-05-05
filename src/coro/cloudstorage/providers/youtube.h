@@ -6,6 +6,7 @@
 #include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/avio_context.h>
 #include <coro/cloudstorage/util/muxer.h>
+#include <coro/cloudstorage/util/string_utils.h>
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
 #include <coro/task.h>
@@ -201,7 +202,7 @@ struct YouTube::CloudProvider
           stream.timestamp =
               http::ParseTime(std::string(item["snippet"]["publishedAt"]));
           stream.name = std::string(item["snippet"]["title"]) + ".webm";
-          stream.id = directory.id + stream.name;
+          stream.id = directory.id + http::EncodeUri(stream.name);
           if (item["snippet"]["thumbnails"].contains("default")) {
             stream.thumbnail_url =
                 item["snippet"]["thumbnails"]["default"]["url"];
@@ -215,7 +216,7 @@ struct YouTube::CloudProvider
           streams.timestamp =
               http::ParseTime(std::string(item["snippet"]["publishedAt"]));
           streams.name = std::string(item["snippet"]["title"]);
-          streams.id = directory.id + streams.name + "/";
+          streams.id = directory.id + http::EncodeUri(streams.name) + "/";
           result.items.emplace_back(std::move(streams));
           break;
         }
@@ -225,7 +226,7 @@ struct YouTube::CloudProvider
           file.timestamp =
               http::ParseTime(std::string(item["snippet"]["publishedAt"]));
           file.name = std::string(item["snippet"]["title"]) + ".mpd";
-          file.id = directory.id + file.name;
+          file.id = directory.id + http::EncodeUri(file.name);
           if (item["snippet"]["thumbnails"].contains("default")) {
             file.thumbnail_url =
                 item["snippet"]["thumbnails"]["default"]["url"];
@@ -311,9 +312,9 @@ struct YouTube::CloudProvider
     auto strip_extension = [](std::string_view str) {
       return std::string(str.substr(0, str.size() - 4));
     };
-    std::string dash_manifest =
-        GenerateDashManifest("../streams" + strip_extension(file.id) + "/",
-                             strip_extension(file.name), data.adaptive_formats);
+    std::string dash_manifest = GenerateDashManifest(
+        util::StrCat("../streams", strip_extension(file.id), "/"),
+        strip_extension(file.name), data.adaptive_formats);
     if ((range.end && range.end >= kDashManifestSize) ||
         range.start >= kDashManifestSize) {
       throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
@@ -420,7 +421,7 @@ struct YouTube::CloudProvider
     if (!url) {
       throw CloudException(CloudException::Type::kNotFound);
     }
-    co_return* url;
+    co_return *url;
   }
 
   struct GetStreamData {
