@@ -38,12 +38,10 @@ std::string GetMultiStatusResponse(std::span<const std::string> responses) {
 
 std::string GetElement(const ElementData &data) {
   std::stringstream stream;
-  stream << "<d:response><d:href>"
-         << http::EncodeUriPath(data.path + (data.is_directory &&
-                                                     !data.path.empty() &&
-                                                     data.path.back() != '/'
-                                                 ? "/"
-                                                 : ""))
+  stream << "<d:response><d:href>" << data.path
+         << (data.is_directory && !data.path.empty() && data.path.back() != '/'
+                 ? "/"
+                 : "")
          << "</d:href>"
          << "<d:propstat><d:status>HTTP/1.1 200 OK</d:status>"
          << "<d:prop>"

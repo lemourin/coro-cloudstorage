@@ -26,11 +26,7 @@ class ProxyHandler {
 
   Task<Response> operator()(Request request, stdx::stop_token stop_token) {
     auto uri = http::ParseUri(request.url);
-    std::string path = GetEffectivePath(
-        http::DecodeUri(uri.path.value_or("")).substr(path_prefix_.length()));
-    if (path.empty() || path.front() != '/') {
-      path = '/' + path;
-    }
+    auto path = GetEffectivePath(uri.path.value());
     try {
       if (request.method == http::Method::kGet && uri.query) {
         auto query = http::ParseQuery(*uri.query);
@@ -40,35 +36,43 @@ class ProxyHandler {
               [&](const auto& d) {
                 return GetItemThumbnail(std::move(request), d, stop_token);
               },
-              co_await provider_->GetItemByPath(std::move(path), stop_token));
+              co_await provider_->GetItemByPathComponents(path, stop_token));
         }
         if (auto it = query.find("dash_player");
             it != query.end() && it->second == "true") {
           co_return Response{
               .status = 200,
               .headers = {{"Content-Type", "text/html; charset=UTF-8"}},
-              .body = GetDashPlayer(path_prefix_ + path)};
+              .body = GetDashPlayer(uri.path.value())};
         }
       }
       if (request.method == http::Method::kMkcol) {
-        auto create_directory =
-            stdx::BindFront(CreateDirectoryF{}, provider_, path, stop_token);
-        co_return co_await std::visit(std::move(create_directory),
-                                      co_await provider_->GetItemByPath(
-                                          GetDirectoryPath(path), stop_token));
+        if (path.empty()) {
+          throw CloudException("invalid path");
+        }
+        auto create_directory = stdx::BindFront(CreateDirectoryF{}, provider_,
+                                                path.back(), stop_token);
+        co_return co_await std::visit(
+            std::move(create_directory),
+            co_await provider_->GetItemByPathComponents(GetDirectoryPath(path),
+                                                        stop_token));
       }
       if (request.method == http::Method::kPut) {
-        auto create_file = stdx::BindFront(CreateFileF{}, provider_, path,
-                                           std::move(request), stop_token);
-        co_return co_await std::visit(std::move(create_file),
-                                      co_await provider_->GetItemByPath(
-                                          GetDirectoryPath(path), stop_token));
+        if (path.empty()) {
+          throw CloudException("invalid path");
+        }
+        auto create_file =
+            stdx::BindFront(CreateFileF{}, provider_, path.back(),
+                            std::move(request), stop_token);
+        co_return co_await std::visit(
+            std::move(create_file), co_await provider_->GetItemByPathComponents(
+                                        GetDirectoryPath(path), stop_token));
       }
       co_return co_await std::visit(
           [&](const auto& d) {
             return HandleExistingItem(std::move(request), path, d, stop_token);
           },
-          co_await provider_->GetItemByPath(path, stop_token));
+          co_await provider_->GetItemByPathComponents(path, stop_token));
     } catch (const CloudException& e) {
       switch (e.type()) {
         case CloudException::Type::kNotFound:
@@ -112,7 +116,7 @@ class ProxyHandler {
             "max-height: 100%;'>";
     page << "<video autoplay data-shaka-player id='video' "
             "style='max-height: 100%; width: 100vw;' src='"
-         << http::EncodeUriPath(path) << "'></video>";
+         << path << "'></video>";
     page << "</div></body></html>";
 
     co_yield page.str();
@@ -184,13 +188,23 @@ class ProxyHandler {
     co_return co_await GetIcon(d, std::move(stop_token));
   }
 
+  std::string GetPath(const Request& request) const {
+    return http::ParseUri(request.url).path.value();
+  }
+
+  template <typename T>
+  static bool Equal(std::span<const T> s1, std::span<const T> s2) {
+    return std::equal(s1.begin(), s1.end(), s2.begin());
+  }
+
   template <typename Item>
-  Task<Response> HandleExistingItem(Request request, std::string path, Item d,
+  Task<Response> HandleExistingItem(Request request,
+                                    std::span<const std::string> path, Item d,
                                     stdx::stop_token stop_token) {
     if (request.method == http::Method::kProppatch) {
       co_return Response{.status = 207,
                          .headers = {{"Content-Type", "text/xml"}},
-                         .body = GetWebDavItemResponse(path_prefix_ + path, d)};
+                         .body = GetWebDavItemResponse(GetPath(request), d)};
     }
     if (request.method == http::Method::kDelete) {
       if constexpr (CanRemove<Item, CloudProvider>) {
@@ -201,20 +215,22 @@ class ProxyHandler {
       }
     }
     if (request.method == http::Method::kMove) {
-      auto destination_header =
-          ::coro::http::GetHeader(request.headers, "Destination");
+      auto destination_header = http::GetHeader(request.headers, "Destination");
       if (!destination_header) {
         co_return Response{.status = 400};
       }
-      auto destination = GetEffectivePath(
-          http::DecodeUri(http::ParseUri(*destination_header).path.value_or(""))
-              .substr(path_prefix_.length()));
+      auto destination =
+          GetEffectivePath(http::ParseUri(*destination_header).path.value());
+      if (destination.empty()) {
+        throw CloudException("invalid destination");
+      }
       auto destination_path = GetDirectoryPath(destination);
-      auto destination_name = GetFileName(destination);
+      auto destination_name = destination.back();
       typename CloudProvider::Item new_item = d;
-      if (GetDirectoryPath(path) != destination_path) {
+      if (!Equal(GetDirectoryPath(path), destination_path)) {
         auto destination_directory =
-            co_await provider_->GetItemByPath(destination_path, stop_token);
+            co_await provider_->GetItemByPathComponents(destination_path,
+                                                        stop_token);
         auto move_item = stdx::BindFront(MoveItemF{}, provider_, d, stop_token);
         auto item =
             co_await std::visit(std::move(move_item), destination_directory);
@@ -224,7 +240,10 @@ class ProxyHandler {
           new_item = std::move(*item);
         }
       }
-      if (GetFileName(path) != destination_name) {
+      if (path.empty()) {
+        throw CloudException("invalid path");
+      }
+      if (path.back() != destination_name) {
         auto rename_item = stdx::BindFront(
             RenameItemF{}, provider_, std::move(destination_name), stop_token);
         auto item = co_await std::visit(std::move(rename_item), new_item);
@@ -237,8 +256,9 @@ class ProxyHandler {
       co_return Response{.status = 201};
     }
     if constexpr (IsDirectory<Item, CloudProvider>) {
-      if (!path.empty() && path.back() != '/') {
-        path += '/';
+      std::string directory_path = GetPath(request);
+      if (directory_path.empty() || directory_path.back() != '/') {
+        directory_path += '/';
       }
       if (request.method == http::Method::kPropfind) {
         co_return Response{
@@ -246,21 +266,20 @@ class ProxyHandler {
             .headers = {{"Content-Type", "text/xml"}},
             .body = GetWebDavResponse(
                 d, provider_->ListDirectory(d, std::move(stop_token)),
-                std::move(request), path_prefix_ + path)};
+                std::move(request), directory_path)};
       } else {
         co_return Response{
             .status = 200,
             .headers = {{"Content-Type", "text/html"}},
             .body = GetDirectoryContent(
                 provider_->ListDirectory(d, std::move(stop_token)),
-                path_prefix_ + path)};
+                directory_path)};
       }
     } else {
       if (request.method == http::Method::kPropfind) {
-        co_return Response{
-            .status = 207,
-            .headers = {{"Content-Type", "text/html"}},
-            .body = GetWebDavItemResponse(path_prefix_ + path, d)};
+        co_return Response{.status = 207,
+                           .headers = {{"Content-Type", "text/html"}},
+                           .body = GetWebDavItemResponse(GetPath(request), d)};
       }
       std::vector<std::pair<std::string, std::string>> headers = {
           {"Content-Type", CloudProvider::GetMimeType(d)},
@@ -328,7 +347,7 @@ class ProxyHandler {
               },
               item);
           ElementData element_data(
-              {.path = path + name,
+              {.path = util::StrCat(path, http::EncodeUri(name)),
                .name = name,
                .is_directory = std::holds_alternative<Directory>(item),
                .timestamp = timestamp});
@@ -348,13 +367,12 @@ class ProxyHandler {
   }
 
   bool IsRoot(std::string_view path) const {
-    return path.length() - path_prefix_.length() <= 1;
+    return GetEffectivePath(path).empty();
   }
 
   template <typename Item>
   std::string GetItemEntry(const Item& item, std::string_view path) const {
-    std::string file_link =
-        coro::http::EncodeUriPath(std::string(path) + item.name);
+    std::string file_link = util::StrCat(path, http::EncodeUri(item.name));
     std::stringstream row;
     row << "<tr>";
     row << "<td class='thumbnail-container'><image class='thumbnail' src='"
@@ -425,59 +443,50 @@ class ProxyHandler {
 
   static std::string GetDirectoryPath(std::string path) {
     if (path.empty()) {
-      return "";
-    }
-    path.pop_back();
-    auto it = path.find_last_of('/');
-    if (it == std::string_view::npos) {
-      return "";
-    }
-    return std::string(path.begin(), path.begin() + it + 1);
-  }
-
-  static std::string GetFileName(std::string path) {
-    if (path.empty()) {
-      return "";
+      throw CloudException("invalid path");
     }
     if (path.back() == '/') {
       path.pop_back();
     }
     auto it = path.find_last_of('/');
     if (it == std::string_view::npos) {
-      return "";
+      throw CloudException("root has no parent");
     }
-    return std::string(path.begin() + it + 1, path.end());
+    return path.substr(0, it + 1);
   }
 
-  static std::string GetEffectivePath(std::string_view path) {
+  static std::span<const std::string> GetDirectoryPath(
+      std::span<const std::string> path) {
+    if (path.size() <= 1) {
+      throw CloudException("root has no parent");
+    }
+    return path.subspan(0, path.size() - 2);
+  }
+
+  static std::vector<std::string> GetEffectivePath(std::string_view uri_path) {
     std::vector<std::string> components;
-    std::string current;
-    size_t it = 0;
-    while (it < path.size()) {
-      if (path[it] == '/') {
-        if (current == "..") {
-          if (components.empty()) {
-            throw std::invalid_argument("invalid path");
-          } else {
-            components.pop_back();
-          }
-        } else if (current != "." && current != "") {
-          components.emplace_back(std::move(current));
+    for (std::string_view component :
+         util::SplitString(std::string(uri_path), '/')) {
+      if (component.empty() || component == ".") {
+        continue;
+      } else if (component == "..") {
+        if (components.empty()) {
+          throw CloudException("invalid path");
+        } else {
+          components.pop_back();
         }
-        current.clear();
       } else {
-        current += path[it];
+        components.emplace_back(component);
       }
-      it++;
     }
-    std::string result;
-    for (std::string& component : components) {
-      result += "/" + std::move(component);
+    for (auto& d : components) {
+      d = http::DecodeUri(d);
     }
-    if (!current.empty()) {
-      result += "/" + std::move(current);
+    if (components.empty()) {
+      throw CloudException("invalid path");
     }
-    return result;
+    components.erase(components.begin());
+    return components;
   }
 
   struct RenameItemF {
@@ -510,11 +519,11 @@ class ProxyHandler {
 
   struct CreateDirectoryF {
     template <typename Item>
-    Task<Response> operator()(CloudProvider* provider, std::string path,
+    Task<Response> operator()(CloudProvider* provider, std::string name,
                               stdx::stop_token stop_token, const Item& item) {
       if constexpr (IsDirectory<Item, CloudProvider> &&
                     CanCreateDirectory<Item, CloudProvider>) {
-        co_await provider->CreateDirectory(item, GetFileName(std::move(path)),
+        co_await provider->CreateDirectory(item, std::move(name),
                                            std::move(stop_token));
         co_return Response{.status = 201};
       } else {
@@ -525,12 +534,12 @@ class ProxyHandler {
 
   struct CreateFileF {
     template <typename Item>
-    Task<Response> operator()(CloudProvider* provider, std::string path,
+    Task<Response> operator()(CloudProvider* provider, std::string_view name,
                               Request request, stdx::stop_token stop_token,
                               const Item& item) {
       if constexpr (IsDirectory<Item, CloudProvider> &&
                     CanCreateFile<Item, CloudProvider>) {
-        co_await provider->CreateFile(item, GetFileName(std::move(path)),
+        co_await provider->CreateFile(item, name,
                                       ToFileContent(std::move(request)),
                                       std::move(stop_token));
         co_return Response{.status = 201};

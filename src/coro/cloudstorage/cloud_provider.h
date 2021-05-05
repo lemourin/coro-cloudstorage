@@ -3,6 +3,7 @@
 
 #include <coro/cloudstorage/util/auth_manager.h>
 #include <coro/cloudstorage/util/generator_utils.h>
+#include <coro/cloudstorage/util/string_utils.h>
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
 #include <coro/promise.h>
@@ -11,6 +12,8 @@
 #include <coro/stdx/stop_source.h>
 #include <coro/util/raii_utils.h>
 #include <coro/util/stop_token_or.h>
+
+#include <span>
 
 namespace coro::cloudstorage {
 
@@ -122,6 +125,12 @@ class CloudProvider {
                                             std::move(path), stop_token);
   }
 
+  Task<Item> GetItemByPathComponents(std::span<const std::string> components,
+                                     stdx::stop_token stop_token) {
+    co_return co_await Get()->GetItemByPathComponents(
+        co_await Get()->GetRoot(stop_token), components, stop_token);
+  }
+
   template <typename Directory>
   Generator<PageData> ListDirectory(Directory directory,
                                     stdx::stop_token stop_token) {
@@ -189,30 +198,23 @@ class CloudProvider {
   auto Get() const { return static_cast<const Impl*>(this); }
 
   template <typename Directory>
-  Task<Item> GetItemByPath(Directory current_directory, std::string path,
-                           stdx::stop_token stop_token) {
-    if (path.empty() || path == "/") {
+  Task<Item> GetItemByPathComponents(Directory current_directory,
+                                     std::span<const std::string> components,
+                                     stdx::stop_token stop_token) {
+    if (components.empty()) {
       co_return current_directory;
     }
-    auto delimiter_index = path.find_first_of('/', 1);
-    std::string path_component(path.begin() + 1,
-                               delimiter_index == std::string::npos
-                                   ? path.end()
-                                   : path.begin() + delimiter_index);
-    std::string rest_component(delimiter_index == std::string::npos
-                                   ? path.end()
-                                   : path.begin() + delimiter_index,
-                               path.end());
     FOR_CO_AWAIT(auto& page, ListDirectory(current_directory, stop_token)) {
       for (auto& item : page.items) {
         auto r = std::visit(
             [&](auto& d) -> std::variant<std::monostate, Task<Item>, Item> {
               if constexpr (IsDirectory<decltype(d), CloudProvider>) {
-                if (d.name == path_component) {
-                  return GetItemByPath(d, rest_component, stop_token);
+                if (d.name == components.front()) {
+                  return GetItemByPathComponents(
+                      std::move(d), components.subspan(1), stop_token);
                 }
               } else {
-                if (d.name == path_component) {
+                if (d.name == components.front()) {
                   return std::move(d);
                 }
               }
@@ -226,8 +228,15 @@ class CloudProvider {
         }
       }
     }
-
     throw CloudException(CloudException::Type::kNotFound);
+  }
+
+  template <typename Directory>
+  Task<Item> GetItemByPath(Directory current_directory, std::string_view path,
+                           stdx::stop_token stop_token) {
+    co_return co_await GetItemByPathComponents(
+        std::move(current_directory), util::SplitString(std::string(path), '/'),
+        std::move(stop_token));
   }
 };
 
