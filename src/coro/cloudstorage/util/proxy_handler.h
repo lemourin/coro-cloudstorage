@@ -323,6 +323,8 @@ class ProxyHandler {
     if constexpr (IsFile<Item, CloudProvider>) {
       current_element_data.mime_type = CloudProvider::GetMimeType(item);
       current_element_data.size = CloudProvider::GetSize(item);
+    } else {
+      current_element_data.is_directory = true;
     }
     co_yield GetElement(current_element_data);
     co_yield "</d:multistatus>";
@@ -337,7 +339,7 @@ class ProxyHandler {
     ElementData current_element_data{
         .path = path, .name = directory.name, .is_directory = true};
     co_yield GetElement(current_element_data);
-    if (::coro::http::GetHeader(request.headers, "Depth") == "1") {
+    if (coro::http::GetHeader(request.headers, "Depth") == "1") {
       FOR_CO_AWAIT(const auto& page, page_data) {
         for (const auto& item : page.items) {
           auto name = std::visit([](auto item) { return item.name; }, item);
@@ -349,7 +351,12 @@ class ProxyHandler {
           ElementData element_data(
               {.path = util::StrCat(path, http::EncodeUri(name)),
                .name = name,
-               .is_directory = std::holds_alternative<Directory>(item),
+               .is_directory = std::visit(
+                   [](const auto& d) {
+                     return IsDirectory<std::remove_cvref_t<decltype(d)>,
+                                        CloudProvider>;
+                   },
+                   item),
                .timestamp = timestamp});
           std::visit(
               [&](const auto& item) {
