@@ -22,6 +22,8 @@ struct YouTube {
   using json = nlohmann::json;
   using Request = http::Request<>;
 
+  static inline constexpr int32_t kDashManifestSize = 16192;
+
   static json GetConfig(std::string_view page_data);
   static std::string GetPlayerUrl(std::string_view page_data);
   static std::string GenerateDashManifest(std::string_view path,
@@ -93,7 +95,7 @@ struct YouTube {
 
   struct DashManifest : ItemData {
     static constexpr std::string_view mime_type = "application/dash+xml";
-    static constexpr int64_t size = 8096;
+    static constexpr int64_t size = kDashManifestSize;
     std::string video_id;
     int64_t timestamp;
     std::optional<std::string> thumbnail_url;
@@ -339,7 +341,6 @@ struct YouTube::CloudProvider
  private:
   static constexpr std::string_view kEndpoint =
       "https://www.googleapis.com/youtube/v3";
-  static constexpr int32_t kDashManifestSize = 8096;
 
   static std::string GetEndpoint(std::string_view path) {
     return std::string(kEndpoint) + std::string(path);
