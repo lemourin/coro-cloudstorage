@@ -135,7 +135,13 @@ std::string YouTube::GenerateDashManifest(std::string_view path,
     grouped[mimetype.substr(0, mimetype.find(';'))].emplace_back(d);
   }
   for (const auto& [mimetype, streams] : grouped) {
-    if (mimetype == "video/mp4" || mimetype == "audio/mp4") {
+    int stream_count = 0;
+    for (const auto& stream : streams) {
+      if (stream.contains("indexRange") && stream.contains("initRange")) {
+        stream_count++;
+      }
+    }
+    if (stream_count == 0) {
       continue;
     }
     std::string type = mimetype.substr(0, mimetype.find('/'));
@@ -150,6 +156,9 @@ std::string YouTube::GenerateDashManifest(std::string_view path,
       << ">";
 
     for (const auto& stream : streams) {
+      if (!stream.contains("indexRange") || !stream.contains("initRange")) {
+        continue;
+      }
       std::string full_mimetype = stream["mimeType"];
       std::string codecs = full_mimetype.substr(full_mimetype.find(';') + 2);
       std::string quality_label =
