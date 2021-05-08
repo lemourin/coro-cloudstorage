@@ -6,6 +6,7 @@
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http_parse.h>
 #include <coro/util/lru_cache.h>
+#include <fmt/format.h>
 
 #include <iomanip>
 #include <sstream>
@@ -91,35 +92,8 @@ class ProxyHandler {
   }
 
   static Generator<std::string> GetDashPlayer(std::string path) {
-    std::stringstream page;
-    page << "<!DOCTYPE html><html style='height: 100%;'><head><meta "
-            "charset='UTF-8'>";
-    page << "<meta name='viewport' content='width=device-width'>";
-    page << "<script "
-            "src=\"https://cdnjs.cloudflare.com/ajax/libs/shaka-player/3.0.6/"
-            "shaka-player.ui.min.js\" "
-            "integrity=\"sha512-"
-            "2oRLIguQ4Pb7pTcl65mpc0CDyZYtyhNUUBlIXSzwIMfPdeGuyekr0TpBwjTpFKyuS3"
-            "QNWnQnlaFzXj7VCamGSA==\" crossorigin=\"anonymous\"></script>";
-    page
-        << "<link rel=\"stylesheet\" "
-           "href=\"https://cdnjs.cloudflare.com/ajax/libs/shaka-player/3.0.6/"
-           "controls.min.css\" "
-           "integrity=\"sha512-UBpZwbEsFcjXjrXeDOl0841+"
-           "bdZTRX0g5msnfQJsaftSlLeZ/QuKMWw2MfEbOslDyngzBOcFmpiNYCAvb+oLCA==\" "
-           "crossorigin=\"anonymous\" />";
-    page << "</head>";
-    page << "<body style='background-color:black; display: flex; margin: auto; "
-            "justify-content: center; align-items: center; width: 100vw; "
-            "height: 100%'>";
-    page << "<div data-shaka-player-container style='display: flex; "
-            "max-height: 100%;'>";
-    page << "<video autoplay data-shaka-player id='video' "
-            "style='max-height: 100%; width: 100vw;' src='"
-         << path << "'></video>";
-    page << "</div></body></html>";
-
-    co_yield page.str();
+    co_yield fmt::format(kAssetsHtmlDashPlayerHtml,
+                         fmt::arg("video_url", path));
   }
 
   template <typename Item>
