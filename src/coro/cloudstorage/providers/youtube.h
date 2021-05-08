@@ -348,22 +348,17 @@ struct YouTube::CloudProvider
 
   Generator<std::string> GetFileContentImpl(Stream file, http::Range range,
                                             stdx::stop_token stop_token) {
-    std::stringstream range_header;
-    range_header << "bytes=" << range.start << "-";
-    if (range.end) {
-      range_header << *range.end;
-    }
     std::string video_url =
         co_await GetVideoUrl(file.video_id, file.itag, stop_token);
     Request request{.url = std::move(video_url),
-                    .headers = {{"Range", range_header.str()}}};
+                    .headers = {http::ToRangeHeader(range)}};
     auto response =
         co_await auth_manager_.GetHttp().Fetch(std::move(request), stop_token);
     if (response.status / 100 == 4) {
       stream_cache_.Invalidate(file.video_id);
       video_url = co_await GetVideoUrl(file.video_id, file.itag, stop_token);
       Request retry_request{.url = std::move(video_url),
-                            .headers = {{"Range", range_header.str()}}};
+                            .headers = {http::ToRangeHeader(range)}};
       response = co_await auth_manager_.GetHttp().Fetch(
           std::move(retry_request), stop_token);
     }
@@ -372,7 +367,7 @@ struct YouTube::CloudProvider
     while (response.status == 302 && max_redirect_count-- > 0) {
       auto redirect_request = Request{
           .url = coro::http::GetHeader(response.headers, "Location").value(),
-          .headers = {{"Range", range_header.str()}}};
+          .headers = {http::ToRangeHeader(range)}};
       response = co_await auth_manager_.GetHttp().Fetch(
           std::move(redirect_request), stop_token);
     }
