@@ -87,6 +87,7 @@ target_link_libraries(coro-cloudstorage PUBLIC
     swscale
     avfilter
     cryptopp
+    fmt
 )
 
 include(../cmake/embed_resource.cmake)

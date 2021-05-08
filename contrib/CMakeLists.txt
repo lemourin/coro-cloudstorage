@@ -44,6 +44,8 @@ add_subdirectory(pugixml EXCLUDE_FROM_ALL)
 set(ZLIB_COMPAT 1 CACHE BOOL "" FORCE)
 add_subdirectory(zlib-ng EXCLUDE_FROM_ALL)
 
+add_subdirectory(fmt EXCLUDE_FROM_ALL)
+
 set(FFMPEG_DEFINITIONS
     _ISOC99_SOURCE
     _FILE_OFFSET_BITS=64
