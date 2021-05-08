@@ -1,0 +1,20 @@
+<tr>
+    <td class='thumbnail-container'>
+        <img class='provider-icon' src='{provider_icon}'/>
+    </td>
+    <td>
+        <table>
+            <tr>
+                <td><a class='title' href='{provider_url}'>{provider_name}</a></td>
+            </tr>
+            <tr>
+                <td><small class='title'>{provider_size}</small></td>
+            </tr>
+        </table>
+    </td>
+    <td class='trash-container'>
+        <form action='{provider_remove_url}' method='POST' style='margin: auto;'>
+            <button type='submit'><img class='trash-icon' src='/static/user-trash.svg'/></button>
+        </form>
+    </td>
+</tr>

@@ -59,6 +59,8 @@ set(CORO_CLOUDSTORAGE_ASSETS
     ../assets/html/amazons3_login.html
     ../assets/html/dash_player.html
     ../assets/html/item_entry.html
+    ../assets/html/provider_entry.html
+    ../assets/html/account_entry.html
     ../assets/providers/box.png
     ../assets/providers/yandex.png
     ../assets/providers/dropbox.png

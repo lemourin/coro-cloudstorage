@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
 
 #include <coro/cloudstorage/abstract_cloud_provider.h>
+#include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/auth_token_manager.h>
 #include <coro/cloudstorage/util/proxy_handler.h>
@@ -12,6 +13,7 @@
 #include <coro/http/http_parse.h>
 #include <coro/util/type_list.h>
 #include <coro/when_all.h>
+#include <fmt/format.h>
 
 #include <list>
 
@@ -367,14 +369,10 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     std::string id(GetCloudProviderId<CloudProvider>());
     std::string url =
         factory.template GetAuthorizationUrl<CloudProvider>().value_or(
-            "/auth/" + id);
-    stream << "<div class='thumbnail-container'>"
-              "<a href='"
-           << url
-           << "'>"
-              "<img class='provider-icon' src='/static/"
-           << GetCloudProviderId<CloudProvider>() << ".png'></a>";
-    stream << "</div>";
+            util::StrCat("/auth/", id));
+    stream << fmt::format(
+        kAssetsHtmlProviderEntryHtml, fmt::arg("provider_url", url),
+        fmt::arg("image_url", util::StrCat("/static/", id, ".png")));
   }
 
   struct VolumeData {
@@ -413,9 +411,12 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
   Generator<std::string> GetHomePage(stdx::stop_token stop_token) {
     std::stringstream result;
-    result << "<html><meta name='viewport' content='width=device-width, "
-              "initial-scale=1'>"
-              "<link rel=stylesheet href='/static/default.css'>"
+    result << "<html>"
+              "<head>"
+              "  <meta name='viewport' "
+              "        content='width=device-width, initial-scale=1'>"
+              "  <link rel=stylesheet href='/static/default.css'>"
+              "</head>"
               "<body>"
               "<table class='content-table'>"
               "<tr><td>"
@@ -423,54 +424,42 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
               "</td></tr>"
               "<tr><td><div class='supported-providers'>";
     (AppendAuthUrl<CloudProviders>(d_->factory, result), ...);
-    result << "</div></td></tr></table>"
+    result << "</div></td></tr>"
+              "</table>"
               "<h3 class='table-header'>ACCOUNT LIST</h3>"
               "<table class='content-table'>";
     auto volume_data = co_await GetVolumeData(std::move(stop_token));
     int index = 0;
     for (const auto& account : d_->accounts) {
       const auto& current_volume_data = volume_data[index++];
-      result << "<tr>";
-      std::visit(
-          [&](const auto& provider) {
-            result << "<td class='thumbnail-container'>"
-                      "<image class='provider-icon' src='/static/"
-                   << std::remove_cvref_t<decltype(provider)>::Type::kId
-                   << ".png'></td>";
+      auto provider_id = std::visit(
+          [](const auto& provider) {
+            return std::remove_cvref_t<decltype(provider)>::Type::kId;
           },
           account.provider);
-      result << "<td>"
-                "<table>"
-                "<tr>"
-                "<td>"
-                "<a class='title' href='/"
-             << http::EncodeUri(account.GetId()) << "/'>" << account.username
-             << "</a>"
-                "</td>"
-                "</tr>"
-                "<tr><td><small class='title'>";
+      std::string provider_size;
       if (current_volume_data.space_used) {
-        result << SizeToString(*current_volume_data.space_used);
+        provider_size += SizeToString(*current_volume_data.space_used);
         if (current_volume_data.space_total) {
-          result << " / " << SizeToString(*current_volume_data.space_total);
+          provider_size += util::StrCat(
+              " / ", SizeToString(*current_volume_data.space_total));
         }
       }
-      result << "</small></tr></td>"
-                "</table>"
-                "</td>"
-                "<td class='trash-container'>"
-                "<form action='/remove/"
-             << http::EncodeUri(account.GetId())
-             << "' method='POST' style='margin: auto;'>"
-                "<button type='submit'>"
-                "<img class='trash-icon' src='/static/user-trash.svg'>"
-                "</input>"
-                "</form>"
-                "</td>"
-                "</tr>";
+      result << fmt::format(
+          kAssetsHtmlAccountEntryHtml,
+          fmt::arg("provider_icon",
+                   util::StrCat("/static/", provider_id, ".png")),
+          fmt::arg("provider_url",
+                   util::StrCat("/", http::EncodeUri(account.GetId()), "/")),
+          fmt::arg("provider_name", account.username),
+          fmt::arg("provider_remove_url",
+                   util::StrCat("/remove/", http::EncodeUri(account.GetId()))),
+          fmt::arg("provider_size", provider_size));
     }
 
-    result << "</table></body></html>";
+    result << "</table>"
+              "</body>"
+              "</html>";
     co_yield result.str();
   }
 
