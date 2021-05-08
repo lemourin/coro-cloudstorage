@@ -354,56 +354,45 @@ class ProxyHandler {
   template <typename Item>
   std::string GetItemEntry(const Item& item, std::string_view path) const {
     std::string file_link = util::StrCat(path, http::EncodeUri(item.name));
-    std::stringstream row;
-    row << "<tr>";
-    row << "<td class='thumbnail-container'><image class='thumbnail' src='"
-        << file_link << "?thumbnail=true"
-        << "'/></td>";
-    if (item.name.ends_with(".mpd")) {
-      file_link += "?dash_player=true";
-    }
-    row << "<td class='item-metadata'><table>";
-    row << "<tr><td><a class='title' href='" << file_link << "'>" << item.name
-        << "</a></td></tr>";
-    row << "<tr><td><small>"
-        << TimeStampToString(CloudProvider::GetTimestamp(item))
-        << "</small></td></tr>";
-    row << "</table></td>";
-    row << "<td class='size'><small>"
-        << SizeToString(CloudProvider::GetSize(item)) << "</small></td>";
-    row << "</tr>";
-    return std::move(row).str();
+    return fmt::format(
+        kAssetsHtmlItemEntryHtml, fmt::arg("name", item.name),
+        fmt::arg("size", SizeToString(CloudProvider::GetSize(item))),
+        fmt::arg("timestamp",
+                 TimeStampToString(CloudProvider::GetTimestamp(item))),
+        fmt::arg("url", util::StrCat(file_link, item.name.ends_with(".mpd")
+                                                    ? "?dash_player=true"
+                                                    : "")),
+        fmt::arg("thumbnail_url", util::StrCat(file_link, "?thumbnail=true")));
   }
 
   Generator<std::string> GetDirectoryContent(
       Generator<typename CloudProvider::PageData> page_data,
       std::string path) const {
-    std::stringstream header;
-    header << "<!DOCTYPE html><html><head>"
-              "<meta charset='UTF-8'>"
-              "<meta name='viewport' content='width=device-width, "
-              "initial-scale=1'>"
-              "<link rel=stylesheet href='/static/default.css'>"
+    co_yield "<!DOCTYPE html>"
+              "<html>"
+              "<head>"
+              "  <meta charset='UTF-8'>"
+              "  <meta name='viewport' "
+              "        content='width=device-width, initial-scale=1'>"
+              "  <link rel=stylesheet href='/static/default.css'>"
               "</head>"
-              "<body><table class='content-table'>"
-              "<tr>"
-              "<td class='thumbnail-container'>"
-              "<image class='thumbnail' src='"
-           << (IsRoot(path) ? path : GetDirectoryPath(path))
-           << "?thumbnail=true'/>"
-              "</td>"
-              "<td class='item-metadata'><a href='"
-           << GetDirectoryPath(path)
-           << "'>..</a></td><td class='size'/>"
-              "</tr>";
-    co_yield std::move(header).str();
+              "<body>"
+              "<table class='content-table'>";
+    co_yield fmt::format(
+        kAssetsHtmlItemEntryHtml, fmt::arg("name", ".."), fmt::arg("size", ""),
+        fmt::arg("timestamp", ""), fmt::arg("url", GetDirectoryPath(path)),
+        fmt::arg("thumbnail_url",
+                 util::StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
+                              "?thumbnail=true")));
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
         co_yield std::visit(
             [&](const auto& item) { return GetItemEntry(item, path); }, item);
       }
     }
-    co_yield "</table></body></html>";
+    co_yield "</table>"
+             "</body>"
+             "</html>";
   }
 
   static auto ToFileContent(Request request) {
@@ -412,7 +401,7 @@ class ProxyHandler {
     }
     typename CloudProvider::FileContent content{.data =
                                                     std::move(*request.body)};
-    auto header = ::coro::http::GetHeader(request.headers, "Content-Length");
+    auto header = http::GetHeader(request.headers, "Content-Length");
     if (std::is_convertible_v<decltype(content.size), int64_t> && !header) {
       throw http::HttpException(http::HttpException::kBadRequest);
     }

@@ -58,6 +58,7 @@ set(CORO_CLOUDSTORAGE_ASSETS
     ../assets/html/webdav_login.html
     ../assets/html/amazons3_login.html
     ../assets/html/dash_player.html
+    ../assets/html/item_entry.html
     ../assets/providers/box.png
     ../assets/providers/yandex.png
     ../assets/providers/dropbox.png
