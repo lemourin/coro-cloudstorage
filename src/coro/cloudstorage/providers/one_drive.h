@@ -180,20 +180,15 @@ struct OneDrive::CloudProvider
 
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         stdx::stop_token stop_token) {
-    std::stringstream range_header;
-    range_header << "bytes=" << range.start << "-";
-    if (range.end) {
-      range_header << *range.end;
-    }
     auto request =
         Request{.url = GetEndpoint("/drive/items/" + file.id + "/content"),
-                .headers = {{"Range", range_header.str()}}};
+                .headers = {http::ToRangeHeader(range)}};
     auto response =
         co_await auth_manager_.Fetch(std::move(request), stop_token);
     if (response.status == 302) {
       auto redirect_request = Request{
           .url = coro::http::GetHeader(response.headers, "Location").value(),
-          .headers = {{"Range", std::move(range_header).str()}}};
+          .headers = {http::ToRangeHeader(range)}};
       response = co_await auth_manager_.Fetch(std::move(redirect_request),
                                               std::move(stop_token));
     }

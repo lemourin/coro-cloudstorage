@@ -172,18 +172,13 @@ class Box::CloudProvider
 
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         stdx::stop_token stop_token) {
-    std::stringstream range_header;
-    range_header << "bytes=" << range.start << "-";
-    if (range.end) {
-      range_header << *range.end;
-    }
     Request request{.url = GetEndpoint("/files/" + file.id + "/content"),
-                    .headers = {{"Range", range_header.str()}}};
+                    .headers = {http::ToRangeHeader(range)}};
     auto response =
         co_await auth_manager_.Fetch(std::move(request), stop_token);
     if (response.status / 100 == 3) {
       request = {.url = http::GetHeader(response.headers, "Location").value(),
-                 .headers = {{"Range", range_header.str()}}};
+                 .headers = {http::ToRangeHeader(range)}};
       response = co_await auth_manager_.GetHttp().Fetch(std::move(request),
                                                         std::move(stop_token));
     }

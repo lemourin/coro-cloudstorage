@@ -176,17 +176,12 @@ class Dropbox::CloudProvider
 
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         stdx::stop_token stop_token) {
-    std::stringstream range_header;
-    range_header << "bytes=" << range.start << "-";
-    if (range.end) {
-      range_header << *range.end;
-    }
     json json;
     json["path"] = file.id;
     auto request = Request{
         .url = "https://content.dropboxapi.com/2/files/download",
         .method = http::Method::kPost,
-        .headers = {{"Range", std::move(range_header).str()},
+        .headers = {http::ToRangeHeader(range),
                     {"Content-Type", ""},
                     {"Dropbox-API-arg", json.dump()},
                     {"Authorization", "Bearer " + auth_token_.access_token}},

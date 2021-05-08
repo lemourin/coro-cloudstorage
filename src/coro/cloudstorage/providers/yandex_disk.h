@@ -158,17 +158,12 @@ class YandexDisk::CloudProvider
     Request request{.url = GetEndpoint("/disk/resources/download") + "?" +
                            http::FormDataToString({{"path", file.id}})};
     auto url_response = co_await FetchJson(std::move(request), stop_token);
-    std::stringstream range_header;
-    range_header << "bytes=" << range.start << "-";
-    if (range.end) {
-      range_header << *range.end;
-    }
     request = {.url = url_response["href"],
-               .headers = {{"Range", range_header.str()}}};
+               .headers = {http::ToRangeHeader(range)}};
     auto response = co_await http_->Fetch(std::move(request), stop_token);
     if (response.status / 100 == 3) {
       request = {.url = http::GetHeader(response.headers, "Location").value(),
-                 .headers = {{"Range", range_header.str()}}};
+                 .headers = {http::ToRangeHeader(range)}};
       response =
           co_await http_->Fetch(std::move(request), std::move(stop_token));
     }

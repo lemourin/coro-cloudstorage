@@ -190,14 +190,8 @@ class WebDAV::CloudProvider
 
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         stdx::stop_token stop_token) const {
-    std::stringstream range_header;
-    range_header << "bytes=" << range.start << "-";
-    if (range.end) {
-      range_header << *range.end;
-    }
-    auto request =
-        Request{.url = GetEndpoint(file.id),
-                .headers = {{"Range", std::move(range_header).str()}}};
+    auto request = Request{.url = GetEndpoint(file.id),
+                           .headers = {http::ToRangeHeader(range)}};
     if (auth_token_.credential) {
       request.headers.emplace_back(
           "Authorization",

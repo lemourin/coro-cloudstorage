@@ -145,14 +145,9 @@ class PCloud::CloudProvider
         .url = GetEndpoint("/getfilelink") + "?" +
                http::FormDataToString({{"fileid", std::to_string(file.id)}})};
     auto url_response = co_await FetchJson(std::move(request), stop_token);
-    std::stringstream range_header;
-    range_header << "bytes=" << range.start << "-";
-    if (range.end) {
-      range_header << *range.end;
-    }
     request = {.url = "https://" + std::string(url_response["hosts"][0]) +
                       std::string(url_response["path"]),
-               .headers = {{"Range", std::move(range_header).str()}}};
+               .headers = {http::ToRangeHeader(range)}};
     auto content_response =
         co_await http_->Fetch(std::move(request), std::move(stop_token));
     FOR_CO_AWAIT(std::string & body, content_response.body) {
