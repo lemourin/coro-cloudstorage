@@ -427,10 +427,10 @@ class ProxyHandler {
 
   static std::span<const std::string> GetDirectoryPath(
       std::span<const std::string> path) {
-    if (path.size() <= 1) {
+    if (path.empty()) {
       throw CloudException("root has no parent");
     }
-    return path.subspan(0, path.size() - 2);
+    return path.subspan(0, path.size() - 1);
   }
 
   static std::vector<std::string> GetEffectivePath(std::string_view uri_path) {
@@ -504,7 +504,7 @@ class ProxyHandler {
 
   struct CreateFileF {
     template <typename Item>
-    Task<Response> operator()(CloudProvider* provider, std::string_view name,
+    Task<Response> operator()(CloudProvider* provider, std::string name,
                               Request request, stdx::stop_token stop_token,
                               const Item& item) {
       if constexpr (IsDirectory<Item, CloudProvider> &&
