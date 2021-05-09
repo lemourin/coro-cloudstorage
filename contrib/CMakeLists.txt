@@ -4,6 +4,9 @@ set(BUILD_TESTING 0)
 if(MSVC AND "${CMAKE_SIZEOF_VOID_P}" STREQUAL "4")
     set(DISABLE_ASM ON CACHE BOOL "" FORCE)
 endif()
+if(MINGW)
+    set(DISABLE_SSSE3 ON CACHE BOOL "" FORCE)
+endif()
 add_subdirectory(cryptopp EXCLUDE_FROM_ALL)
 add_library(cryptopp ALIAS cryptopp-static)
 if(ANDROID)
@@ -58,6 +61,7 @@ set(FFMPEG_PUBLIC_INCLUDES
     ffmpeg-config
     ffmpeg
 )
+set(FFMPEG_DEPENDENCIES zlib)
 if(WIN32)
     set(FFMPEG_PRIVATE_INCLUDES
         ffmpeg/compat/atomics/win32
@@ -67,6 +71,7 @@ if(WIN32)
         _CRT_NONSTDC_NO_WARNINGS
         _WIN32_WINNT=0x0600
     )
+    list(APPEND FFMPEG_DEPENDENCIES bcrypt)
     if(MSVC)
         function(patch_c_flags FLAGS)
             string(REPLACE "/GL" "" ${FLAGS} "${${FLAGS}}")
@@ -82,7 +87,6 @@ if(WIN32)
         set(FFMPEG_COMPILE_OPTIONS /Zc:inline-)
     endif()
 endif()
-set(FFMPEG_DEPENDENCIES zlib)
 
 include(TestBigEndian)
 test_big_endian(AV_HAVE_BIGENDIAN)
