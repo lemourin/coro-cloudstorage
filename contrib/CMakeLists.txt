@@ -1,6 +1,6 @@
 add_subdirectory(coro-http EXCLUDE_FROM_ALL)
 add_subdirectory(json EXCLUDE_FROM_ALL)
-set(BUILD_TESTING 0)
+set(BUILD_TESTING 0 CACHE BOOL "" FORCE)
 if(MSVC AND "${CMAKE_SIZEOF_VOID_P}" STREQUAL "4")
     set(DISABLE_ASM ON CACHE BOOL "" FORCE)
 endif()
