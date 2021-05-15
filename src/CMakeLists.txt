@@ -94,7 +94,7 @@ target_link_libraries(coro-cloudstorage PUBLIC
     fmt
 )
 
-include(../cmake/embed_resource.cmake)
+include(embed_resource)
 
 embed_resource(
     TARGET coro-cloudstorage
