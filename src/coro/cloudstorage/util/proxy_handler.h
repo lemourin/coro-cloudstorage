@@ -97,24 +97,28 @@ class ProxyHandler {
   }
 
   template <typename Item>
+  Task<std::string> GenerateThumbnail(const Item& item,
+                                      stdx::stop_token stop_token) const {
+    switch (CloudProvider::GetFileType(item)) {
+      case FileType::kImage:
+      case FileType::kVideo:
+        co_return co_await (*thumbnail_generator_)(
+            provider_, item,
+            ThumbnailOptions{.codec = ThumbnailOptions::Codec::PNG},
+            std::move(stop_token));
+      default:
+        throw CloudException(CloudException::Type::kNotFound);
+    }
+  }
+
+  template <typename Item>
   Task<Response> GetIcon(const Item& item, stdx::stop_token stop_token) const {
     std::string content;
     std::string mime_type = "image/svg+xml";
     if constexpr (IsFile<Item, CloudProvider>) {
       try {
-        switch (CloudProvider::GetFileType(item)) {
-          case FileType::kImage:
-          case FileType::kVideo: {
-            content = co_await(*thumbnail_generator_)(
-                provider_, item,
-                ThumbnailOptions{.codec = ThumbnailOptions::Codec::PNG},
-                std::move(stop_token));
-            mime_type = "image/png";
-            break;
-          }
-          default:
-            throw CloudException(CloudException::Type::kNotFound);
-        }
+        content = co_await GenerateThumbnail(item, std::move(stop_token));
+        mime_type = "image/png";
       } catch (...) {
         content = [&] {
           switch (CloudProvider::GetFileType(item)) {
