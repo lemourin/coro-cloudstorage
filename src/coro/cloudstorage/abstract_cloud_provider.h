@@ -155,13 +155,10 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
       using CloudProviderT = std::remove_pointer_t<decltype(d)>;
       using ItemT = typename CloudProviderT::Item;
 
-      auto move_item = [&](auto& destination) -> Task<Item> {
-        auto move_item = stdx::BindFront(MoveItemF{}, d, std::move(destination),
-                                         std::move(stop_token));
-        co_return co_await std::visit(std::move(move_item),
-                                      std::move(std::get<ItemT>(source)));
-      };
-      co_return co_await std::visit(move_item, std::get<ItemT>(destination));
+      auto move_item = stdx::BindFront(MoveItemF{}, d, std::move(stop_token));
+      co_return co_await std::visit(std::move(move_item),
+                                    std::get<ItemT>(source),
+                                    std::get<ItemT>(destination));
     };
     co_return co_await std::visit(move_item, impl_);
   }
@@ -255,8 +252,8 @@ class AbstractCloudProvider<::coro::util::TypeList<Ts...>>::CloudProvider
 
   struct MoveItemF {
     template <typename CloudProviderT, typename Destination, typename Source>
-    Task<Item> operator()(CloudProviderT* d, Destination destination,
-                          stdx::stop_token stop_token, Source source) const {
+    Task<Item> operator()(CloudProviderT* d, stdx::stop_token stop_token,
+                          Source source, Destination destination) const {
       if constexpr (IsDirectory<decltype(destination), CloudProviderT>) {
         if constexpr (CanMove<Source, Destination, CloudProviderT>) {
           co_return co_await d->MoveItem(
