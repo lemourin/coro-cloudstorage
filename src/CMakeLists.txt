@@ -71,6 +71,7 @@ set(CORO_CLOUDSTORAGE_ASSETS
     ../assets/providers/mega.png
     ../assets/providers/amazons3.png
     ../assets/styles/default.css
+    ../assets/js/account_list_main.js
 )
 
 target_sources(coro-cloudstorage PRIVATE

@@ -88,6 +88,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           auth_token_manager(std::move(auth_token_manager)) {
       handlers.emplace_back(
           Handler{.prefix = "/static/", .handler = StaticFileHandler{}});
+      handlers.emplace_back(
+          Handler{.prefix = "/size", .handler = GetSizeHandler{this}});
     }
 
     ~Data() {
@@ -142,6 +144,9 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         } else if (request.url == "/static/user-trash.svg") {
           content = util::kAssetsIconsUserTrashSvg;
           mime_type = "image/svg+xml";
+        } else if (request.url == "/static/account_list_main.js") {
+          content = util::kAssetsJsAccountListMainJs;
+          mime_type = "text/javascript;charset=UTF-8";
         }
         if (!content) {
           co_return Response{.status = 404};
@@ -154,6 +159,40 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
                         {"Cache-Control", "max-age=604800"}},
             .body = CreateBody(std::string(*content))};
       }
+    };
+
+    struct GetSizeHandler {
+      Task<Response> operator()(Request request,
+                                stdx::stop_token stop_token) const {
+        auto query =
+            http::ParseQuery(http::ParseUri(request.url).query.value());
+        auto account_id = query.find("account_id");
+        if (account_id == query.end()) {
+          co_return Response{.status = 400};
+        }
+        for (CloudProviderAccount& account : d->accounts) {
+          if (account.GetId() == account_id->second) {
+            VolumeData volume_data = co_await std::visit(
+                [&](auto& provider) {
+                  return GetVolumeData(&provider, stop_token);
+                },
+                account.provider);
+            nlohmann::json json;
+            if (volume_data.space_total) {
+              json["space_total"] = *volume_data.space_total;
+            }
+            if (volume_data.space_used) {
+              json["space_used"] = *volume_data.space_used;
+            }
+            co_return Response{
+                .status = 200,
+                .headers = {{"Content-Type", "application/json"}},
+                .body = CreateBody(json.dump())};
+          }
+        }
+        co_return Response{.status = 404};
+      }
+      Data* d;
     };
 
     template <typename CloudProvider>
@@ -252,11 +291,12 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     struct Handler {
       std::string id;
       std::string prefix;
-      std::variant<StaticFileHandler, AuthHandler<CloudProviders>...,
-                   OnRemoveHandler<CloudProviders>...,
-                   ProxyHandler<typename CloudProviderAccount::
-                                    template CloudProviderT<CloudProviders>,
-                                ThumbnailGenerator>...>
+      std::variant<
+          StaticFileHandler, GetSizeHandler, AuthHandler<CloudProviders>...,
+          OnRemoveHandler<CloudProviders>...,
+          ProxyHandler<typename CloudProviderAccount::template CloudProviderT<
+                           CloudProviders>,
+                       ThumbnailGenerator>...>
           handler;
     };
 
@@ -397,18 +437,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
   }
 
-  Task<std::vector<VolumeData>> GetVolumeData(stdx::stop_token stop_token) {
-    std::vector<Task<VolumeData>> tasks;
-    for (auto& account : d_->accounts) {
-      std::visit(
-          [&](auto& provider) {
-            tasks.emplace_back(GetVolumeData(&provider, stop_token));
-          },
-          account.provider);
-    }
-    co_return co_await WhenAll(std::move(tasks));
-  }
-
   Generator<std::string> GetHomePage(stdx::stop_token stop_token) {
     std::stringstream result;
     result << "<html>"
@@ -416,6 +444,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
               "  <meta name='viewport' "
               "        content='width=device-width, initial-scale=1'>"
               "  <link rel=stylesheet href='/static/default.css'>"
+              "  <script src='/static/account_list_main.js'></script>"
               "</head>"
               "<body>"
               "<table class='content-table'>"
@@ -428,23 +457,13 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
               "</table>"
               "<h3 class='table-header'>ACCOUNT LIST</h3>"
               "<table class='content-table'>";
-    auto volume_data = co_await GetVolumeData(std::move(stop_token));
-    int index = 0;
     for (const auto& account : d_->accounts) {
-      const auto& current_volume_data = volume_data[index++];
       auto provider_id = std::visit(
           [](const auto& provider) {
             return std::remove_cvref_t<decltype(provider)>::Type::kId;
           },
           account.provider);
       std::string provider_size;
-      if (current_volume_data.space_used) {
-        provider_size += SizeToString(*current_volume_data.space_used);
-        if (current_volume_data.space_total) {
-          provider_size += util::StrCat(
-              " / ", SizeToString(*current_volume_data.space_total));
-        }
-      }
       result << fmt::format(
           kAssetsHtmlAccountEntryHtml,
           fmt::arg("provider_icon",
@@ -454,7 +473,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           fmt::arg("provider_name", account.username),
           fmt::arg("provider_remove_url",
                    util::StrCat("/remove/", http::EncodeUri(account.GetId()))),
-          fmt::arg("provider_size", provider_size));
+          fmt::arg("provider_id", http::EncodeUri(account.GetId())));
     }
 
     result << "</table>"
