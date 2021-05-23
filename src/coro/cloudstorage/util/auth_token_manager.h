@@ -14,6 +14,12 @@
 
 namespace coro::cloudstorage::util {
 
+template <typename CloudProviderT>
+struct AuthToken : CloudProviderT::Auth::AuthToken {
+  using CloudProvider = CloudProviderT;
+  std::string id;
+};
+
 namespace internal {
 
 template <typename>
@@ -21,12 +27,6 @@ struct LoadToken;
 
 template <typename... CloudProviders>
 struct LoadToken<coro::util::TypeList<CloudProviders...>> {
-  template <typename CloudProviderT>
-  struct AuthToken : CloudProviderT::Auth::AuthToken {
-    using CloudProvider = CloudProviderT;
-    std::string id;
-  };
-
   using AnyToken = std::variant<AuthToken<CloudProviders>...>;
 
   std::vector<AnyToken> operator()(std::string_view token_file) const {

@@ -60,6 +60,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
             std::declval<typename T::Auth::AuthToken>(),
             std::declval<OnAuthTokenChanged<T>>()));
 
+    using Ts = coro::util::TypeList<CloudProviderT<CloudProviders>...>;
+
     std::string GetId() const {
       return std::visit(
           [&](const auto& p) {
@@ -74,9 +76,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     stdx::stop_source stop_source;
   };
 
-  using AbstractCloudProviderT = AbstractCloudProvider<
-      ::coro::util::TypeList<typename CloudProviderAccount::
-                                 template CloudProviderT<CloudProviders>...>>;
+  using AbstractCloudProviderT =
+      AbstractCloudProvider<typename CloudProviderAccount::Ts>;
 
   struct Data {
     Data(const CloudFactory& factory,

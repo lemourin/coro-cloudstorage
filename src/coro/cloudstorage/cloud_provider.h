@@ -12,6 +12,7 @@
 #include <coro/stdx/stop_source.h>
 #include <coro/util/raii_utils.h>
 #include <coro/util/stop_token_or.h>
+#include <coro/util/type_list.h>
 
 #include <span>
 
@@ -119,6 +120,11 @@ class CloudProvider {
   using Item = typename CloudProviderT::Item;
   using PageData = typename CloudProviderT::PageData;
   using FileContent = typename CloudProviderT::FileContent;
+  using ItemTypeList = coro::util::ToTypeListT<std::variant, Item>;
+
+  static inline constexpr bool kIsFileContentSizeRequired =
+      std::is_convertible_v<decltype(std::declval<FileContent>().size),
+                            int64_t>;
 
   Task<Item> GetItemByPath(std::string path, stdx::stop_token stop_token) {
     co_return co_await Get()->GetItemByPath(co_await Get()->GetRoot(stop_token),
