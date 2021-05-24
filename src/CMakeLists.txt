@@ -1,6 +1,6 @@
 add_library(coro-cloudstorage)
 
-set(CORO_CLOUDSTORAGE_HEADERS
+target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/fetch_json.h
     coro/cloudstorage/util/account_manager_handler.h
     coro/cloudstorage/util/auth_token_manager.h
@@ -17,6 +17,7 @@ set(CORO_CLOUDSTORAGE_HEADERS
     coro/cloudstorage/util/muxer.h
     coro/cloudstorage/util/file_utils.h
     coro/cloudstorage/util/string_utils.h
+    coro/cloudstorage/util/merged_cloud_provider.h
     coro/cloudstorage/util/pch.h
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
@@ -33,8 +34,6 @@ set(CORO_CLOUDSTORAGE_HEADERS
     coro/cloudstorage/providers/pcloud.h
     coro/cloudstorage/providers/webdav.h
     coro/cloudstorage/providers/amazon_s3.h
-)
-set(CORO_CLOUDSTORAGE_SOURCES
     coro/cloudstorage/util/webdav_utils.cc
     coro/cloudstorage/util/auth_token_manager.cc
     coro/cloudstorage/util/generator_utils.cc
@@ -46,38 +45,6 @@ set(CORO_CLOUDSTORAGE_SOURCES
     coro/cloudstorage/providers/mega.cc
     coro/cloudstorage/providers/webdav.cc
     coro/cloudstorage/providers/amazon_s3.cc
-)
-set(CORO_CLOUDSTORAGE_ASSETS
-    ../assets/icons/folder.svg
-    ../assets/icons/gtk-file.svg
-    ../assets/icons/audio-x-generic.svg
-    ../assets/icons/image.svg
-    ../assets/icons/video.svg
-    ../assets/icons/user-trash.svg
-    ../assets/html/mega_login.html
-    ../assets/html/webdav_login.html
-    ../assets/html/amazons3_login.html
-    ../assets/html/dash_player.html
-    ../assets/html/item_entry.html
-    ../assets/html/provider_entry.html
-    ../assets/html/account_entry.html
-    ../assets/providers/box.png
-    ../assets/providers/yandex.png
-    ../assets/providers/dropbox.png
-    ../assets/providers/onedrive.png
-    ../assets/providers/pcloud.png
-    ../assets/providers/webdav.png
-    ../assets/providers/google.png
-    ../assets/providers/mega.png
-    ../assets/providers/amazons3.png
-    ../assets/styles/default.css
-    ../assets/js/account_list_main.js
-)
-
-target_sources(coro-cloudstorage PRIVATE
-    ${CORO_CLOUDSTORAGE_HEADERS}
-    ${CORO_CLOUDSTORAGE_SOURCES}
-    ${CORO_CLOUDSTORAGE_ASSETS}
 )
 target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR})
 target_precompile_headers(coro-cloudstorage PUBLIC coro/cloudstorage/util/pch.h)
@@ -101,5 +68,29 @@ embed_resource(
     TARGET coro-cloudstorage
     NAMESPACE coro::cloudstorage::util
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets
-    INPUT ${CORO_CLOUDSTORAGE_ASSETS}
+    INPUT
+        ../assets/icons/folder.svg
+        ../assets/icons/gtk-file.svg
+        ../assets/icons/audio-x-generic.svg
+        ../assets/icons/image.svg
+        ../assets/icons/video.svg
+        ../assets/icons/user-trash.svg
+        ../assets/html/mega_login.html
+        ../assets/html/webdav_login.html
+        ../assets/html/amazons3_login.html
+        ../assets/html/dash_player.html
+        ../assets/html/item_entry.html
+        ../assets/html/provider_entry.html
+        ../assets/html/account_entry.html
+        ../assets/providers/box.png
+        ../assets/providers/yandex.png
+        ../assets/providers/dropbox.png
+        ../assets/providers/onedrive.png
+        ../assets/providers/pcloud.png
+        ../assets/providers/webdav.png
+        ../assets/providers/google.png
+        ../assets/providers/mega.png
+        ../assets/providers/amazons3.png
+        ../assets/styles/default.css
+        ../assets/js/account_list_main.js
 )

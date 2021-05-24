@@ -209,11 +209,11 @@ struct GoogleDrive::CloudProvider
     }
   }
 
+  template <typename Item>
   Task<Item> RenameItem(Item item, std::string new_name,
                         stdx::stop_token stop_token) {
-    auto id = std::visit([](auto d) { return d.id; }, item);
     auto request =
-        Request{.url = GetEndpoint("/files/" + std::move(id)) + "?" +
+        Request{.url = GetEndpoint("/files/" + item.id) + "?" +
                        http::FormDataToString({{"fields", kFileProperties}}),
                 .method = http::Method::kPatch,
                 .headers = {{"Content-Type", "application/json"}}};
@@ -222,7 +222,7 @@ struct GoogleDrive::CloudProvider
     request.body = json.dump();
     auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                      std::move(stop_token));
-    co_return ToItem(response);
+    co_return ToItemImpl<Item>(response);
   }
 
   Task<Directory> CreateDirectory(Directory parent, std::string name,
@@ -250,21 +250,16 @@ struct GoogleDrive::CloudProvider
     co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
   }
 
-  Task<Item> MoveItem(Item source, Directory destination,
-                      stdx::stop_token stop_token) {
-    auto id = std::visit([](const auto& d) { return d.id; }, source);
-    auto remove_parents = std::visit(
-        [](const auto& d) {
-          std::string r;
-          for (auto& parent : d.parents) {
-            r += parent + ",";
-          }
-          r.pop_back();
-          return r;
-        },
-        source);
+  template <typename ItemT>
+  Task<ItemT> MoveItem(ItemT source, Directory destination,
+                       stdx::stop_token stop_token) {
+    std::string remove_parents;
+    for (auto& parent : source.parents) {
+      remove_parents += parent + ",";
+    }
+    remove_parents.pop_back();
     auto request =
-        Request{.url = GetEndpoint("/files/" + std::move(id)) + "?" +
+        Request{.url = GetEndpoint("/files/" + source.id) + "?" +
                        http::FormDataToString(
                            {{"fields", kFileProperties},
                             {"removeParents", std::move(remove_parents)},
@@ -274,7 +269,7 @@ struct GoogleDrive::CloudProvider
     request.body = json::object().dump();
     auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                      std::move(stop_token));
-    co_return ToItem(response);
+    co_return ToItemImpl<ItemT>(response);
   }
 
   Task<File> CreateFile(Directory parent, std::string_view name,

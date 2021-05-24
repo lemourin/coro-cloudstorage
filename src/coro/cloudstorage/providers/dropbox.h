@@ -193,18 +193,18 @@ class Dropbox::CloudProvider
     }
   }
 
-  Task<Item> RenameItem(Item item, std::string new_name,
-                        stdx::stop_token stop_token) {
-    auto id = std::visit([](const auto& d) { return d.id; }, item);
+  template <typename ItemT>
+  Task<ItemT> RenameItem(ItemT item, std::string new_name,
+                         stdx::stop_token stop_token) {
     auto request = Request{.url = GetEndpoint("/files/move_v2"),
                            .method = http::Method::kPost};
     json json;
-    json["from_path"] = id;
-    json["to_path"] = GetDirectoryPath(id) + "/" + new_name;
+    json["from_path"] = item.id;
+    json["to_path"] = GetDirectoryPath(item.id) + "/" + new_name;
     request.body = json.dump();
     auto response =
         co_await FetchJson(std::move(request), std::move(stop_token));
-    co_return ToItem(response["metadata"]);
+    co_return ToItemImpl<ItemT>(response["metadata"]);
   }
 
   Task<Directory> CreateDirectory(Directory parent, std::string name,
@@ -228,18 +228,18 @@ class Dropbox::CloudProvider
     co_await FetchJson(std::move(request), std::move(stop_token));
   }
 
-  Task<Item> MoveItem(Item source, Directory destination,
-                      stdx::stop_token stop_token) {
+  template <typename ItemT>
+  Task<ItemT> MoveItem(ItemT source, Directory destination,
+                       stdx::stop_token stop_token) {
     auto request = Request{.url = GetEndpoint("/files/move_v2"),
                            .method = http::Method::kPost};
     json json;
-    json["from_path"] = std::visit([](const auto& d) { return d.id; }, source);
-    json["to_path"] = destination.id + "/" +
-                      std::visit([](const auto& d) { return d.name; }, source);
+    json["from_path"] = source.id;
+    json["to_path"] = destination.id + "/" + source.name;
     request.body = json.dump();
     auto response =
         co_await FetchJson(std::move(request), std::move(stop_token));
-    co_return ToItem(response["metadata"]);
+    co_return ToItemImpl<ItemT>(response["metadata"]);
   }
 
   Task<File> CreateFile(Directory parent, std::string_view name,

@@ -197,11 +197,11 @@ struct OneDrive::CloudProvider
     }
   }
 
-  Task<Item> RenameItem(Item item, std::string new_name,
-                        stdx::stop_token stop_token) {
-    auto id = std::visit([](auto d) { return d.id; }, item);
+  template <typename ItemT>
+  Task<ItemT> RenameItem(ItemT item, std::string new_name,
+                         stdx::stop_token stop_token) {
     auto request =
-        Request{.url = GetEndpoint("/drive/items/" + std::move(id)) + "?" +
+        Request{.url = GetEndpoint("/drive/items/" + item.id) + "?" +
                        http::FormDataToString({{"select", kFileProperties}}),
                 .method = http::Method::kPatch,
                 .headers = {{"Content-Type", "application/json"}}};
@@ -210,7 +210,7 @@ struct OneDrive::CloudProvider
     request.body = json.dump();
     auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                      std::move(stop_token));
-    co_return ToItem(response);
+    co_return ToItemImpl<ItemT>(response);
   }
 
   Task<Directory> CreateDirectory(Directory parent, std::string name,
@@ -236,13 +236,12 @@ struct OneDrive::CloudProvider
     co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
   }
 
-  Task<Item> MoveItem(Item source, Directory destination,
-                      stdx::stop_token stop_token) {
-    auto request =
-        Request{.url = GetEndpoint("/drive/items/") +
-                       std::visit([](const auto& d) { return d.id; }, source),
-                .method = http::Method::kPatch,
-                .headers = {{"Content-Type", "application/json"}}};
+  template <typename ItemT>
+  Task<ItemT> MoveItem(ItemT source, Directory destination,
+                       stdx::stop_token stop_token) {
+    auto request = Request{.url = GetEndpoint("/drive/items/") + source.id,
+                           .method = http::Method::kPatch,
+                           .headers = {{"Content-Type", "application/json"}}};
     json json;
     if (destination.id == "root") {
       json["parentReference"]["path"] = "/drive/root";
@@ -252,7 +251,7 @@ struct OneDrive::CloudProvider
     request.body = json.dump();
     auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                      std::move(stop_token));
-    co_return ToItem(response);
+    co_return ToItemImpl<ItemT>(response);
   }
 
   Task<File> CreateFile(Directory parent, std::string_view name,

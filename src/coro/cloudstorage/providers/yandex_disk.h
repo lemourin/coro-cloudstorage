@@ -172,11 +172,12 @@ class YandexDisk::CloudProvider
     }
   }
 
-  Task<Item> RenameItem(Item item, std::string new_name,
-                        stdx::stop_token stop_token) {
-    std::string path = std::visit([](const auto& d) { return d.id; }, item);
-    std::string new_path = GetParentPath(path) + "/" + new_name;
-    co_return co_await MoveItem(path, new_path, std::move(stop_token));
+  template <typename ItemT>
+  Task<ItemT> RenameItem(ItemT item, std::string new_name,
+                         stdx::stop_token stop_token) {
+    co_return co_await MoveItem<ItemT>(item.id,
+                                       GetParentPath(item.id) + "/" + new_name,
+                                       std::move(stop_token));
   }
 
   Task<Directory> CreateDirectory(Directory parent, std::string name,
@@ -211,13 +212,12 @@ class YandexDisk::CloudProvider
     }
   }
 
-  Task<Item> MoveItem(Item source, Directory destination,
-                      stdx::stop_token stop_token) {
-    std::string path = std::visit([](const auto& d) { return d.id; }, source);
-    std::string new_path =
-        Concatenate(destination.id,
-                    std::visit([](const auto& d) { return d.name; }, source));
-    co_return co_await MoveItem(path, new_path, std::move(stop_token));
+  template <typename ItemT>
+  Task<ItemT> MoveItem(ItemT source, Directory destination,
+                       stdx::stop_token stop_token) {
+    co_return co_await MoveItem<ItemT>(source.id,
+                                       Concatenate(destination.id, source.name),
+                                       std::move(stop_token));
   }
 
   Task<File> CreateFile(Directory parent, std::string_view name,
@@ -278,8 +278,9 @@ class YandexDisk::CloudProvider
     return result.substr(0, result.find_last_of('/'));
   }
 
-  Task<Item> MoveItem(std::string_view from, std::string_view path,
-                      stdx::stop_token stop_token) {
+  template <typename ItemT>
+  Task<ItemT> MoveItem(std::string_view from, std::string_view path,
+                       stdx::stop_token stop_token) {
     Request request{
         .url = GetEndpoint("/disk/resources/move") + "?" +
                http::FormDataToString({{"from", from}, {"path", path}}),
@@ -296,7 +297,7 @@ class YandexDisk::CloudProvider
     }
     request = {.url = GetEndpoint("/disk/resources") + "?" +
                       http::FormDataToString({{"path", path}})};
-    co_return ToItem(
+    co_return ToItemImpl<ItemT>(
         co_await FetchJson(std::move(request), std::move(stop_token)));
   }
 

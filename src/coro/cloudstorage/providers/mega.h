@@ -102,8 +102,23 @@ class Mega::CloudProvider
 
   Task<Item> RenameItem(Item item, std::string new_name,
                         coro::stdx::stop_token);
+  template <typename ItemT>
+  Task<ItemT> RenameItem(ItemT item, std::string new_name,
+                         stdx::stop_token stop_token) {
+    co_return std::get<ItemT>(co_await RenameItem(
+        Item(std::move(item)), std::move(new_name), std::move(stop_token)));
+  }
+
   Task<Item> MoveItem(Item source, Directory destination,
                       coro::stdx::stop_token);
+  template <typename ItemT>
+  Task<ItemT> MoveItem(ItemT source, Directory destination,
+                       stdx::stop_token stop_token) {
+    co_return std::get<ItemT>(co_await MoveItem(Item(std::move(source)),
+                                                std::move(destination),
+                                                std::move(stop_token)));
+  }
+
   Task<GeneralData> GetGeneralData(coro::stdx::stop_token);
   Task<Directory> GetRoot(coro::stdx::stop_token);
   Task<PageData> ListDirectoryPage(Directory directory,
