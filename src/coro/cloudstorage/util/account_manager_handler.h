@@ -1,7 +1,6 @@
 #ifndef CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
 #define CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
 
-#include <coro/cloudstorage/abstract_cloud_provider.h>
 #include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/auth_token_manager.h>
@@ -75,9 +74,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     std::variant<CloudProviderT<CloudProviders>...> provider;
     stdx::stop_source stop_source;
   };
-
-  using AbstractCloudProviderT =
-      AbstractCloudProvider<typename CloudProviderAccount::Ts>;
 
   struct Data {
     Data(const CloudFactory& factory,

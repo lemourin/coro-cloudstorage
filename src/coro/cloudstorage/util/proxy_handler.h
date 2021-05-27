@@ -5,6 +5,7 @@
 #include <coro/cloudstorage/util/thumbnail_options.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http_parse.h>
+#include <coro/stdx/bind_front.h>
 #include <coro/util/lru_cache.h>
 #include <fmt/format.h>
 
