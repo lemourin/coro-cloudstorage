@@ -93,10 +93,30 @@ class MergedCloudProvider<
                                                CloudProvider> {
  public:
   template <typename CloudProvider>
-  void AddAccount(std::string id, CloudProvider *);
+  void AddAccount(std::string id, CloudProvider *p) {
+    std::cerr << "CREATE " << id << "\n";
+    accounts_.push_back(Account{.id = std::move(id), .provider = p});
+  }
 
   template <typename CloudProvider>
-  void RemoveAccount(CloudProvider *);
+  void RemoveAccount(CloudProvider *p) {
+    accounts_.erase(
+        std::find_if(accounts_.begin(), accounts_.end(), [&](Account &account) {
+          return std::visit(
+              [&]<typename F>(F *f) {
+                if constexpr (std::is_same_v<F, CloudProvider>) {
+                  if (f == p) {
+                    std::cerr << "REMOVE " << account.id << "\n";
+                    account.stop_source.request_stop();
+                  }
+                  return f == p;
+                } else {
+                  return false;
+                }
+              },
+              account.provider);
+        }));
+  }
 
   Task<Root> GetRoot(stdx::stop_token) const { co_return Root{.id = "root"}; }
 
@@ -173,36 +193,6 @@ class MergedCloudProvider<
 
   std::vector<Account> accounts_;
 };
-
-template <typename... CloudProviders>
-template <typename CloudProvider>
-void MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
-    CloudProvider::AddAccount(std::string id, CloudProvider *p) {
-  std::cerr << "CREATE " << id << "\n";
-  accounts_.emplace_back(Account{.id = std::move(id), .provider = p});
-}
-
-template <typename... CloudProviders>
-template <typename CloudProvider>
-void MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
-    CloudProvider::RemoveAccount(CloudProvider *p) {
-  accounts_.erase(
-      std::find_if(accounts_.begin(), accounts_.end(), [&](Account &account) {
-        return std::visit(
-            [&]<typename F>(F *f) {
-              if constexpr (std::is_same_v<F, CloudProvider>) {
-                if (f == p) {
-                  std::cerr << "REMOVE " << account.id << "\n";
-                  account.stop_source.request_stop();
-                }
-                return f == p;
-              } else {
-                return false;
-              }
-            },
-            account.provider);
-      }));
-}
 
 template <typename... CloudProviders>
 auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
