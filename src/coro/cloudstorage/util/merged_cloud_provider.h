@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_FUSE_MERGED_CLOUD_PROVIDER_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/util/stop_token_or.h>
 #include <coro/when_all.h>
 
 #include <iostream>
@@ -147,11 +148,6 @@ class MergedCloudProvider<
     stdx::stop_source stop_source;
   };
 
-  template <typename CloudProvider>
-  CloudProvider *GetCloudProvider(std::string_view id) {
-    return std::get<CloudProvider *>(GetAccount(id)->provider);
-  }
-
   Account *GetAccount(std::string_view id) {
     for (auto &account : accounts_) {
       if (account.id == id) {
@@ -190,13 +186,14 @@ template <typename... CloudProviders>
 template <typename CloudProvider>
 void MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
     CloudProvider::RemoveAccount(CloudProvider *p) {
-  accounts_.erase(std::find_if(
-      accounts_.begin(), accounts_.end(), [&](const Account &account) {
+  accounts_.erase(
+      std::find_if(accounts_.begin(), accounts_.end(), [&](Account &account) {
         return std::visit(
             [&]<typename F>(F *f) {
               if constexpr (std::is_same_v<F, CloudProvider>) {
                 if (f == p) {
                   std::cerr << "REMOVE " << account.id << "\n";
+                  account.stop_source.request_stop();
                 }
                 return f == p;
               } else {
@@ -217,7 +214,9 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
                      stdx::stop_token stop_token) -> Task<Directory> {
     co_return co_await std::visit(
         [&](auto *p) -> Task<Directory> {
-          auto item = co_await p->GetRoot(std::move(stop_token));
+          coro::util::StopTokenOr stop_token_or(
+              account->stop_source.get_token(), std::move(stop_token));
+          auto item = co_await p->GetRoot(stop_token_or.GetToken());
           Directory root;
           root.account_id = account->id;
           root.id = account->id;
@@ -247,10 +246,12 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
   co_return co_await std::visit(
       [&]<typename DirectoryT>(const DirectoryT &d) -> Task<PageData> {
         using CloudProviderT = ItemToCloudProviderT<DirectoryT>;
-        auto *p = GetCloudProvider<CloudProviderT>(directory.account_id);
-
-        auto page_data = co_await p->ListDirectoryPage(d, std::move(page_token),
-                                                       std::move(stop_token));
+        auto *account = GetAccount(directory.account_id);
+        auto *p = std::get<CloudProviderT *>(account->provider);
+        coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
+                                              std::move(stop_token));
+        auto page_data = co_await p->ListDirectoryPage(
+            d, std::move(page_token), stop_token_or.GetToken());
         PageData result{.next_page_token =
                             std::move(page_data.next_page_token)};
         for (auto &item : page_data.items) {
@@ -279,18 +280,25 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
     std::optional<int64_t> space_used;
     std::optional<int64_t> space_total;
   };
-  auto get_volume_data = [&](auto *provider) -> Task<VolumeData> {
-    auto data = co_await provider->GetGeneralData(stop_token);
-    if constexpr (HasUsageData<decltype(data)>) {
-      co_return VolumeData{.space_used = data.space_used,
-                           .space_total = data.space_total};
-    } else {
-      co_return VolumeData{.space_used = 0, .space_total = 0};
-    }
+  auto get_volume_data = [&](Account &account) -> Task<VolumeData> {
+    co_return co_await std::visit(
+        [&](auto *provider) -> Task<VolumeData> {
+          coro::util::StopTokenOr stop_token_or(account.stop_source.get_token(),
+                                                std::move(stop_token));
+          auto data =
+              co_await provider->GetGeneralData(stop_token_or.GetToken());
+          if constexpr (HasUsageData<decltype(data)>) {
+            co_return VolumeData{.space_used = data.space_used,
+                                 .space_total = data.space_total};
+          } else {
+            co_return VolumeData{.space_used = 0, .space_total = 0};
+          }
+        },
+        account.provider);
   };
   std::vector<Task<VolumeData>> tasks;
-  for (const auto &account : accounts_) {
-    tasks.emplace_back(std::visit(get_volume_data, account.provider));
+  for (auto &account : accounts_) {
+    tasks.emplace_back(get_volume_data(account));
   }
   GeneralData total = {.space_used = 0, .space_total = 0};
   for (const auto &data : co_await coro::WhenAll(std::move(tasks))) {
@@ -315,9 +323,14 @@ MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::CloudProvider::
   return std::visit(
       [&]<typename FileT>(const FileT &d) -> Generator<std::string> {
         using CloudProviderT = ItemToCloudProviderT<FileT>;
-        auto *p = GetCloudProvider<CloudProviderT>(file.account_id);
-
-        return p->GetFileContent(d, range, std::move(stop_token));
+        auto *account = GetAccount(file.account_id);
+        auto *p = std::get<CloudProviderT *>(account->provider);
+        coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
+                                              std::move(stop_token));
+        FOR_CO_AWAIT(std::string & chunk,
+                     p->GetFileContent(d, range, stop_token_or.GetToken())) {
+          co_yield std::move(chunk);
+        }
       },
       file.item);
 }
@@ -333,10 +346,14 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
     co_return co_await std::visit(
         [&]<typename FileT>(const FileT &d) -> Task<ItemT> {
           using CloudProviderT = ItemToCloudProviderT<FileT>;
-          auto *p = GetCloudProvider<CloudProviderT>(item.account_id);
+          auto *account = GetAccount(item.account_id);
+          auto *p = std::get<CloudProviderT *>(account->provider);
+          coro::util::StopTokenOr stop_token_or(
+              account->stop_source.get_token(), std::move(stop_token));
           co_return ToItem<ItemT>(
-              item.account_id, co_await p->RenameItem(d, std::move(new_name),
-                                                      std::move(stop_token)));
+              item.account_id,
+              co_await p->RenameItem(d, std::move(new_name),
+                                     stop_token_or.GetToken()));
         },
         item.item);
   }
@@ -354,11 +371,14 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
     co_return co_await std::visit(
         [&]<typename FileT>(const FileT &d) -> Task<Directory> {
           using CloudProviderT = ItemToCloudProviderT<FileT>;
-          auto *p = GetCloudProvider<CloudProviderT>(parent.account_id);
+          auto *account = GetAccount(parent.account_id);
+          auto *p = std::get<CloudProviderT *>(account->provider);
+          coro::util::StopTokenOr stop_token_or(
+              account->stop_source.get_token(), std::move(stop_token));
           co_return ToItem<Directory>(
               parent.account_id,
               co_await p->CreateDirectory(d, std::move(name),
-                                          std::move(stop_token)));
+                                          stop_token_or.GetToken()));
         },
         parent.item);
   }
@@ -375,8 +395,11 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
     co_return co_await std::visit(
         [&]<typename FileT>(const FileT &d) -> Task<> {
           using CloudProviderT = ItemToCloudProviderT<FileT>;
-          auto *p = GetCloudProvider<CloudProviderT>(item.account_id);
-          co_return co_await p->RemoveItem(d, std::move(stop_token));
+          auto *account = GetAccount(item.account_id);
+          auto *p = std::get<CloudProviderT *>(account->provider);
+          coro::util::StopTokenOr stop_token_or(
+              account->stop_source.get_token(), std::move(stop_token));
+          co_return co_await p->RemoveItem(d, stop_token_or.GetToken());
         },
         item.item);
   }
@@ -401,10 +424,14 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
                                         ItemToCloudProviderT<DestinationT>>) {
             throw CloudException("can't move between accounts");
           } else {
-            auto *p = GetCloudProvider<CloudProviderT>(source.account_id);
+            auto *account = GetAccount(source.account_id);
+            auto *p = std::get<CloudProviderT *>(account->provider);
+            coro::util::StopTokenOr stop_token_or(
+                account->stop_source.get_token(), std::move(stop_token));
             co_return ToItem<ItemT>(
-                source.account_id, co_await p->MoveItem(nsource, ndestination,
-                                                        std::move(stop_token)));
+                source.account_id,
+                co_await p->MoveItem(nsource, ndestination,
+                                     stop_token_or.GetToken()));
           }
         },
         source.item, destination.item);
@@ -423,7 +450,10 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
     co_return co_await std::visit(
         [&]<typename Directory>(const Directory &d) -> Task<File> {
           using CloudProviderT = ItemToCloudProviderT<Directory>;
-          auto *p = GetCloudProvider<CloudProviderT>(parent.account_id);
+          auto *account = GetAccount(parent.account_id);
+          auto *p = std::get<CloudProviderT *>(account->provider);
+          coro::util::StopTokenOr stop_token_or(
+              account->stop_source.get_token(), std::move(stop_token));
           typename CloudProviderT::FileContent ncontent;
           ncontent.data = std::move(content.data);
           if constexpr (CloudProviderT::kIsFileContentSizeRequired) {
@@ -434,7 +464,7 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
           co_return ToItem<File>(
               parent.account_id,
               co_await p->CreateFile(d, name, std::move(ncontent),
-                                     std::move(stop_token)));
+                                     stop_token_or.GetToken()));
         },
         parent.item);
   }
