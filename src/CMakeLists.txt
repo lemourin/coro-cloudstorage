@@ -18,6 +18,9 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/file_utils.h
     coro/cloudstorage/util/string_utils.h
     coro/cloudstorage/util/merged_cloud_provider.h
+    coro/cloudstorage/util/timing_out_cloud_provider.h
+    coro/cloudstorage/util/timing_out_stop_token.h
+    coro/cloudstorage/util/timing_out_stop_token.cc
     coro/cloudstorage/util/pch.h
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h

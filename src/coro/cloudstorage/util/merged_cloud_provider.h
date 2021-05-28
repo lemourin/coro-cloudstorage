@@ -320,19 +320,17 @@ template <typename... CloudProviders>
 Generator<std::string>
 MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::CloudProvider::
     GetFileContent(File file, http::Range range, stdx::stop_token stop_token) {
-  return std::visit(
-      [&]<typename FileT>(const FileT &d) -> Generator<std::string> {
+  auto *account = GetAccount(file.account_id);
+  coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
+                                        std::move(stop_token));
+  auto generator = std::visit(
+      [&]<typename FileT>(FileT d) mutable -> Generator<std::string> {
         using CloudProviderT = ItemToCloudProviderT<FileT>;
-        auto *account = GetAccount(file.account_id);
-        auto *p = std::get<CloudProviderT *>(account->provider);
-        coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
-                                              std::move(stop_token));
-        FOR_CO_AWAIT(std::string & chunk,
-                     p->GetFileContent(d, range, stop_token_or.GetToken())) {
-          co_yield std::move(chunk);
-        }
+        return std::get<CloudProviderT *>(account->provider)
+            ->GetFileContent(std::move(d), range, stop_token_or.GetToken());
       },
       file.item);
+  FOR_CO_AWAIT(std::string & chunk, generator) { co_yield std::move(chunk); }
 }
 
 template <typename... CloudProviders>
