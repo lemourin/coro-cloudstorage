@@ -334,14 +334,18 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
     co_return co_await std::visit(
         [&]<typename FileT>(const FileT &d) -> Task<ItemT> {
           using CloudProviderT = ItemToCloudProviderT<FileT>;
-          auto *account = GetAccount(item.account_id);
-          auto *p = std::get<CloudProviderT *>(account->provider);
-          coro::util::StopTokenOr stop_token_or(
-              account->stop_source.get_token(), std::move(stop_token));
-          co_return ToItem<ItemT>(
-              item.account_id,
-              co_await p->RenameItem(d, std::move(new_name),
-                                     stop_token_or.GetToken()));
+          if constexpr (CanRename<FileT, CloudProvider>) {
+            auto *account = GetAccount(item.account_id);
+            auto *p = std::get<CloudProviderT *>(account->provider);
+            coro::util::StopTokenOr stop_token_or(
+                account->stop_source.get_token(), std::move(stop_token));
+            co_return ToItem<ItemT>(
+                item.account_id,
+                co_await p->RenameItem(d, std::move(new_name),
+                                       stop_token_or.GetToken()));
+          } else {
+            throw CloudException("can't rename item");
+          }
         },
         item.item);
   }
@@ -359,14 +363,18 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
     co_return co_await std::visit(
         [&]<typename FileT>(const FileT &d) -> Task<Directory> {
           using CloudProviderT = ItemToCloudProviderT<FileT>;
-          auto *account = GetAccount(parent.account_id);
-          auto *p = std::get<CloudProviderT *>(account->provider);
-          coro::util::StopTokenOr stop_token_or(
-              account->stop_source.get_token(), std::move(stop_token));
-          co_return ToItem<Directory>(
-              parent.account_id,
-              co_await p->CreateDirectory(d, std::move(name),
-                                          stop_token_or.GetToken()));
+          if constexpr (CanCreateDirectory<FileT, CloudProviderT>) {
+            auto *account = GetAccount(parent.account_id);
+            auto *p = std::get<CloudProviderT *>(account->provider);
+            coro::util::StopTokenOr stop_token_or(
+                account->stop_source.get_token(), std::move(stop_token));
+            co_return ToItem<Directory>(
+                parent.account_id,
+                co_await p->CreateDirectory(d, std::move(name),
+                                            stop_token_or.GetToken()));
+          } else {
+            throw CloudException("create directory not supported");
+          }
         },
         parent.item);
   }
@@ -383,11 +391,15 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
     co_return co_await std::visit(
         [&]<typename FileT>(const FileT &d) -> Task<> {
           using CloudProviderT = ItemToCloudProviderT<FileT>;
-          auto *account = GetAccount(item.account_id);
-          auto *p = std::get<CloudProviderT *>(account->provider);
-          coro::util::StopTokenOr stop_token_or(
-              account->stop_source.get_token(), std::move(stop_token));
-          co_return co_await p->RemoveItem(d, stop_token_or.GetToken());
+          if constexpr (CanRemove<FileT, CloudProviderT>) {
+            auto *account = GetAccount(item.account_id);
+            auto *p = std::get<CloudProviderT *>(account->provider);
+            coro::util::StopTokenOr stop_token_or(
+                account->stop_source.get_token(), std::move(stop_token));
+            co_return co_await p->RemoveItem(d, stop_token_or.GetToken());
+          } else {
+            throw CloudException("can't remove item");
+          }
         },
         item.item);
   }
@@ -411,7 +423,7 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
           if constexpr (!std::is_same_v<CloudProviderT,
                                         ItemToCloudProviderT<DestinationT>>) {
             throw CloudException("can't move between accounts");
-          } else {
+          } else if constexpr (CanMove<SourceT, DestinationT, CloudProviderT>) {
             auto *account = GetAccount(source.account_id);
             auto *p = std::get<CloudProviderT *>(account->provider);
             coro::util::StopTokenOr stop_token_or(
@@ -420,6 +432,8 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
                 source.account_id,
                 co_await p->MoveItem(nsource, ndestination,
                                      stop_token_or.GetToken()));
+          } else {
+            throw CloudException("can't move item");
           }
         },
         source.item, destination.item);
@@ -438,21 +452,25 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
     co_return co_await std::visit(
         [&]<typename Directory>(const Directory &d) -> Task<File> {
           using CloudProviderT = ItemToCloudProviderT<Directory>;
-          auto *account = GetAccount(parent.account_id);
-          auto *p = std::get<CloudProviderT *>(account->provider);
-          coro::util::StopTokenOr stop_token_or(
-              account->stop_source.get_token(), std::move(stop_token));
-          typename CloudProviderT::FileContent ncontent;
-          ncontent.data = std::move(content.data);
-          if constexpr (CloudProviderT::kIsFileContentSizeRequired) {
-            ncontent.size = content.size.value();
+          if constexpr (CanCreateFile<Directory, CloudProviderT>) {
+            auto *account = GetAccount(parent.account_id);
+            auto *p = std::get<CloudProviderT *>(account->provider);
+            coro::util::StopTokenOr stop_token_or(
+                account->stop_source.get_token(), std::move(stop_token));
+            typename CloudProviderT::FileContent ncontent;
+            ncontent.data = std::move(content.data);
+            if constexpr (CloudProviderT::kIsFileContentSizeRequired) {
+              ncontent.size = content.size.value();
+            } else {
+              ncontent.size = content.size;
+            }
+            co_return ToItem<File>(
+                parent.account_id,
+                co_await p->CreateFile(d, name, std::move(ncontent),
+                                       stop_token_or.GetToken()));
           } else {
-            ncontent.size = content.size;
+            throw CloudException("can't create file");
           }
-          co_return ToItem<File>(
-              parent.account_id,
-              co_await p->CreateFile(d, name, std::move(ncontent),
-                                     stop_token_or.GetToken()));
         },
         parent.item);
   }
