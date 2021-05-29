@@ -18,6 +18,4 @@ git checkout contrib/megasdk
 cd contrib/megasdk
 git apply ../patches/mega-fix-build.patch
 rm -f include/mega/config.h
-cd ../zlib-ng
-git apply ../patches/zlib-fix-build.patch
 
