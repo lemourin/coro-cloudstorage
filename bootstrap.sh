@@ -14,8 +14,3 @@ curl https://raw.githubusercontent.com/noloader/cryptopp-cmake/master/cryptopp-c
 
 ./contrib/coro-http/bootstrap.sh
 
-git checkout contrib/megasdk
-cd contrib/megasdk
-git apply ../patches/mega-fix-build.patch
-rm -f include/mega/config.h
-

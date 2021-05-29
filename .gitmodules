@@ -6,7 +6,7 @@
 	url = https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent
 [submodule "contrib/megasdk"]
 	path = contrib/megasdk
-	url = https://github.com/meganz/sdk
+	url = https://github.com/lemourin/megasdk
 [submodule "contrib/cryptopp"]
 	path = contrib/cryptopp
 	url = https://github.com/weidai11/cryptopp
