@@ -122,9 +122,11 @@ class CloudProvider {
   using FileContent = typename CloudProviderT::FileContent;
   using ItemTypeList = coro::util::ToTypeListT<std::variant, Item>;
 
-  static inline constexpr bool kIsFileContentSizeRequired =
-      std::is_convertible_v<decltype(std::declval<FileContent>().size),
-                            int64_t>;
+  template <typename DirectoryT>
+  static constexpr bool IsFileContentSizeRequired(const DirectoryT&) {
+    return std::is_convertible_v<decltype(std::declval<FileContent>().size),
+                                 int64_t>;
+  }
 
   Task<Item> GetItemByPath(std::string path, stdx::stop_token stop_token) {
     co_return co_await Get()->GetItemByPath(co_await Get()->GetRoot(stop_token),

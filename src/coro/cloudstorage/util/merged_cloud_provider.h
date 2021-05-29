@@ -92,6 +92,15 @@ class MergedCloudProvider<
     : public coro::cloudstorage::CloudProvider<MergedCloudProvider,
                                                CloudProvider> {
  public:
+  template <typename DirectoryT>
+  static inline constexpr bool IsFileContentSizeRequired(const DirectoryT &d) {
+    return std::visit(
+        []<typename Directory>(const Directory &d) {
+          return ItemToCloudProviderT<Directory>::IsFileContentSizeRequired(d);
+        },
+        d.item);
+  }
+
   template <typename CloudProvider>
   void AddAccount(std::string id, CloudProvider *p) {
     std::cerr << "CREATE " << id << "\n";
@@ -148,8 +157,7 @@ class MergedCloudProvider<
   Task<ItemT> MoveItem(ItemT source, DirectoryT destination,
                        stdx::stop_token stop_token);
 
-  template <typename DirectoryT>
-  Task<File> CreateFile(DirectoryT parent, std::string_view name,
+  Task<File> CreateFile(Directory parent, std::string_view name,
                         FileContent content, stdx::stop_token stop_token);
 
  private:
@@ -441,39 +449,35 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
 }
 
 template <typename... CloudProviders>
-template <typename DirectoryT>
 auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
-    CloudProvider::CreateFile(DirectoryT parent, std::string_view name,
+    CloudProvider::CreateFile(Directory parent, std::string_view name,
                               FileContent content, stdx::stop_token stop_token)
         -> Task<File> {
-  if constexpr (std::is_same_v<DirectoryT, Root>) {
-    throw CloudException("can't create directly under root");
-  } else {
-    co_return co_await std::visit(
-        [&]<typename Directory>(const Directory &d) -> Task<File> {
-          using CloudProviderT = ItemToCloudProviderT<Directory>;
-          if constexpr (CanCreateFile<Directory, CloudProviderT>) {
-            auto *account = GetAccount(parent.account_id);
-            auto *p = std::get<CloudProviderT *>(account->provider);
-            coro::util::StopTokenOr stop_token_or(
-                account->stop_source.get_token(), std::move(stop_token));
-            typename CloudProviderT::FileContent ncontent;
-            ncontent.data = std::move(content.data);
-            if constexpr (CloudProviderT::kIsFileContentSizeRequired) {
-              ncontent.size = content.size.value();
-            } else {
-              ncontent.size = content.size;
-            }
-            co_return ToItem<File>(
-                parent.account_id,
-                co_await p->CreateFile(d, name, std::move(ncontent),
-                                       stop_token_or.GetToken()));
+  co_return co_await std::visit(
+      [&]<typename Directory>(const Directory &d) -> Task<File> {
+        using CloudProviderT = ItemToCloudProviderT<Directory>;
+        if constexpr (CanCreateFile<Directory, CloudProviderT>) {
+          auto *account = GetAccount(parent.account_id);
+          auto *p = std::get<CloudProviderT *>(account->provider);
+          coro::util::StopTokenOr stop_token_or(
+              account->stop_source.get_token(), std::move(stop_token));
+          typename CloudProviderT::FileContent ncontent;
+          ncontent.data = std::move(content.data);
+          if constexpr (std::is_convertible_v<decltype(ncontent.size),
+                                              int64_t>) {
+            ncontent.size = content.size.value();
           } else {
-            throw CloudException("can't create file");
+            ncontent.size = content.size;
           }
-        },
-        parent.item);
-  }
+          co_return ToItem<File>(
+              parent.account_id,
+              co_await p->CreateFile(d, name, std::move(ncontent),
+                                     stop_token_or.GetToken()));
+        } else {
+          throw CloudException("can't create file");
+        }
+      },
+      parent.item);
 }
 
 }  // namespace coro::cloudstorage::util

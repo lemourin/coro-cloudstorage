@@ -34,6 +34,11 @@ class TimingOutCloudProvider<CloudProviderT>::CloudProvider
   CloudProviderT* GetProvider() { return &provider_; }
   const CloudProviderT* GetProvider() const { return &provider_; }
 
+  template <typename DirectoryT>
+  static inline constexpr bool IsFileContentSizeRequired(const DirectoryT& d) {
+    return CloudProviderT::IsFileContentSizeRequired(d);
+  }
+
   auto GetRoot(stdx::stop_token stop_token) const
       -> decltype(provider_.GetRoot(stop_token)) {
     auto context_token = CreateStopToken("GetRoot", std::move(stop_token));
