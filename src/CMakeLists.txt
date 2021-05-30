@@ -21,7 +21,6 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/timing_out_cloud_provider.h
     coro/cloudstorage/util/timing_out_stop_token.h
     coro/cloudstorage/util/timing_out_stop_token.cc
-    coro/cloudstorage/util/pch.h
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
     coro/cloudstorage/cloud_provider.h
@@ -49,7 +48,13 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/providers/amazon_s3.cc
 )
 target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR})
-target_precompile_headers(coro-cloudstorage PUBLIC coro/cloudstorage/util/pch.h)
+if(WIN32)
+    target_precompile_headers(coro-cloudstorage
+        PUBLIC
+            <winsock2.h>
+            <windows.h>
+    )
+endif()
 target_link_libraries(coro-cloudstorage PUBLIC
     coro-http
     nlohmann_json::nlohmann_json
