@@ -11,7 +11,14 @@
 namespace coro::cloudstorage::util {
 
 template <typename CloudProviderT>
-struct TimingOutCloudProvider : CloudProviderT {
+struct TimingOutCloudProvider {
+  using Type = CloudProviderT;
+  using Impl = CloudProviderT;
+  using Item = typename CloudProviderT::Item;
+  using PageData = typename CloudProviderT::PageData;
+  using FileContent = typename CloudProviderT::FileContent;
+  using ItemTypeList = typename CloudProviderT::ItemTypeList;
+
   class CloudProvider;
 };
 
@@ -22,46 +29,44 @@ class TimingOutCloudProvider<CloudProviderT>::CloudProvider
  private:
   coro::util::EventLoop* event_loop_;
   int timeout_ms_;
-  CloudProviderT provider_;
+  CloudProviderT* provider_;
 
  public:
   CloudProvider(coro::util::EventLoop* event_loop, int timeout_ms,
-                CloudProviderT provider)
-      : event_loop_(event_loop),
-        timeout_ms_(timeout_ms),
-        provider_(std::move(provider)) {}
+                CloudProviderT* provider)
+      : event_loop_(event_loop), timeout_ms_(timeout_ms), provider_(provider) {}
 
-  CloudProviderT* GetProvider() { return &provider_; }
-  const CloudProviderT* GetProvider() const { return &provider_; }
+  CloudProviderT* GetProvider() { return provider_; }
+  const CloudProviderT* GetProvider() const { return provider_; }
 
   template <typename DirectoryT>
-  static inline constexpr bool IsFileContentSizeRequired(const DirectoryT& d) {
-    return CloudProviderT::IsFileContentSizeRequired(d);
+  bool IsFileContentSizeRequired(const DirectoryT& d) const {
+    return provider_->IsFileContentSizeRequired(d);
   }
 
   auto GetRoot(stdx::stop_token stop_token) const
-      -> decltype(provider_.GetRoot(stop_token)) {
+      -> decltype(provider_->GetRoot(stop_token)) {
     auto context_token = CreateStopToken("GetRoot", std::move(stop_token));
-    co_return co_await provider_.GetRoot(context_token.GetToken());
+    co_return co_await provider_->GetRoot(context_token.GetToken());
   }
 
   template <IsDirectory<CloudProviderT> Directory>
   auto ListDirectoryPage(Directory directory,
                          std::optional<std::string> page_token,
                          stdx::stop_token stop_token)
-      -> decltype(provider_.ListDirectoryPage(directory, page_token,
-                                              stop_token)) {
+      -> decltype(provider_->ListDirectoryPage(directory, page_token,
+                                               stop_token)) {
     auto context_token =
         CreateStopToken("ListDirectoryPage", std::move(stop_token));
-    co_return co_await provider_.ListDirectoryPage(
+    co_return co_await provider_->ListDirectoryPage(
         std::move(directory), std::move(page_token), context_token.GetToken());
   }
 
   auto GetGeneralData(stdx::stop_token stop_token)
-      -> decltype(provider_.GetGeneralData(stop_token)) {
+      -> decltype(provider_->GetGeneralData(stop_token)) {
     auto context_token =
         CreateStopToken("GetGeneralData", std::move(stop_token));
-    co_return co_await provider_.GetGeneralData(context_token.GetToken());
+    co_return co_await provider_->GetGeneralData(context_token.GetToken());
   }
 
   template <IsFile<CloudProviderT> File>
@@ -72,8 +77,8 @@ class TimingOutCloudProvider<CloudProviderT>::CloudProvider
                            [&] { stop_source.request_stop(); });
     auto scope_guard =
         coro::util::AtScopeExit([&] { stop_source.request_stop(); });
-    auto generator = provider_.GetFileContent(std::move(file), range,
-                                              stop_source.get_token());
+    auto generator = provider_->GetFileContent(std::move(file), range,
+                                               stop_source.get_token());
     auto do_await = [&]<typename F>(F task) -> Task<typename F::type> {
       TimingOutStopToken timeout_source(*event_loop_, "GetFileContent",
                                         timeout_ms_);
@@ -92,7 +97,7 @@ class TimingOutCloudProvider<CloudProviderT>::CloudProvider
   Task<ItemT> RenameItem(ItemT item, std::string new_name,
                          stdx::stop_token stop_token) {
     auto context_token = CreateStopToken("RenameItem", std::move(stop_token));
-    co_return co_await provider_.RenameItem(
+    co_return co_await provider_->RenameItem(
         std::move(item), std::move(new_name), context_token.GetToken());
   }
 
@@ -102,22 +107,22 @@ class TimingOutCloudProvider<CloudProviderT>::CloudProvider
       -> decltype(provider_.CreateDirectory(parent, name, stop_token)) {
     auto context_token =
         CreateStopToken("CreateDirectory", std::move(stop_token));
-    co_return co_await provider_.CreateDirectory(
+    co_return co_await provider_->CreateDirectory(
         std::move(parent), std::move(name), context_token.GetToken());
   }
 
   template <typename ItemT>
   Task<> RemoveItem(ItemT item, stdx::stop_token stop_token) {
     auto context_token = CreateStopToken("RemoveItem", std::move(stop_token));
-    co_return co_await provider_.RemoveItem(std::move(item),
-                                            context_token.GetToken());
+    co_return co_await provider_->RemoveItem(std::move(item),
+                                             context_token.GetToken());
   }
 
   template <typename ItemT, typename DirectoryT>
   Task<ItemT> MoveItem(ItemT source, DirectoryT destination,
                        stdx::stop_token stop_token) {
     auto context_token = CreateStopToken("MoveItem", std::move(stop_token));
-    co_return co_await provider_.MoveItem(
+    co_return co_await provider_->MoveItem(
         std::move(source), std::move(destination), context_token.GetToken());
   }
 
@@ -125,8 +130,8 @@ class TimingOutCloudProvider<CloudProviderT>::CloudProvider
   auto CreateFile(DirectoryT parent, std::string_view name,
                   typename CloudProviderT::FileContent content,
                   stdx::stop_token stop_token)
-      -> decltype(provider_.CreateFile(parent, name, std::move(content),
-                                       stop_token)) {
+      -> decltype(provider_->CreateFile(parent, name, std::move(content),
+                                        stop_token)) {
     stdx::stop_source stop_source;
     stdx::stop_callback cb(std::move(stop_token),
                            [&] { stop_source.request_stop(); });
@@ -139,8 +144,8 @@ class TimingOutCloudProvider<CloudProviderT>::CloudProvider
 
     Invoke(InstallTimer(&chunk_index, &stop_source));
 
-    co_return co_await provider_.CreateFile(parent, name, std::move(content),
-                                            stop_source.get_token());
+    co_return co_await provider_->CreateFile(parent, name, std::move(content),
+                                             stop_source.get_token());
   }
 
  private:
