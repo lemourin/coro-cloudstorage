@@ -61,8 +61,9 @@ class HttpHandler {
       std::cerr << "CREATED " << d->GetId() << "\n";
     }
     template <typename CloudAccount>
-    void OnDestroy(CloudAccount* d) {
+    Task<> OnDestroy(CloudAccount* d) {
       std::cerr << "REMOVED " << d->GetId() << "\n";
+      co_return;
     }
   };
 

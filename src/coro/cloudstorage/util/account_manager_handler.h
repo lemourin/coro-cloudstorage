@@ -35,6 +35,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
   struct Data;
 
+  Task<> Quit() const { return d_->Quit(); }
+
   template <typename CloudProvider>
   struct OnAuthTokenChanged {
     void operator()(typename CloudProvider::Auth::AuthToken auth_token) {
@@ -89,20 +91,24 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           Handler{.prefix = "/size", .handler = GetSizeHandler{this}});
     }
 
-    ~Data() {
+    Task<> Quit() {
+      std::vector<Task<>> tasks;
       for (auto& account : accounts) {
-        account_listener.OnDestroy(&account);
+        tasks.emplace_back(account_listener.OnDestroy(&account));
       }
+      co_await WhenAll(std::move(tasks));
+      accounts.clear();
     }
 
     template <typename CloudProvider>
-    void RemoveCloudProvider(std::string_view username) {
+    Task<> RemoveCloudProvider(std::string_view username) {
       auth_token_manager.template RemoveToken<CloudProvider>(username);
       auto account_id = GetAccountId<CloudProvider>(username);
       for (auto it = std::begin(accounts); it != std::end(accounts);) {
-        if (it->GetId() == account_id) {
+        if (it->GetId() == account_id &&
+            !it->stop_source.get_token().stop_requested()) {
           it->stop_source.request_stop();
-          account_listener.OnDestroy(&*it);
+          co_await account_listener.OnDestroy(&*it);
           it = accounts.erase(it);
         } else {
           it++;
@@ -218,7 +224,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         auto general_data =
             co_await provider.GetGeneralData(std::move(stop_token));
         *username = std::move(general_data.username);
-        d->template RemoveCloudProvider<CloudProvider>(
+        co_await d->template RemoveCloudProvider<CloudProvider>(
             GetAccountId<CloudProvider>(**username));
         d->auth_token_manager.template SaveToken<CloudProvider>(
             std::move(auth_token), **username);
@@ -238,7 +244,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     struct OnRemoveHandler {
       Task<Response> operator()(Request request,
                                 stdx::stop_token stop_token) const {
-        d->template RemoveCloudProvider<CloudProvider>(username);
+        co_await d->template RemoveCloudProvider<CloudProvider>(username);
         co_return Response{.status = 302, .headers = {{"Location", "/"}}};
       }
       Data* d;
