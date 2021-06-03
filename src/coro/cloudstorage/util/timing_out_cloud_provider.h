@@ -104,7 +104,7 @@ class TimingOutCloudProvider<CloudProviderT>::CloudProvider
   template <IsDirectory<CloudProviderT> DirectoryT>
   auto CreateDirectory(DirectoryT parent, std::string name,
                        stdx::stop_token stop_token)
-      -> decltype(provider_.CreateDirectory(parent, name, stop_token)) {
+      -> decltype(provider_->CreateDirectory(parent, name, stop_token)) {
     auto context_token =
         CreateStopToken("CreateDirectory", std::move(stop_token));
     co_return co_await provider_->CreateDirectory(
