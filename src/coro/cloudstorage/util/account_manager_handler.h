@@ -94,7 +94,10 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     Task<> Quit() {
       std::vector<Task<>> tasks;
       for (auto& account : accounts) {
-        tasks.emplace_back(account_listener.OnDestroy(&account));
+        if (!account.stop_source.get_token().stop_requested()) {
+          account.stop_source.request_stop();
+          tasks.emplace_back(account_listener.OnDestroy(&account));
+        }
       }
       co_await WhenAll(std::move(tasks));
       accounts.clear();
