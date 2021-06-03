@@ -34,7 +34,7 @@ concept HasMimeType = requires(T v) {
 };
 
 template <typename T, typename CloudProvider>
-concept IsDirectory = requires(typename CloudProvider::Impl provider, T v,
+concept IsDirectory = requires(typename CloudProvider::Impl& provider, T v,
                                std::optional<std::string> page_token,
                                stdx::stop_token stop_token) {
   {
@@ -43,7 +43,7 @@ concept IsDirectory = requires(typename CloudProvider::Impl provider, T v,
 };
 
 template <typename T, typename CloudProvider>
-concept IsFile = requires(typename CloudProvider::Impl provider, T v,
+concept IsFile = requires(typename CloudProvider::Impl& provider, T v,
                           http::Range range, stdx::stop_token stop_token) {
   {
     provider.GetFileContent(v, range, stop_token)
@@ -51,18 +51,19 @@ concept IsFile = requires(typename CloudProvider::Impl provider, T v,
 };
 
 template <typename Parent, typename CloudProvider>
-concept CanCreateFile = requires(
-    typename CloudProvider::Impl provider, Parent parent, std::string_view name,
-    typename CloudProvider::FileContent content, stdx::stop_token stop_token,
-    decltype(provider.CreateFile(parent, name, std::move(content),
-                                 stop_token)) item_promise,
-    typename decltype(item_promise)::type item) {
+concept CanCreateFile =
+    requires(typename CloudProvider::Impl& provider, Parent parent,
+             std::string_view name, typename CloudProvider::FileContent content,
+             stdx::stop_token stop_token,
+             decltype(provider.CreateFile(parent, name, std::move(content),
+                                          stop_token)) item_promise,
+             typename decltype(item_promise)::type item) {
   { item } -> IsFile<CloudProvider>;
 };
 
 template <typename T, typename CloudProvider>
 concept CanRename = requires(
-    typename CloudProvider::Impl provider, T v, std::string new_name,
+    typename CloudProvider::Impl& provider, T v, std::string new_name,
     stdx::stop_token stop_token,
     decltype(provider.RenameItem(v, new_name, stop_token)) item_promise,
     typename decltype(item_promise)::type item) {
@@ -70,14 +71,15 @@ concept CanRename = requires(
 };
 
 template <typename T, typename CloudProvider>
-concept CanRemove = requires(typename CloudProvider::Impl provider, T v,
+concept CanRemove = requires(typename CloudProvider::Impl& provider, T v,
                              stdx::stop_token stop_token) {
   { provider.RemoveItem(v, stop_token) } -> Awaitable<void>;
 };
 
 template <typename Source, typename Destination, typename CloudProvider>
-concept CanMove = requires(typename CloudProvider::Impl provider, Source source,
-                           Destination destination, stdx::stop_token stop_token,
+concept CanMove = requires(typename CloudProvider::Impl& provider,
+                           Source source, Destination destination,
+                           stdx::stop_token stop_token,
                            decltype(provider.MoveItem(source, destination,
                                                       stop_token)) item_promise,
                            typename decltype(item_promise)::type item) {
@@ -86,7 +88,7 @@ concept CanMove = requires(typename CloudProvider::Impl provider, Source source,
 
 template <typename Parent, typename CloudProvider>
 concept CanCreateDirectory = requires(
-    typename CloudProvider::Impl provider, Parent v, std::string name,
+    typename CloudProvider::Impl& provider, Parent v, std::string name,
     stdx::stop_token stop_token,
     decltype(provider.CreateDirectory(v, name, stop_token)) item_promise,
     typename decltype(item_promise)::type item) {
@@ -95,7 +97,7 @@ concept CanCreateDirectory = requires(
 
 template <typename Item, typename CloudProvider>
 concept HasThumbnail = requires(
-    typename CloudProvider::Impl provider, Item v, http::Range range,
+    typename CloudProvider::Impl& provider, Item v, http::Range range,
     stdx::stop_token stop_token,
     decltype(provider.GetItemThumbnail(v, range, stop_token)) thumbnail_promise,
     typename decltype(thumbnail_promise)::type thumbnail) {
