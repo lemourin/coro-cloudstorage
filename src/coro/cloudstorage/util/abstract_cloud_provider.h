@@ -62,6 +62,8 @@ class AbstractCloudProvider::CloudProvider
     : public coro::cloudstorage::CloudProvider<AbstractCloudProvider,
                                                CloudProvider> {
  public:
+  virtual ~CloudProvider() = default;
+
   virtual intptr_t GetId() const = 0;
 
   virtual Task<Directory> GetRoot(stdx::stop_token) const = 0;
