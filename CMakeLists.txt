@@ -1,4 +1,4 @@
-project(coro-cloudstorage CXX)
+project(coro-cloudstorage CXX C)
 cmake_minimum_required(VERSION 3.17)
 
 set(BUILD_SHARED_LIBS OFF)
