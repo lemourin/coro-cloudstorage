@@ -325,8 +325,8 @@ struct Mega::CloudProvider::Data {
         throw CloudException("unknown mega error");
       }
     } else if constexpr (std::is_same_v<::mega::error,
-                                        decltype(
-                                            (mega_client.*Method)(args...))>) {
+                                        decltype((mega_client.*
+                                                  Method)(args...))>) {
       if (auto error = (mega_client.*Method)(args...);
           error != ::mega::error::API_OK) {
         throw CloudException(GetErrorDescription(error));
@@ -414,7 +414,7 @@ Task<std::any> Mega::CloudProvider::Do(stdx::stop_token stop_token,
 Task<std::string> Mega::CloudProvider::Data::GetSession(
     UserCredential credentials, stdx::stop_token stop_token) {
   auto [version, email, salt, prelogin_error] =
-      std::any_cast<std::tuple<int, std::string, std::string, ::mega::error>>(
+      std::any_cast<std::tuple<int, std::string, std::string, ::mega::error>&&>(
           co_await Do<&::mega::MegaClient::prelogin, RequestType::kOther>(
               stop_token, credentials.email.c_str()));
   Check(prelogin_error);
@@ -545,8 +545,9 @@ Task<Mega::Item> Mega::CloudProvider::MoveItem(
       co_await Do<&::mega::MegaClient::rename, RequestType::kOther>(
           std::move(stop_token), source_node, destination_node,
           ::mega::SYNCDEL_NONE, ::mega::UNDEF);
-  const auto& [handle, error] = std::move(
-      std::any_cast<std::tuple<::mega::handle, ::mega::error>>(result));
+  const auto& [handle, error] =
+      std::any_cast<std::tuple<::mega::handle, ::mega::error>&&>(
+          std::move(result));
   Check(error);
   co_return ToItem(d_->GetNode(handle));
 }
@@ -595,8 +596,9 @@ Task<> Mega::CloudProvider::RemoveItem(Item item,
           stop_token,
           d_->GetNode(std::visit([](const auto& d) { return d.id; }, item)),
           false);
-  auto [handle, error] = std::move(
-      std::any_cast<std::tuple<::mega::handle, ::mega::error>>(result));
+  auto [handle, error] =
+      std::any_cast<std::tuple<::mega::handle, ::mega::error>&&>(
+          std::move(result));
   Check(error);
 }
 
@@ -611,7 +613,8 @@ Task<Mega::GeneralData> Mega::CloudProvider::GetGeneralData(
     throw CloudException(
         GetErrorDescription(std::any_cast<::mega::error>(result)));
   }
-  const auto& account_details = std::any_cast<::mega::AccountDetails>(result);
+  const auto& account_details =
+      std::any_cast<const ::mega::AccountDetails&>(result);
   co_return GeneralData{.username = auth_token_.email,
                         .space_used = account_details.storage_used,
                         .space_total = account_details.storage_max};
@@ -669,7 +672,7 @@ auto Mega::CloudProvider::CreateFile(Directory parent, std::string_view name,
     explicit FileUpload(App* app) : app_(app), tag_(app_->client->restag + 1) {}
 
     void terminated() final {
-      app_->client->restag = tag;
+      app_->client->restag = tag_;
       app_->SetResult(::mega::error::API_EINTERNAL);
     }
 
@@ -759,7 +762,7 @@ auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
             GetErrorDescription(std::any_cast<::mega::error>(result)));
     }
   } else {
-    data = std::move(std::any_cast<std::string>(result));
+    data = std::any_cast<std::string&&>(std::move(result));
   }
   if (!range.end) {
     range.end = data.length() - 1;
