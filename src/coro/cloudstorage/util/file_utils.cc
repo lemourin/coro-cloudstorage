@@ -114,4 +114,24 @@ Task<> WriteFile(ThreadPool* thread_pool, std::FILE* file, int64_t offset,
   });
 }
 
+std::string GetFileName(std::string path) {
+  if (!path.empty() && path.back() == '/') {
+    path.pop_back();
+  }
+  auto it = path.find_last_of('/');
+  return path.substr(it == std::string::npos ? 0 : it + 1);
+}
+
+std::string GetDirectoryPath(std::string path) {
+  if (!path.empty() && path.back() == '/') {
+    path.pop_back();
+  }
+  auto it = path.find_last_of('/');
+  if (it == std::string::npos) {
+    return "";
+  } else {
+    return path.substr(0, it);
+  }
+}
+
 }  // namespace coro::cloudstorage::util

@@ -6,6 +6,8 @@
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/auth_token_manager.h>
+#include <coro/cloudstorage/util/file_utils.h>
+#include <coro/cloudstorage/util/recursive_visit.h>
 #include <coro/cloudstorage/util/string_utils.h>
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
@@ -126,8 +128,6 @@ class AmazonS3 {
   }
   static File ToFile(const pugi::xml_node&);
   static PageData ToPageData(const Directory&, const pugi::xml_document&);
-  static std::string GetFileName(std::string path);
-  static std::string GetDirectoryPath(std::string path);
   static pugi::xml_document GetXmlDocument(std::string data);
 };
 
@@ -180,7 +180,7 @@ class AmazonS3::CloudProvider
   template <typename Item>
   Task<Item> RenameItem(Item item, std::string new_name,
                         stdx::stop_token stop_token) {
-    auto destination_path = GetDirectoryPath(item.id);
+    auto destination_path = util::GetDirectoryPath(item.id);
     if (!destination_path.empty()) {
       destination_path += "/";
     }
@@ -202,6 +202,7 @@ class AmazonS3::CloudProvider
     co_await Fetch(std::move(request), std::move(stop_token));
     Directory new_directory;
     new_directory.id = std::move(id);
+    new_directory.name = std::move(name);
     co_return new_directory;
   }
 
@@ -265,20 +266,8 @@ class AmazonS3::CloudProvider
 
   template <typename Item, typename F>
   Task<> Visit(Item item, const F& func, stdx::stop_token stop_token) {
-    if constexpr (IsDirectory<Item, CloudProvider>) {
-      std::vector<Task<>> tasks;
-      FOR_CO_AWAIT(auto& page, this->ListDirectory(item, stop_token)) {
-        for (const auto& entry : page.items) {
-          tasks.emplace_back(std::visit(
-              [&](auto& entry) { return Visit(entry, func, stop_token); },
-              entry));
-        }
-      }
-      tasks.emplace_back(func(item));
-      co_await WhenAll(std::move(tasks));
-    } else {
-      co_await func(item);
-    }
+    return util::RecursiveVisit(this, std::move(item), func,
+                                std::move(stop_token));
   }
 
   Task<> RemoveItemImpl(std::string_view id,

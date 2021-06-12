@@ -36,6 +36,8 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/providers/pcloud.h
     coro/cloudstorage/providers/webdav.h
     coro/cloudstorage/providers/amazon_s3.h
+    coro/cloudstorage/providers/open_stack.h
+    coro/cloudstorage/providers/hubic.h
     coro/cloudstorage/util/webdav_utils.cc
     coro/cloudstorage/util/auth_token_manager.cc
     coro/cloudstorage/util/generator_utils.cc
@@ -44,6 +46,9 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/muxer.cc
     coro/cloudstorage/util/ffmpeg_utils.cc
     coro/cloudstorage/util/file_utils.cc
+    coro/cloudstorage/util/crypto_utils.h
+    coro/cloudstorage/util/crypto_utils.cc
+    coro/cloudstorage/util/recursive_visit.h
     coro/cloudstorage/providers/mega.cc
     coro/cloudstorage/providers/webdav.cc
     coro/cloudstorage/providers/amazon_s3.cc)
@@ -98,6 +103,7 @@ embed_resource(
         ../assets/providers/google.png
         ../assets/providers/mega.png
         ../assets/providers/amazons3.png
+        ../assets/providers/hubic.png
         ../assets/styles/default.css
         ../assets/js/account_list_main.js
 )

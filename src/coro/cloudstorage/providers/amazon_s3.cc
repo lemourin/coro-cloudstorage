@@ -1,10 +1,8 @@
 #include "amazon_s3.h"
 
+#include <coro/cloudstorage/util/crypto_utils.h>
+#include <coro/cloudstorage/util/file_utils.h>
 #include <coro/http/http_parse.h>
-#include <cryptopp/cryptlib.h>
-#include <cryptopp/hex.h>
-#include <cryptopp/hmac.h>
-#include <cryptopp/sha.h>
 
 #include <iomanip>
 #include <regex>
@@ -13,6 +11,12 @@ namespace coro::cloudstorage {
 
 namespace {
 
+using ::coro::cloudstorage::util::GetDirectoryPath;
+using ::coro::cloudstorage::util::GetFileName;
+using ::coro::cloudstorage::util::GetHMACSHA256;
+using ::coro::cloudstorage::util::GetSHA256;
+using ::coro::cloudstorage::util::ToHex;
+
 std::string GetDate(std::chrono::system_clock::time_point now) {
   auto time = http::gmtime(
       std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch())
@@ -20,35 +24,6 @@ std::string GetDate(std::chrono::system_clock::time_point now) {
   std::stringstream ss;
   ss << std::put_time(&time, "%Y%m%d");
   return ss.str();
-}
-
-std::string GetSHA256(std::string_view message) {
-  ::CryptoPP::SHA256 hash;
-  std::string result;
-  ::CryptoPP::StringSource(
-      std::string(message), true,
-      new ::CryptoPP::HashFilter(hash, new ::CryptoPP::StringSink(result)));
-  return result;
-}
-
-std::string ToHex(std::string_view message) {
-  std::string result;
-  ::CryptoPP::StringSource(
-      std::string(message), true,
-      new ::CryptoPP::HexEncoder(new ::CryptoPP::StringSink(result), false));
-  return result;
-}
-
-std::string GetHMACSHA256(std::string_view key, std::string_view message) {
-  std::string mac;
-  ::CryptoPP::HMAC<::CryptoPP::SHA256> hmac(
-      reinterpret_cast<const uint8_t*>(key.data()), key.length());
-  ::CryptoPP::StringSource(
-      std::string(message), true,
-      new ::CryptoPP::HashFilter(hmac, new ::CryptoPP::StringSink(mac)));
-  std::string result;
-  ::CryptoPP::StringSource(mac, true, new ::CryptoPP::StringSink(result));
-  return result;
 }
 
 }  // namespace
@@ -137,26 +112,6 @@ std::string AmazonS3::GetAuthorization(
                        << ",Signature=" << signature;
 
   return std::move(authorization_header).str();
-}
-
-std::string AmazonS3::GetFileName(std::string path) {
-  if (!path.empty() && path.back() == '/') {
-    path.pop_back();
-  }
-  auto it = path.find_last_of('/');
-  return path.substr(it == std::string::npos ? 0 : it + 1);
-}
-
-std::string AmazonS3::GetDirectoryPath(std::string path) {
-  if (!path.empty() && path.back() == '/') {
-    path.pop_back();
-  }
-  auto it = path.find_last_of('/');
-  if (it == std::string::npos) {
-    return "";
-  } else {
-    return path.substr(0, it);
-  }
 }
 
 AmazonS3::File AmazonS3::ToFile(const pugi::xml_node& node) {

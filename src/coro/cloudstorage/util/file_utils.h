@@ -27,6 +27,8 @@ Generator<std::string> ReadFile(coro::util::ThreadPool* thread_pool,
                                 std::FILE* file);
 Task<std::string> ReadFile(coro::util::ThreadPool* thread_pool, std::FILE* file,
                            int64_t offset, size_t size);
+std::string GetFileName(std::string path);
+std::string GetDirectoryPath(std::string path);
 
 #ifdef __ANDROID__
 void SetAndroidTempDirectory(std::string path);
