@@ -92,9 +92,10 @@ class OpenStack::CloudProvider
 
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         stdx::stop_token stop_token) const {
-    auto response = co_await http_->Fetch(
-        http::Request<>{.url = GetItemUrl(file),
-                        .headers = {http::ToRangeHeader(range)}},
+    auto response = co_await Fetch(
+        http::Request<>{
+            .url = GetEndpoint(util::StrCat("/", http::EncodeUri(file.id))),
+            .headers = {http::ToRangeHeader(range)}},
         std::move(stop_token));
     FOR_CO_AWAIT(std::string & chunk, response.body) {
       co_yield std::move(chunk);
@@ -109,7 +110,7 @@ class OpenStack::CloudProvider
       new_id += "/";
     }
     new_id += name;
-    auto response = co_await Fetch(
+    co_await Fetch(
         Request{.url = GetEndpoint(util::StrCat("/", http::EncodeUri(new_id))),
                 .method = http::Method::kPut,
                 .headers = {{"Content-Type", "application/directory"},
@@ -182,20 +183,6 @@ class OpenStack::CloudProvider
     }
     co_await Fetch(std::move(request), stop_token);
     co_return co_await GetItem<File>(new_id, std::move(stop_token));
-  }
-
-  std::string GetItemUrl(const File& file) const {
-    const int duration = 60 * 60;
-    auto expires = std::to_string(std::time(nullptr) + duration);
-    auto hmac_body = util::StrCat(
-        "GET\n", expires, "\n",
-        http::ParseUri(GetEndpoint(util::StrCat("/", file.id))).path.value());
-    auto signature =
-        util::ToHex(util::GetHMACSHA1(auth_token_.token, hmac_body));
-    return GetEndpoint(
-        util::StrCat("/", http::EncodeUri(file.id), "?",
-                     http::FormDataToString({{"temp_url_sig", signature},
-                                             {"temp_url_expires", expires}})));
   }
 
  private:
