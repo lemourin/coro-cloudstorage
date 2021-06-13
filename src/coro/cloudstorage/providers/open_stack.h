@@ -9,7 +9,6 @@
 #include <coro/cloudstorage/util/string_utils.h>
 #include <coro/generator.h>
 
-#include <iostream>
 #include <optional>
 #include <string>
 #include <variant>
@@ -49,6 +48,7 @@ class OpenStack {
     struct AuthToken {
       std::string endpoint;
       std::string token;
+      std::string bucket;
     };
   };
 
@@ -66,9 +66,7 @@ class OpenStack::CloudProvider
   CloudProvider(const Http* http, Auth::AuthToken auth_token)
       : http_(http), auth_token_(std::move(auth_token)) {}
 
-  Task<Directory> GetRoot(stdx::stop_token stop_token) const {
-    co_return Directory{};
-  }
+  Task<Directory> GetRoot(stdx::stop_token) const { co_return Directory{}; }
 
   Task<PageData> ListDirectoryPage(Directory directory,
                                    std::optional<std::string> page_token,
@@ -186,8 +184,6 @@ class OpenStack::CloudProvider
   }
 
  private:
-  static inline constexpr std::string_view kBucket = "default";
-
   static Item ToItem(const nlohmann::json& json) {
     if (json["content_type"] == "application/directory") {
       return ToItemImpl<Directory>(json);
@@ -241,8 +237,8 @@ class OpenStack::CloudProvider
         .method = http::Method::kCopy,
         .headers = {
             {"Content-Length", "0"},
-            {"Destination",
-             util::StrCat("/", kBucket, "/", http::EncodeUri(destination))}}};
+            {"Destination", util::StrCat("/", auth_token_.bucket, "/",
+                                         http::EncodeUri(destination))}}};
     co_await Fetch(std::move(request), stop_token);
     co_await RemoveItemImpl(source.id, std::move(stop_token));
   }
@@ -280,7 +276,8 @@ class OpenStack::CloudProvider
   }
 
   std::string GetEndpoint(std::string_view endpoint) const {
-    return util::StrCat(auth_token_.endpoint, "/", kBucket, endpoint);
+    return util::StrCat(auth_token_.endpoint, "/", auth_token_.bucket,
+                        endpoint);
   }
 
   const Http* http_;
@@ -294,6 +291,7 @@ inline nlohmann::json ToJson<OpenStack::Auth::AuthToken>(
   nlohmann::json json;
   json["endpoint"] = token.endpoint;
   json["token"] = token.token;
+  json["bucket"] = token.bucket;
   return json;
 }
 
@@ -303,6 +301,7 @@ inline OpenStack::Auth::AuthToken ToAuthToken<OpenStack::Auth::AuthToken>(
   OpenStack::Auth::AuthToken token;
   token.endpoint = json.at("endpoint");
   token.token = json.at("token");
+  token.bucket = json.at("bucket");
   return token;
 }
 }  // namespace util

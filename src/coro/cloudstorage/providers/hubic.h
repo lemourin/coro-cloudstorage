@@ -10,7 +10,6 @@
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
 
-#include <iostream>
 #include <string_view>
 
 namespace coro::cloudstorage {
@@ -51,7 +50,8 @@ class HubiC : public OpenStack {
     static Task<AuthToken> ExchangeAuthorizationCode(
         const Http& http, AuthData auth_data, std::string code,
         stdx::stop_token stop_token) {
-      http::Request<std::string> request{
+      using Request = http::Request<std::string>;
+      Request request{
           .url = "https://api.hubic.com/oauth/token",
           .method = http::Method::kPost,
           .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
@@ -66,16 +66,26 @@ class HubiC : public OpenStack {
       std::string access_token = json.at("access_token");
       auto credentials = co_await util::FetchJson(
           http,
-          http::Request<std::string>{
-              .url = GetEndpoint("/account/credentials"),
-              .headers = {{"Authorization",
-                           util::StrCat("Bearer ", access_token)}}},
+          Request{.url = GetEndpoint("/account/credentials"),
+                  .headers = {{"Authorization",
+                               util::StrCat("Bearer ", access_token)}}},
+          stop_token);
+      OpenStack::Auth::AuthToken openstack_auth_token = {
+          .endpoint = credentials.at("endpoint"),
+          .token = credentials.at("token")};
+      nlohmann::json bucket = co_await util::FetchJson(
+          http,
+          Request{.url = openstack_auth_token.endpoint,
+                  .headers = {{"X-Auth-Token", openstack_auth_token.token}}},
           std::move(stop_token));
+      if (bucket.empty()) {
+        throw CloudException("no buckets");
+      }
+      openstack_auth_token.bucket = bucket[0].at("name");
       co_return AuthToken{
           .access_token = std::move(access_token),
           .refresh_token = json.at("refresh_token"),
-          .openstack_auth_token = {.endpoint = credentials.at("endpoint"),
-                                   .token = credentials.at("token")}};
+          .openstack_auth_token = std::move(openstack_auth_token)};
     }
 
     template <http::HttpClient Http>
