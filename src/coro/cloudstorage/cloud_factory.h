@@ -11,8 +11,7 @@ namespace coro::cloudstorage {
 
 template <typename T>
 concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
-  { v.GetAuthorizationUrl({}) }
-  ->stdx::convertible_to<std::string>;
+  { v.GetAuthorizationUrl({}) } -> stdx::convertible_to<std::string>;
 };
 
 template <typename EventLoopT, coro::http::HttpClient HttpT,
@@ -56,14 +55,16 @@ class CloudFactory {
     }
   }
 
-  template <typename CloudProvider, typename OnTokenUpdated>
-  auto CreateAuthManager(typename CloudProvider::Auth::AuthToken auth_token,
+  template <typename CloudProvider, typename OnTokenUpdated,
+            typename Auth = typename CloudProvider::Auth>
+  auto CreateAuthManager(typename Auth::AuthToken auth_token,
                          OnTokenUpdated on_token_updated) const {
-    return util::AuthManager<Http, typename CloudProvider::Auth,
-                             OnTokenUpdated>(
-        *http_, std::move(auth_token),
-        auth_data_.template operator()<CloudProvider>(),
-        std::move(on_token_updated));
+    return util::AuthManager<Http, Auth, OnTokenUpdated>(
+        *http_, std::move(auth_token), std::move(on_token_updated),
+        util::RefreshToken<HttpT, Auth>{
+            .http = http_,
+            .auth_data = auth_data_.template operator()<CloudProvider>()},
+        util::AuthorizeRequest{});
   }
 
  private:

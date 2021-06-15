@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_AUTH_MANAGER_H
 
 #include <coro/cloudstorage/cloud_exception.h>
+#include <coro/cloudstorage/util/string_utils.h>
 #include <coro/http/http.h>
 #include <coro/shared_promise.h>
 #include <coro/stdx/stop_source.h>
@@ -10,19 +11,45 @@
 
 namespace coro::cloudstorage::util {
 
-template <http::HttpClient HttpT, typename Auth, typename OnAuthTokenUpdated>
+template <http::HttpClient HttpT, typename Auth>
+struct RefreshToken {
+  using AuthToken = typename Auth::AuthToken;
+  using AuthData = typename Auth::AuthData;
+
+  Task<AuthToken> operator()(AuthToken auth_token,
+                             stdx::stop_token stop_token) const {
+    return Auth::RefreshAccessToken(*http, auth_data, auth_token, stop_token);
+  }
+
+  const HttpT* http;
+  AuthData auth_data;
+};
+
+struct AuthorizeRequest {
+  template <typename Request, typename AuthToken>
+  Request operator()(Request request, const AuthToken& auth_token) const {
+    request.headers.emplace_back("Authorization",
+                                 StrCat("Bearer ", auth_token.access_token));
+    return request;
+  }
+};
+
+template <http::HttpClient HttpT, typename Auth, typename OnAuthTokenUpdated,
+          typename RefreshTokenT = RefreshToken<HttpT, Auth>,
+          typename AuthorizeRequestT = AuthorizeRequest>
 class AuthManager {
  public:
   using AuthToken = typename Auth::AuthToken;
-  using AuthData = typename Auth::AuthData;
   using Http = HttpT;
 
-  AuthManager(const Http& http, AuthToken auth_token, AuthData auth_data,
-              OnAuthTokenUpdated on_auth_token_updated)
+  AuthManager(const Http& http, AuthToken auth_token,
+              OnAuthTokenUpdated on_auth_token_updated,
+              RefreshTokenT refresh_token, AuthorizeRequestT authorize_request)
       : http_(&http),
         auth_token_(std::move(auth_token)),
-        auth_data_(std::move(auth_data)),
-        on_auth_token_updated_(std::move(on_auth_token_updated)) {}
+        on_auth_token_updated_(std::move(on_auth_token_updated)),
+        refresh_token_(std::move(refresh_token)),
+        authorize_request_(std::move(authorize_request)) {}
 
   ~AuthManager() { stop_source_.request_stop(); }
 
@@ -74,16 +101,13 @@ class AuthManager {
 
   template <typename Request>
   Request AuthorizeRequest(Request request) {
-    request.headers.emplace_back("Authorization",
-                                 "Bearer " + auth_token_.access_token);
-    return request;
+    return authorize_request_(std::move(request), auth_token_);
   }
 
   struct RefreshToken {
     Task<AuthToken> operator()() const {
       auto stop_token = d->stop_source_.get_token();
-      auto auth_token = co_await Auth::RefreshAccessToken(
-          *d->http_, d->auth_data_, d->auth_token_, stop_token);
+      auto auth_token = co_await d->refresh_token_(d->auth_token_, stop_token);
       if (!stop_token.stop_requested()) {
         d->current_auth_refresh_ = std::nullopt;
         d->auth_token_ = auth_token;
@@ -96,9 +120,10 @@ class AuthManager {
 
   const Http* http_;
   AuthToken auth_token_;
-  AuthData auth_data_;
   std::optional<SharedPromise<RefreshToken>> current_auth_refresh_;
   OnAuthTokenUpdated on_auth_token_updated_;
+  RefreshTokenT refresh_token_;
+  AuthorizeRequestT authorize_request_;
   stdx::stop_source stop_source_;
 };
 
