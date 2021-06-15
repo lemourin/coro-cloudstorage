@@ -46,6 +46,28 @@ class HubiC : public OpenStack {
                                {"scope", "credentials.r,account.r,usage.r"}}));
     }
 
+    template <http::HttpClient HttpT, typename FetchJson>
+    static Task<OpenStack::Auth::AuthToken> GetOpenStackAuthToken(
+        const HttpT& http, const FetchJson& fetch,
+        stdx::stop_token stop_token) {
+      using Request = http::Request<std::string>;
+      auto credentials = co_await fetch(
+          Request{.url = GetEndpoint("/account/credentials")}, stop_token);
+      OpenStack::Auth::AuthToken openstack_auth_token = {
+          .endpoint = credentials.at("endpoint"),
+          .token = credentials.at("token")};
+      nlohmann::json bucket = co_await util::FetchJson(
+          http,
+          Request{.url = openstack_auth_token.endpoint,
+                  .headers = {{"X-Auth-Token", openstack_auth_token.token}}},
+          std::move(stop_token));
+      if (bucket.empty()) {
+        throw CloudException("no buckets");
+      }
+      openstack_auth_token.bucket = bucket[0].at("name");
+      co_return openstack_auth_token;
+    }
+
     template <http::HttpClient Http>
     static Task<AuthToken> ExchangeAuthorizationCode(
         const Http& http, AuthData auth_data, std::string code,
@@ -64,71 +86,166 @@ class HubiC : public OpenStack {
       auto json =
           co_await util::FetchJson(http, std::move(request), stop_token);
       std::string access_token = json.at("access_token");
-      auto credentials = co_await util::FetchJson(
-          http,
-          Request{.url = GetEndpoint("/account/credentials"),
-                  .headers = {{"Authorization",
-                               util::StrCat("Bearer ", access_token)}}},
-          stop_token);
-      OpenStack::Auth::AuthToken openstack_auth_token = {
-          .endpoint = credentials.at("endpoint"),
-          .token = credentials.at("token")};
-      nlohmann::json bucket = co_await util::FetchJson(
-          http,
-          Request{.url = openstack_auth_token.endpoint,
-                  .headers = {{"X-Auth-Token", openstack_auth_token.token}}},
-          std::move(stop_token));
-      if (bucket.empty()) {
-        throw CloudException("no buckets");
-      }
-      openstack_auth_token.bucket = bucket[0].at("name");
       co_return AuthToken{
-          .access_token = std::move(access_token),
+          .access_token = access_token,
           .refresh_token = json.at("refresh_token"),
-          .openstack_auth_token = std::move(openstack_auth_token)};
+          .openstack_auth_token = co_await GetOpenStackAuthToken(
+              http,
+              [&](auto request, stdx::stop_token stop_token) {
+                request.headers.emplace_back(
+                    "Authorization", util::StrCat("Bearer ", access_token));
+                return util::FetchJson(http, std::move(request),
+                                       std::move(stop_token));
+              },
+              std::move(stop_token))};
     }
 
     template <http::HttpClient Http>
-    static Task<AuthToken> RefreshAccessToken(const Http& http,
-                                              AuthData auth_data,
-                                              AuthToken auth_token,
-                                              stdx::stop_token stop_token) {
-      auto request = http::Request<std::string>{
-          .url = "https://api.hubic.com/oauth/token",
-          .method = http::Method::kPost,
-          .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
-          .body = http::FormDataToString(
-              {{"refresh_token", auth_token.refresh_token},
-               {"client_id", auth_data.client_id},
-               {"client_secret", auth_data.client_secret},
-               {"grant_type", "refresh_token"}})};
-      auto json = co_await util::FetchJson(http, std::move(request),
-                                           std::move(stop_token));
-      auth_token.access_token = json["access_token"];
-      co_return auth_token;
-    }
+    struct RefreshAccessToken {
+      Task<AuthToken> operator()(AuthToken auth_token,
+                                 stdx::stop_token stop_token) const {
+        auto request = http::Request<std::string>{
+            .url = "https://api.hubic.com/oauth/token",
+            .method = http::Method::kPost,
+            .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
+            .body = http::FormDataToString(
+                {{"refresh_token", auth_token.refresh_token},
+                 {"client_id", auth_data.client_id},
+                 {"client_secret", auth_data.client_secret},
+                 {"grant_type", "refresh_token"}})};
+        auto json = co_await util::FetchJson(*http, std::move(request),
+                                             std::move(stop_token));
+        auth_token.access_token = json["access_token"];
+        auth_token.openstack_auth_token = *current_openstack_token;
+        co_return auth_token;
+      }
+
+      const Http* http;
+      const OpenStack::Auth::AuthToken* current_openstack_token;
+      AuthData auth_data;
+    };
   };
 
   static std::string GetEndpoint(std::string_view endpoint) {
     return util::StrCat("https://api.hubic.com/1.0", endpoint);
   }
 
-  template <typename AuthManager, typename>
+  template <http::HttpClient Http, typename OnAuthTokenUpdated>
   class CloudProvider;
+
+  template <typename AuthManager>
+  struct RefreshOpenStackToken {
+    using AuthToken = OpenStack::Auth::AuthToken;
+
+    Task<AuthToken> operator()(const AuthToken&,
+                               stdx::stop_token stop_token) const {
+      return Auth::GetOpenStackAuthToken(
+          auth_manager->GetHttp(),
+          [&](auto request, stdx::stop_token stop_token) {
+            return auth_manager->FetchJson(std::move(request),
+                                           std::move(stop_token));
+          },
+          std::move(stop_token));
+    }
+
+    AuthManager* auth_manager;
+  };
 
   static constexpr std::string_view kId = "hubic";
   static inline constexpr auto& kIcon = util::kAssetsProvidersHubicPng;
 };
 
-template <typename AuthManager,
-          typename BaseCloudProvider =
-              OpenStack::CloudProvider<typename AuthManager::Http, HubiC>>
-class HubiC::CloudProvider : public BaseCloudProvider {
+template <http::HttpClient Http, typename OnAuthTokenUpdated>
+class HubiC::CloudProvider
+    : public coro::cloudstorage::CloudProvider<
+          HubiC, CloudProvider<Http, OnAuthTokenUpdated>> {
  public:
-  explicit CloudProvider(AuthManager auth_manager)
-      : BaseCloudProvider(&auth_manager.GetHttp(),
-                          auth_manager.GetAuthToken().openstack_auth_token),
-        auth_manager_(std::move(auth_manager)) {}
+  struct OnOpenStackTokenUpdated;
+
+  using AuthManager = util::AuthManager<Http, Auth, OnAuthTokenUpdated,
+                                        Auth::RefreshAccessToken<Http>>;
+
+  using OpenStackAuthManager =
+      util::AuthManager<Http, OpenStack::Auth, OnOpenStackTokenUpdated,
+                        RefreshOpenStackToken<AuthManager>, AuthorizeRequest>;
+
+  struct OnOpenStackTokenUpdated {
+    void operator()(OpenStack::Auth::AuthToken auth_token) const {
+      auto new_auth_token = auth_manager->GetAuthToken();
+      new_auth_token.openstack_auth_token = std::move(auth_token);
+      auth_manager->OnAuthTokenUpdated(std::move(new_auth_token));
+    }
+    AuthManager* auth_manager;
+  };
+
+  CloudProvider(const Http& http, Auth::AuthToken auth_token,
+                Auth::AuthData auth_data,
+                OnAuthTokenUpdated on_auth_token_updated)
+      : auth_manager_(http, std::move(auth_token),
+                      std::move(on_auth_token_updated),
+                      Auth::RefreshAccessToken<Http>{
+                          .http = &http, .auth_data = std::move(auth_data)},
+                      util::AuthorizeRequest{}),
+        provider_(OpenStackAuthManager(
+            auth_manager_.GetHttp(),
+            auth_manager_.GetAuthToken().openstack_auth_token,
+            OnOpenStackTokenUpdated{&auth_manager_},
+            RefreshOpenStackToken<AuthManager>{&auth_manager_},
+            OpenStack::AuthorizeRequest{})) {
+    auth_manager_.refresh_token().current_openstack_token =
+        &provider_.auth_token();
+  }
+
+  CloudProvider(CloudProvider&&) = delete;
+  CloudProvider& operator=(CloudProvider&&) = delete;
+
+  auto GetRoot(stdx::stop_token stop_token) const {
+    return provider_.GetRoot(std::move(stop_token));
+  }
+
+  auto ListDirectoryPage(Directory directory,
+                         std::optional<std::string> page_token,
+                         stdx::stop_token stop_token) {
+    return provider_.ListDirectoryPage(
+        std::move(directory), std::move(page_token), std::move(stop_token));
+  }
+
+  auto GetFileContent(File file, http::Range range,
+                      stdx::stop_token stop_token) {
+    return provider_.GetFileContent(std::move(file), range,
+                                    std::move(stop_token));
+  }
+
+  Task<Directory> CreateDirectory(Directory parent, std::string_view name,
+                                  stdx::stop_token stop_token) {
+    return provider_.CreateDirectory(std::move(parent), name,
+                                     std::move(stop_token));
+  }
+
+  template <typename Item>
+  Task<> RemoveItem(Item item, stdx::stop_token stop_token) {
+    return provider_.RemoveItem(std::move(item), std::move(stop_token));
+  }
+
+  template <typename Item>
+  Task<Item> MoveItem(Item source, Directory destination,
+                      stdx::stop_token stop_token) {
+    return provider_.MoveItem(std::move(source), std::move(destination),
+                              std::move(stop_token));
+  }
+
+  template <typename Item>
+  Task<Item> RenameItem(Item item, std::string new_name,
+                        stdx::stop_token stop_token) {
+    return provider_.RenameItem(std::move(item), std::move(new_name),
+                                std::move(stop_token));
+  }
+
+  Task<File> CreateFile(Directory parent, std::string_view name,
+                        FileContent content, stdx::stop_token stop_token) {
+    return provider_.CreateFile(std::move(parent), name, std::move(content),
+                                std::move(stop_token));
+  }
 
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token) {
     auto [json1, json2] = co_await WhenAll(
@@ -145,6 +262,21 @@ class HubiC::CloudProvider : public BaseCloudProvider {
 
  private:
   AuthManager auth_manager_;
+  OpenStack::CloudProvider<OpenStackAuthManager> provider_;
+};
+
+template <>
+struct CreateCloudProvider<HubiC> {
+  template <typename F, typename CloudFactory, typename OnTokenUpdated>
+  auto operator()(const F& create, const CloudFactory& factory,
+                  HubiC::Auth::AuthToken auth_token,
+                  OnTokenUpdated on_token_updated) const {
+    using CloudProviderT =
+        HubiC::CloudProvider<typename CloudFactory::Http, OnTokenUpdated>;
+    return create.template operator()<CloudProviderT>(
+        *factory.http_, std::move(auth_token),
+        factory.template GetAuthData<HubiC>(), std::move(on_token_updated));
+  }
 };
 
 namespace util {

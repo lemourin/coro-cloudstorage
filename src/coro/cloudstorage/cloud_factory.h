@@ -65,9 +65,13 @@ class CloudFactory {
     return util::AuthManager<Http, Auth, OnTokenUpdated>(
         *http_, std::move(auth_token), std::move(on_token_updated),
         util::RefreshToken<HttpT, Auth>{
-            .http = http_,
-            .auth_data = auth_data_.template operator()<CloudProvider>()},
+            .http = http_, .auth_data = GetAuthData<CloudProvider>()},
         util::AuthorizeRequest{});
+  }
+
+  template <typename CloudProvider>
+  auto GetAuthData() const {
+    return auth_data_.template operator()<CloudProvider>();
   }
 
  private:

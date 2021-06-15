@@ -34,7 +34,7 @@ struct AuthorizeRequest {
   }
 };
 
-template <http::HttpClient HttpT, typename Auth, typename OnAuthTokenUpdated,
+template <http::HttpClient HttpT, typename Auth, typename OnAuthTokenUpdatedT,
           typename RefreshTokenT = RefreshToken<HttpT, Auth>,
           typename AuthorizeRequestT = AuthorizeRequest>
 class AuthManager {
@@ -43,7 +43,7 @@ class AuthManager {
   using Http = HttpT;
 
   AuthManager(const Http& http, AuthToken auth_token,
-              OnAuthTokenUpdated on_auth_token_updated,
+              OnAuthTokenUpdatedT on_auth_token_updated,
               RefreshTokenT refresh_token, AuthorizeRequestT authorize_request)
       : http_(&http),
         auth_token_(std::move(auth_token)),
@@ -91,6 +91,14 @@ class AuthManager {
   const AuthToken& GetAuthToken() const { return auth_token_; }
   const Http& GetHttp() const { return *http_; }
 
+  void OnAuthTokenUpdated(AuthToken auth_token) {
+    auth_token_ = std::move(auth_token);
+    on_auth_token_updated_(auth_token_);
+  }
+
+  RefreshTokenT& refresh_token() { return refresh_token_; }
+  const RefreshTokenT& refresh_token() const { return refresh_token_; }
+
  private:
   Task<> RefreshAuthToken(stdx::stop_token stop_token) {
     if (!current_auth_refresh_) {
@@ -121,7 +129,7 @@ class AuthManager {
   const Http* http_;
   AuthToken auth_token_;
   std::optional<SharedPromise<RefreshToken>> current_auth_refresh_;
-  OnAuthTokenUpdated on_auth_token_updated_;
+  OnAuthTokenUpdatedT on_auth_token_updated_;
   RefreshTokenT refresh_token_;
   AuthorizeRequestT authorize_request_;
   stdx::stop_source stop_source_;

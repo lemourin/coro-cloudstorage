@@ -52,26 +52,34 @@ class OpenStack {
     };
   };
 
-  template <http::HttpClient Http, typename CloudProviderT = OpenStack>
+  struct AuthorizeRequest {
+    template <typename Request>
+    Request operator()(Request request, Auth::AuthToken token) const {
+      request.headers.emplace_back("X-Auth-Token", token.token);
+      return request;
+    }
+  };
+
+  template <typename AuthManager>
   class CloudProvider;
 };
 
-template <http::HttpClient Http, typename CloudProviderT>
+template <typename AuthManager>
 class OpenStack::CloudProvider
-    : public coro::cloudstorage::CloudProvider<
-          CloudProviderT, CloudProvider<Http, CloudProviderT>> {
+    : public coro::cloudstorage::CloudProvider<OpenStack,
+                                               CloudProvider<AuthManager>> {
  public:
   using Request = http::Request<std::string>;
 
-  CloudProvider(const Http* http, Auth::AuthToken auth_token)
-      : http_(http), auth_token_(std::move(auth_token)) {}
+  explicit CloudProvider(AuthManager auth_manager)
+      : auth_manager_(std::move(auth_manager)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) const { co_return Directory{}; }
 
   Task<PageData> ListDirectoryPage(Directory directory,
                                    std::optional<std::string> page_token,
-                                   stdx::stop_token stop_token) const {
-    auto response = co_await FetchJson(
+                                   stdx::stop_token stop_token) {
+    auto response = co_await auth_manager_.FetchJson(
         Request{.url = GetEndpoint(util::StrCat(
                     "/", "?",
                     http::FormDataToString({{"format", "json"},
@@ -89,11 +97,10 @@ class OpenStack::CloudProvider
   }
 
   Generator<std::string> GetFileContent(File file, http::Range range,
-                                        stdx::stop_token stop_token) const {
-    auto response = co_await Fetch(
-        http::Request<>{
-            .url = GetEndpoint(util::StrCat("/", http::EncodeUri(file.id))),
-            .headers = {http::ToRangeHeader(range)}},
+                                        stdx::stop_token stop_token) {
+    auto response = co_await auth_manager_.Fetch(
+        Request{.url = GetEndpoint(util::StrCat("/", http::EncodeUri(file.id))),
+                .headers = {http::ToRangeHeader(range)}},
         std::move(stop_token));
     FOR_CO_AWAIT(std::string & chunk, response.body) {
       co_yield std::move(chunk);
@@ -101,14 +108,14 @@ class OpenStack::CloudProvider
   }
 
   Task<Directory> CreateDirectory(Directory parent, std::string_view name,
-                                  stdx::stop_token stop_token) const {
+                                  stdx::stop_token stop_token) {
     std::string new_id;
     new_id += parent.id;
     if (!new_id.empty()) {
       new_id += "/";
     }
     new_id += name;
-    co_await Fetch(
+    co_await auth_manager_.Fetch(
         Request{.url = GetEndpoint(util::StrCat("/", http::EncodeUri(new_id))),
                 .method = http::Method::kPut,
                 .headers = {{"Content-Type", "application/directory"},
@@ -152,8 +159,8 @@ class OpenStack::CloudProvider
   }
 
   template <typename Item>
-  Task<Item> GetItem(std::string_view id, stdx::stop_token stop_token) const {
-    auto json = co_await FetchJson(
+  Task<Item> GetItem(std::string_view id, stdx::stop_token stop_token) {
+    auto json = co_await auth_manager_.FetchJson(
         Request{.url = util::StrCat(GetEndpoint("/"), "?",
                                     http::FormDataToString({{"format", "json"},
                                                             {"prefix", id},
@@ -164,8 +171,7 @@ class OpenStack::CloudProvider
   }
 
   Task<File> CreateFile(Directory parent, std::string_view name,
-                        FileContent content,
-                        stdx::stop_token stop_token) const {
+                        FileContent content, stdx::stop_token stop_token) {
     auto new_id = parent.id;
     if (!new_id.empty()) {
       new_id += "/";
@@ -179,9 +185,12 @@ class OpenStack::CloudProvider
       request.headers.emplace_back("Content-Length",
                                    std::to_string(*content.size));
     }
-    co_await Fetch(std::move(request), stop_token);
+    co_await auth_manager_.GetHttp().Fetch(
+        AuthorizeRequest{}(std::move(request), auth_token()), stop_token);
     co_return co_await GetItem<File>(new_id, std::move(stop_token));
   }
+
+  const auto& auth_token() const { return auth_manager_.GetAuthToken(); }
 
  private:
   static Item ToItem(const nlohmann::json& json) {
@@ -206,9 +215,8 @@ class OpenStack::CloudProvider
     return result;
   }
 
-  Task<> RemoveItemImpl(std::string_view id,
-                        stdx::stop_token stop_token) const {
-    co_await Fetch(
+  Task<> RemoveItemImpl(std::string_view id, stdx::stop_token stop_token) {
+    co_await auth_manager_.Fetch(
         Request{.url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(id))),
                 .method = http::Method::kDelete,
                 .headers = {{"Content-Length", "0"}}},
@@ -231,15 +239,15 @@ class OpenStack::CloudProvider
 
   template <typename Item>
   Task<> MoveItemImpl(const Item& source, std::string_view destination,
-                      stdx::stop_token stop_token) const {
+                      stdx::stop_token stop_token) {
     Request request{
         .url = GetEndpoint(util::StrCat("/", http::EncodeUri(source.id))),
         .method = http::Method::kCopy,
         .headers = {
             {"Content-Length", "0"},
-            {"Destination", util::StrCat("/", auth_token_.bucket, "/",
+            {"Destination", util::StrCat("/", auth_token().bucket, "/",
                                          http::EncodeUri(destination))}}};
-    co_await Fetch(std::move(request), stop_token);
+    co_await auth_manager_.Fetch(std::move(request), stop_token);
     co_await RemoveItemImpl(source.id, std::move(stop_token));
   }
 
@@ -249,39 +257,12 @@ class OpenStack::CloudProvider
                                 std::move(stop_token));
   }
 
-  template <typename RequestT>
-  Task<typename Http::ResponseType> Fetch(RequestT request,
-                                          stdx::stop_token stop_token) const {
-    request.headers.emplace_back("X-Auth-Token", auth_token_.token);
-    http::ResponseLike auto response =
-        co_await http_->Fetch(std::move(request), std::move(stop_token));
-    if (response.status / 100 != 2) {
-      throw coro::http::HttpException(
-          response.status, co_await http::GetBody(std::move(response.body)));
-    }
-    co_return response;
-  }
-
-  template <typename RequestT>
-  Task<nlohmann::json> FetchJson(RequestT request,
-                                 stdx::stop_token stop_token) const {
-    if (request.body) {
-      request.headers.emplace_back("Content-Type", "application/json");
-    }
-    request.headers.emplace_back("Accept", "application/json");
-    http::ResponseLike auto response =
-        co_await Fetch(std::move(request), std::move(stop_token));
-    co_return nlohmann::json::parse(
-        co_await http::GetBody(std::move(response.body)));
-  }
-
   std::string GetEndpoint(std::string_view endpoint) const {
-    return util::StrCat(auth_token_.endpoint, "/", auth_token_.bucket,
+    return util::StrCat(auth_token().endpoint, "/", auth_token().bucket,
                         endpoint);
   }
 
-  const Http* http_;
-  Auth::AuthToken auth_token_;
+  AuthManager auth_manager_;
 };
 
 namespace util {
