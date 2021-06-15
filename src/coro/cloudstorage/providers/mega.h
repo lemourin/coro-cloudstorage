@@ -191,10 +191,10 @@ class Mega::CloudProvider
 
 template <>
 struct CreateCloudProvider<Mega> {
-  template <typename CloudFactory, typename... Args>
-  auto operator()(const CloudFactory& factory, Mega::Auth::AuthToken auth_token,
-                  Args&&...) const {
-    return Mega::CloudProvider(
+  template <typename F, typename CloudFactory, typename... Args>
+  auto operator()(const F& create, const CloudFactory& factory,
+                  Mega::Auth::AuthToken auth_token, Args&&...) const {
+    return create.template operator()<Mega::CloudProvider>(
         *factory.event_loop_, *factory.http_, *factory.thumbnail_generator_,
         std::move(auth_token), factory.auth_data_.template operator()<Mega>());
   }

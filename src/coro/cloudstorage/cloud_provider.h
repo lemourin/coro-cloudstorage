@@ -252,15 +252,15 @@ class CloudProvider {
 
 template <typename CloudProvider>
 struct CreateCloudProvider {
-  template <typename CloudFactory, typename OnTokenUpdated>
-  auto operator()(const CloudFactory& factory,
+  template <typename F, typename CloudFactory, typename OnTokenUpdated>
+  auto operator()(const F& create, const CloudFactory& factory,
                   typename CloudProvider::Auth::AuthToken auth_token,
                   OnTokenUpdated on_token_updated) const {
     auto auth_manager = factory.template CreateAuthManager<CloudProvider>(
         std::move(auth_token), std::move(on_token_updated));
     using Impl =
         typename CloudProvider::template CloudProvider<decltype(auth_manager)>;
-    return Impl(std::move(auth_manager));
+    return create.template operator()<Impl>(std::move(auth_manager));
   }
 };
 

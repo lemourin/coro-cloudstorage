@@ -387,10 +387,12 @@ struct CreateAuthHandler<WebDAV> {
 
 template <>
 struct CreateCloudProvider<WebDAV> {
-  template <typename CloudFactory, typename... Args>
-  auto operator()(const CloudFactory& factory,
+  template <typename F, typename CloudFactory, typename... Args>
+  auto operator()(const F& create, const CloudFactory& factory,
                   WebDAV::Auth::AuthToken auth_token, Args&&...) const {
-    return WebDAV::CloudProvider(*factory.http_, std::move(auth_token));
+    using CloudProviderT = WebDAV::CloudProvider<typename CloudFactory::Http>;
+    return create.template operator()<CloudProviderT>(*factory.http_,
+                                                      std::move(auth_token));
   }
 };
 

@@ -409,10 +409,12 @@ struct CreateAuthHandler<AmazonS3> {
 
 template <>
 struct CreateCloudProvider<AmazonS3> {
-  template <typename CloudFactory, typename... Args>
-  auto operator()(const CloudFactory& factory,
+  template <typename F, typename CloudFactory, typename... Args>
+  auto operator()(const F& create, const CloudFactory& factory,
                   AmazonS3::Auth::AuthToken auth_token, Args&&...) const {
-    return AmazonS3::CloudProvider(*factory.http_, std::move(auth_token));
+    using CloudProviderT = AmazonS3::CloudProvider<typename CloudFactory::Http>;
+    return create.template operator()<CloudProviderT>(*factory.http_,
+                                                      std::move(auth_token));
   }
 };
 
