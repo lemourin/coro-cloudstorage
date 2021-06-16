@@ -306,15 +306,25 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       auto username =
           std::make_shared<std::optional<std::string>>(std::nullopt);
       auto* account = CreateAccount<CloudProvider>(auth_token, username);
-      auto& provider = std::get<CloudProviderT>(account->provider());
-      auto general_data =
-          co_await provider.GetGeneralData(std::move(stop_token));
-      *username = std::move(general_data.username);
-      co_await RemoveCloudProvider<CloudProvider>(
-          GetAccountId<CloudProvider>(**username));
-      auth_token_manager.template SaveToken<CloudProvider>(
-          std::move(auth_token), **username);
-      account->username_ = std::move(**username);
+      try {
+        auto& provider = std::get<CloudProviderT>(account->provider());
+        auto general_data =
+            co_await provider.GetGeneralData(std::move(stop_token));
+        *username = std::move(general_data.username);
+        co_await RemoveCloudProvider<CloudProvider>(
+            GetAccountId<CloudProvider>(**username));
+        auth_token_manager.template SaveToken<CloudProvider>(
+            std::move(auth_token), **username);
+        account->username_ = std::move(**username);
+      } catch (...) {
+        auto it =
+            std::find_if(accounts.begin(), accounts.end(),
+                         [&](const auto& entry) { return &entry == account; });
+        if (it != accounts.end()) {
+          accounts.erase(it);
+        }
+        throw;
+      }
       OnCloudProviderCreated<CloudProvider>(account);
       co_return account;
     }
