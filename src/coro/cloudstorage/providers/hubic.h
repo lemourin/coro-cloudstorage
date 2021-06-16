@@ -160,14 +160,8 @@ class HubiC::CloudProvider
     : public coro::cloudstorage::CloudProvider<
           HubiC, CloudProvider<Http, OnAuthTokenUpdated>> {
  public:
-  struct OnOpenStackTokenUpdated;
-
   using AuthManager = util::AuthManager<Http, Auth, OnAuthTokenUpdated,
                                         Auth::RefreshAccessToken<Http>>;
-
-  using OpenStackAuthManager =
-      util::AuthManager<Http, OpenStack::Auth, OnOpenStackTokenUpdated,
-                        RefreshOpenStackToken<AuthManager>, AuthorizeRequest>;
 
   struct OnOpenStackTokenUpdated {
     void operator()(OpenStack::Auth::AuthToken auth_token) const {
@@ -177,6 +171,10 @@ class HubiC::CloudProvider
     }
     AuthManager* auth_manager;
   };
+
+  using OpenStackAuthManager =
+      util::AuthManager<Http, OpenStack::Auth, OnOpenStackTokenUpdated,
+                        RefreshOpenStackToken<AuthManager>, AuthorizeRequest>;
 
   CloudProvider(const Http& http, Auth::AuthToken auth_token,
                 Auth::AuthData auth_data,
