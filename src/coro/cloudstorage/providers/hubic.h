@@ -86,18 +86,19 @@ class HubiC : public OpenStack {
       auto json =
           co_await util::FetchJson(http, std::move(request), stop_token);
       std::string access_token = json.at("access_token");
+      auto openstack_auth_token = co_await GetOpenStackAuthToken(
+          http,
+          [&](auto request, stdx::stop_token stop_token) {
+            request.headers.emplace_back("Authorization",
+                                         util::StrCat("Bearer ", access_token));
+            return util::FetchJson(http, std::move(request),
+                                   std::move(stop_token));
+          },
+          std::move(stop_token));
       co_return AuthToken{
-          .access_token = access_token,
+          .access_token = std::move(access_token),
           .refresh_token = json.at("refresh_token"),
-          .openstack_auth_token = co_await GetOpenStackAuthToken(
-              http,
-              [&](auto request, stdx::stop_token stop_token) {
-                request.headers.emplace_back(
-                    "Authorization", util::StrCat("Bearer ", access_token));
-                return util::FetchJson(http, std::move(request),
-                                       std::move(stop_token));
-              },
-              std::move(stop_token))};
+          .openstack_auth_token = std::move(openstack_auth_token)};
     }
 
     template <http::HttpClient Http>
@@ -139,7 +140,7 @@ class HubiC : public OpenStack {
 
     Task<AuthToken> operator()(const AuthToken&,
                                stdx::stop_token stop_token) const {
-      return Auth::GetOpenStackAuthToken(
+      co_return co_await Auth::GetOpenStackAuthToken(
           auth_manager->GetHttp(),
           [&](auto request, stdx::stop_token stop_token) {
             return auth_manager->FetchJson(std::move(request),
