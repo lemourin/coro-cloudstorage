@@ -451,16 +451,16 @@ struct YouTube::CloudProvider
 
 template <>
 struct CreateCloudProvider<YouTube> {
-  template <typename CloudFactory, typename OnAuthTokenChanged>
-  auto operator()(const CloudFactory& factory,
+  template <typename F, typename CloudFactory, typename OnAuthTokenChanged>
+  auto operator()(const F& create, const CloudFactory& factory,
                   YouTube::Auth::AuthToken auth_token,
                   OnAuthTokenChanged on_auth_token_changed) const {
-    util::AuthManager<typename CloudFactory::Http, YouTube::Auth,
-                      OnAuthTokenChanged>
-        auth_manager(*factory.http_, std::move(auth_token),
-                     factory.auth_data_.template operator()<YouTube>(),
-                     std::move(on_auth_token_changed));
-    return YouTube::CloudProvider(std::move(auth_manager), *factory.muxer_);
+    using CloudProviderT = YouTube::CloudProvider<util::AuthManager<
+        typename CloudFactory::Http, YouTube::Auth, OnAuthTokenChanged>>;
+    return create.template operator()<CloudProviderT>(
+        factory.template CreateAuthManager<YouTube>(
+            std::move(auth_token), std::move(on_auth_token_changed)),
+        *factory.muxer_);
   }
 };
 
