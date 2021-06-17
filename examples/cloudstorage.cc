@@ -84,9 +84,9 @@ Task<> CoMain(event_base* event_base) noexcept {
                                                    thumbnail_generator, muxer);
 
     Promise<void> quit;
-    HttpServer http_server(
-        event_base, {.address = "127.0.0.1", .port = 12345},
-        HttpHandler(cloud_factory, thumbnail_generator, &quit));
+    HttpServer<HttpHandler<decltype(cloud_factory)>> http_server(
+        event_base, {.address = "127.0.0.1", .port = 12345}, cloud_factory,
+        thumbnail_generator, &quit);
     co_await quit;
     co_await http_server.Quit();
   } catch (const std::exception& exception) {

@@ -373,6 +373,9 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
   }
 
+  AccountManagerHandler(AccountManagerHandler&&) = delete;
+  AccountManagerHandler& operator=(AccountManagerHandler&&) = delete;
+
   Task<Response> operator()(Request request,
                             coro::stdx::stop_token stop_token) {
     if (request.method == coro::http::Method::kOptions) {
