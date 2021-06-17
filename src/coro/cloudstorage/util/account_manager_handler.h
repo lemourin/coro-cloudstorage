@@ -301,8 +301,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         typename CloudProviderAccount::template CloudProviderT<CloudProvider>;
     auto username = std::make_shared<std::optional<std::string>>(std::nullopt);
     auto* account = CreateAccount<CloudProvider>(auth_token, username);
+    auto& provider = std::get<CloudProviderT>(account->provider());
     try {
-      auto& provider = std::get<CloudProviderT>(account->provider());
       auto general_data =
           co_await provider.GetGeneralData(std::move(stop_token));
       *username = std::move(general_data.username);
