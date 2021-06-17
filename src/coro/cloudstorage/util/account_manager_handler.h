@@ -18,11 +18,6 @@
 
 namespace coro::cloudstorage::util {
 
-template <typename CloudProviderTypeList, typename CloudFactory,
-          typename ThumbnailGenerator, typename AccountListener,
-          typename AuthTokenManagerT = AuthTokenManager>
-class AccountManagerHandler;
-
 template <typename CloudProvider>
 static std::string GetAccountId(std::string_view username) {
   return StrCat("[", CloudProvider::kId, "] ", username);
@@ -78,12 +73,17 @@ class CloudProviderAccount<coro::util::TypeList<CloudProviders...>,
 
  private:
   template <typename, typename, typename, typename, typename>
-  friend class coro::cloudstorage::util::AccountManagerHandler;
+  friend class AccountManagerHandler;
 
   std::string username_;
   std::variant<CloudProviderT<CloudProviders>...> provider_;
   stdx::stop_source stop_source_;
 };
+
+template <typename CloudProviderTypeList, typename CloudFactory,
+          typename ThumbnailGenerator, typename AccountListener,
+          typename AuthTokenManagerT = AuthTokenManager>
+class AccountManagerHandler;
 
 template <typename... CloudProviders, typename CloudFactory,
           typename ThumbnailGenerator, typename AccountListener,
