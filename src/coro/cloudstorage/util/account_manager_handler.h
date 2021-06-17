@@ -23,6 +23,68 @@ template <typename CloudProviderTypeList, typename CloudFactory,
           typename AuthTokenManagerT = AuthTokenManager>
 class AccountManagerHandler;
 
+template <typename CloudProvider>
+static std::string GetAccountId(std::string_view username) {
+  return StrCat("[", CloudProvider::kId, "] ", username);
+}
+
+namespace internal {
+template <typename AuthTokenManagerT, typename CloudProvider>
+struct OnAuthTokenChanged {
+  void operator()(typename CloudProvider::Auth::AuthToken auth_token) {
+    if (*account_id) {
+      d->template SaveToken<CloudProvider>(std::move(auth_token), **account_id);
+    }
+  }
+  AuthTokenManagerT* d;
+  std::shared_ptr<std::optional<std::string>> account_id;
+};
+}  // namespace internal
+
+template <typename CloudProviderTypeList, typename CloudFactory,
+          typename AuthTokenManagerT = AuthTokenManager>
+class CloudProviderAccount;
+
+template <typename... CloudProviders, typename CloudFactory,
+          typename AuthTokenManagerT>
+class CloudProviderAccount<coro::util::TypeList<CloudProviders...>,
+                           CloudFactory, AuthTokenManagerT> {
+ public:
+  template <typename T>
+  using CloudProviderT =
+      decltype(std::declval<CloudFactory>().template Create<T>(
+          std::declval<typename T::Auth::AuthToken>(),
+          std::declval<internal::OnAuthTokenChanged<AuthTokenManagerT, T>>()));
+
+  using Ts = coro::util::TypeList<CloudProviderT<CloudProviders>...>;
+
+  template <typename... Args>
+  explicit CloudProviderAccount(std::string username, Args&&... args)
+      : username_(std::move(username)),
+        provider_(std::forward<Args>(args)...) {}
+
+  std::string GetId() const {
+    return std::visit(
+        [&]<typename CloudProvider>(const CloudProvider&) {
+          return GetAccountId<typename CloudProvider::Type>(username_);
+        },
+        provider_);
+  }
+
+  std::string_view username() const { return username_; }
+  auto& provider() { return provider_; }
+  const auto& provider() const { return provider_; }
+  stdx::stop_token stop_token() const { return stop_source_.get_token(); }
+
+ private:
+  template <typename, typename, typename, typename, typename>
+  friend class coro::cloudstorage::util::AccountManagerHandler;
+
+  std::string username_;
+  std::variant<CloudProviderT<CloudProviders>...> provider_;
+  stdx::stop_source stop_source_;
+};
+
 template <typename... CloudProviders, typename CloudFactory,
           typename ThumbnailGenerator, typename AccountListener,
           typename AuthTokenManagerT>
@@ -33,320 +95,245 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   using Request = coro::http::Request<>;
   using Response = coro::http::Response<>;
 
-  struct Data;
-
-  Task<> Quit() const { return d_->Quit(); }
-
   template <typename CloudProvider>
-  struct OnAuthTokenChanged {
-    void operator()(typename CloudProvider::Auth::AuthToken auth_token) {
-      if (*account_id) {
-        d->auth_token_manager.template SaveToken<CloudProvider>(
-            std::move(auth_token), **account_id);
+  using OnAuthTokenChanged =
+      internal::OnAuthTokenChanged<AuthTokenManagerT, CloudProvider>;
+
+  using CloudProviderAccount = coro::cloudstorage::util::CloudProviderAccount<
+      coro::util::TypeList<CloudProviders...>, CloudFactory, AuthTokenManagerT>;
+
+  Task<> Quit() {
+    std::vector<Task<>> tasks;
+    for (auto& account : accounts_) {
+      if (!account.stop_token().stop_requested()) {
+        account.stop_source_.request_stop();
+        tasks.emplace_back(account_listener_.OnDestroy(&account));
       }
     }
-    Data* d;
-    std::shared_ptr<std::optional<std::string>> account_id;
-  };
-
-  template <typename CloudProvider>
-  static std::string GetAccountId(std::string_view username) {
-    return StrCat("[", CloudProvider::kId, "] ", username);
+    co_await WhenAll(std::move(tasks));
+    accounts_.clear();
   }
 
-  class CloudProviderAccount {
-   public:
-    template <typename T>
-    using CloudProviderT =
-        decltype(std::declval<CloudFactory>().template Create<T>(
-            std::declval<typename T::Auth::AuthToken>(),
-            std::declval<OnAuthTokenChanged<T>>()));
-
-    using Ts = coro::util::TypeList<CloudProviderT<CloudProviders>...>;
-
-    template <typename... Args>
-    explicit CloudProviderAccount(std::string username, Args&&... args)
-        : username_(std::move(username)),
-          provider_(std::forward<Args>(args)...) {}
-
-    std::string GetId() const {
-      return std::visit(
-          [&]<typename CloudProvider>(const CloudProvider&) {
-            return GetAccountId<typename CloudProvider::Type>(username_);
-          },
-          provider_);
-    }
-
-    std::string_view username() const { return username_; }
-    auto& provider() { return provider_; }
-    const auto& provider() const { return provider_; }
-    stdx::stop_token stop_token() const { return stop_source_.get_token(); }
-
-   private:
-    friend struct Data;
-
-    std::string username_;
-    std::variant<CloudProviderT<CloudProviders>...> provider_;
-    stdx::stop_source stop_source_;
-  };
-
-  struct Data {
-    Data(const CloudFactory& factory,
-         const ThumbnailGenerator& thumbnail_generator,
-         AccountListener account_listener, AuthTokenManagerT auth_token_manager)
-        : factory(factory),
-          thumbnail_generator(thumbnail_generator),
-          account_listener(std::move(account_listener)),
-          auth_token_manager(std::move(auth_token_manager)) {
-      handlers.emplace_back(
-          Handler{.prefix = "/static/", .handler = StaticFileHandler{}});
-      handlers.emplace_back(
-          Handler{.prefix = "/size", .handler = GetSizeHandler{this}});
-    }
-
-    Task<> Quit() {
-      std::vector<Task<>> tasks;
-      for (auto& account : accounts) {
-        if (!account.stop_token().stop_requested()) {
-          account.stop_source_.request_stop();
-          tasks.emplace_back(account_listener.OnDestroy(&account));
-        }
+  template <typename CloudProvider>
+  Task<> RemoveCloudProvider(std::string_view username) {
+    auth_token_manager_.template RemoveToken<CloudProvider>(username);
+    auto account_id = GetAccountId<CloudProvider>(username);
+    for (auto it = std::begin(accounts_); it != std::end(accounts_);) {
+      if (it->GetId() == account_id && !it->stop_token().stop_requested()) {
+        it->stop_source_.request_stop();
+        co_await account_listener_.OnDestroy(&*it);
+        it = accounts_.erase(it);
+      } else {
+        it++;
       }
-      co_await WhenAll(std::move(tasks));
-      accounts.clear();
     }
+    for (auto it = std::begin(handlers_); it != std::end(handlers_);) {
+      if (it->id == account_id) {
+        it = handlers_.erase(it);
+      } else {
+        it++;
+      }
+    }
+  }
 
+  struct StaticFileHandler {
     template <typename CloudProvider>
-    Task<> RemoveCloudProvider(std::string_view username) {
-      auth_token_manager.template RemoveToken<CloudProvider>(username);
-      auto account_id = GetAccountId<CloudProvider>(username);
-      for (auto it = std::begin(accounts); it != std::end(accounts);) {
-        if (it->GetId() == account_id && !it->stop_token().stop_requested()) {
-          it->stop_source_.request_stop();
-          co_await account_listener.OnDestroy(&*it);
-          it = accounts.erase(it);
-        } else {
-          it++;
-        }
-      }
-      for (auto it = std::begin(handlers); it != std::end(handlers);) {
-        if (it->id == account_id) {
-          it = handlers.erase(it);
-        } else {
-          it++;
-        }
+    static bool GetIcon(std::string_view name,
+                        std::optional<std::string_view>& output) {
+      if (name == StrCat("/static/", CloudProvider::kId, ".png")) {
+        output = CloudProvider::kIcon;
+        return true;
+      } else {
+        return false;
       }
     }
 
-    struct StaticFileHandler {
-      template <typename CloudProvider>
-      static bool GetIcon(std::string_view name,
-                          std::optional<std::string_view>& output) {
-        if (name == StrCat("/static/", CloudProvider::kId, ".png")) {
-          output = CloudProvider::kIcon;
-          return true;
-        } else {
-          return false;
-        }
+    Task<Response> operator()(Request request, stdx::stop_token) const {
+      std::optional<std::string_view> content;
+      std::string mime_type;
+      (GetIcon<CloudProviders>(request.url, content) || ...);
+      if (content) {
+        mime_type = "image/png";
+      } else if (request.url == "/static/default.css") {
+        content = util::kAssetsStylesDefaultCss;
+        mime_type = "text/css";
+      } else if (request.url == "/static/user-trash.svg") {
+        content = util::kAssetsIconsUserTrashSvg;
+        mime_type = "image/svg+xml";
+      } else if (request.url == "/static/account_list_main.js") {
+        content = util::kAssetsJsAccountListMainJs;
+        mime_type = "text/javascript;charset=UTF-8";
       }
-
-      Task<Response> operator()(Request request, stdx::stop_token) const {
-        std::optional<std::string_view> content;
-        std::string mime_type;
-        (GetIcon<CloudProviders>(request.url, content) || ...);
-        if (content) {
-          mime_type = "image/png";
-        } else if (request.url == "/static/default.css") {
-          content = util::kAssetsStylesDefaultCss;
-          mime_type = "text/css";
-        } else if (request.url == "/static/user-trash.svg") {
-          content = util::kAssetsIconsUserTrashSvg;
-          mime_type = "image/svg+xml";
-        } else if (request.url == "/static/account_list_main.js") {
-          content = util::kAssetsJsAccountListMainJs;
-          mime_type = "text/javascript;charset=UTF-8";
-        }
-        if (!content) {
-          co_return Response{.status = 404};
-        }
-        co_return Response{
-            .status = 200,
-            .headers = {{"Content-Type", std::move(mime_type)},
-                        {"Content-Length", std::to_string(content->size())},
-                        {"Cache-Control", "public"},
-                        {"Cache-Control", "max-age=604800"}},
-            .body = CreateBody(std::string(*content))};
-      }
-    };
-
-    struct GetSizeHandler {
-      Task<Response> operator()(Request request,
-                                stdx::stop_token stop_token) const {
-        auto query =
-            http::ParseQuery(http::ParseUri(request.url).query.value());
-        auto account_id = query.find("account_id");
-        if (account_id == query.end()) {
-          co_return Response{.status = 400};
-        }
-        for (CloudProviderAccount& account : d->accounts) {
-          if (account.GetId() == account_id->second) {
-            VolumeData volume_data = co_await std::visit(
-                [&](auto& provider) {
-                  return GetVolumeData(&provider, stop_token);
-                },
-                account.provider());
-            nlohmann::json json;
-            if (volume_data.space_total) {
-              json["space_total"] = *volume_data.space_total;
-            }
-            if (volume_data.space_used) {
-              json["space_used"] = *volume_data.space_used;
-            }
-            co_return Response{
-                .status = 200,
-                .headers = {{"Content-Type", "application/json"}},
-                .body = CreateBody(json.dump())};
-          }
-        }
+      if (!content) {
         co_return Response{.status = 404};
       }
-      Data* d;
-    };
+      co_return Response{
+          .status = 200,
+          .headers = {{"Content-Type", std::move(mime_type)},
+                      {"Content-Length", std::to_string(content->size())},
+                      {"Cache-Control", "public"},
+                      {"Cache-Control", "max-age=604800"}},
+          .body = CreateBody(std::string(*content))};
+    }
+  };
 
-    template <typename CloudProvider>
-    struct AuthHandler {
-      using AuthToken = typename CloudProvider::Auth::AuthToken;
-
-      Task<Response> operator()(Request request,
-                                stdx::stop_token stop_token) const {
-        auto result =
-            co_await d->factory.template CreateAuthHandler<CloudProvider>()(
-                std::move(request), stop_token);
-        AuthToken auth_token;
-        if constexpr (std::is_same_v<decltype(result), AuthToken>) {
-          auth_token = std::move(result);
-        } else {
-          if (std::holds_alternative<Response>(result)) {
-            co_return std::move(std::get<Response>(result));
-          } else {
-            auth_token = std::move(std::get<AuthToken>(result));
+  struct GetSizeHandler {
+    Task<Response> operator()(Request request,
+                              stdx::stop_token stop_token) const {
+      auto query = http::ParseQuery(http::ParseUri(request.url).query.value());
+      auto account_id = query.find("account_id");
+      if (account_id == query.end()) {
+        co_return Response{.status = 400};
+      }
+      for (CloudProviderAccount& account : d->accounts_) {
+        if (account.GetId() == account_id->second) {
+          VolumeData volume_data = co_await std::visit(
+              [&](auto& provider) {
+                return GetVolumeData(&provider, stop_token);
+              },
+              account.provider());
+          nlohmann::json json;
+          if (volume_data.space_total) {
+            json["space_total"] = *volume_data.space_total;
           }
+          if (volume_data.space_used) {
+            json["space_used"] = *volume_data.space_used;
+          }
+          co_return Response{.status = 200,
+                             .headers = {{"Content-Type", "application/json"}},
+                             .body = CreateBody(json.dump())};
         }
-        auto* account = co_await d->Create<CloudProvider>(
-            std::move(auth_token), std::move(stop_token));
-        co_return Response{
-            .status = 302,
-            .headers = {
-                {"Location", "/" + http::EncodeUri(GetAccountId<CloudProvider>(
-                                       account->username()))}}};
       }
-
-      Data* d;
-    };
-
-    template <typename CloudProvider>
-    struct OnRemoveHandler {
-      Task<Response> operator()(Request request,
-                                stdx::stop_token stop_token) const {
-        co_await d->template RemoveCloudProvider<CloudProvider>(username);
-        co_return Response{.status = 302, .headers = {{"Location", "/"}}};
-      }
-      Data* d;
-      std::string username;
-    };
-
-    template <typename CloudProvider>
-    void AddAuthHandler() {
-      handlers.emplace_back(Handler{
-          .prefix = "/auth/" + std::string(GetCloudProviderId<CloudProvider>()),
-          .handler = AuthHandler<CloudProvider>{this}});
+      co_return Response{.status = 404};
     }
+    AccountManagerHandler* d;
+  };
 
-    template <typename CloudProvider>
-    void OnCloudProviderCreated(CloudProviderAccount* account) {
-      std::string account_id = GetAccountId<CloudProvider>(account->username());
-      handlers.emplace_back(Handler{
-          .id = std::string(account_id),
-          .prefix = StrCat("/remove/", account_id),
-          .handler = OnRemoveHandler<CloudProvider>{
-              .d = this, .username = std::string(account->username())}});
+  template <typename CloudProvider>
+  struct AuthHandler {
+    using AuthToken = typename CloudProvider::Auth::AuthToken;
 
-      auto& provider =
-          std::get<typename CloudProviderAccount::template CloudProviderT<
-              CloudProvider>>(account->provider());
-      handlers.emplace_back(
-          Handler{.id = std::string(account_id),
-                  .prefix = StrCat("/", account_id),
-                  .handler = ProxyHandler(thumbnail_generator, &provider,
-                                          StrCat("/", account_id))});
-
-      account_listener.OnCreate(account);
-    }
-
-    template <typename CloudProvider>
-    CloudProviderAccount* CreateAccount(
-        typename CloudProvider::Auth::AuthToken auth_token,
-        std::shared_ptr<std::optional<std::string>> username) {
-      return CreateCloudProvider<CloudProvider>{}(
-          [&]<typename CloudProviderT, typename... Args>(Args && ... args) {
-            return &accounts.emplace_back(
-                username->value_or(""), std::in_place_type_t<CloudProviderT>{},
-                std::forward<Args>(args)...);
-          },
-          factory, std::move(auth_token),
-          OnAuthTokenChanged<CloudProvider>{this, username});
-    }
-
-    template <typename CloudProvider>
-    Task<CloudProviderAccount*> Create(
-        typename CloudProvider::Auth::AuthToken auth_token,
-        stdx::stop_token stop_token) {
-      using CloudProviderT =
-          typename CloudProviderAccount::template CloudProviderT<CloudProvider>;
-      auto username =
-          std::make_shared<std::optional<std::string>>(std::nullopt);
-      auto* account = CreateAccount<CloudProvider>(auth_token, username);
-      try {
-        auto& provider = std::get<CloudProviderT>(account->provider());
-        auto general_data =
-            co_await provider.GetGeneralData(std::move(stop_token));
-        *username = std::move(general_data.username);
-        co_await RemoveCloudProvider<CloudProvider>(
-            GetAccountId<CloudProvider>(**username));
-        auth_token_manager.template SaveToken<CloudProvider>(
-            std::move(auth_token), **username);
-        account->username_ = std::move(**username);
-      } catch (...) {
-        auto it =
-            std::find_if(accounts.begin(), accounts.end(),
-                         [&](const auto& entry) { return &entry == account; });
-        if (it != accounts.end()) {
-          accounts.erase(it);
+    Task<Response> operator()(Request request,
+                              stdx::stop_token stop_token) const {
+      auto result =
+          co_await d->factory_.template CreateAuthHandler<CloudProvider>()(
+              std::move(request), stop_token);
+      AuthToken auth_token;
+      if constexpr (std::is_same_v<decltype(result), AuthToken>) {
+        auth_token = std::move(result);
+      } else {
+        if (std::holds_alternative<Response>(result)) {
+          co_return std::move(std::get<Response>(result));
+        } else {
+          auth_token = std::move(std::get<AuthToken>(result));
         }
-        throw;
       }
-      OnCloudProviderCreated<CloudProvider>(account);
-      co_return account;
+      auto* account = co_await d->Create<CloudProvider>(std::move(auth_token),
+                                                        std::move(stop_token));
+      co_return Response{
+          .status = 302,
+          .headers = {
+              {"Location", "/" + http::EncodeUri(GetAccountId<CloudProvider>(
+                                     account->username()))}}};
     }
 
-    struct Handler {
-      std::string id;
-      std::string prefix;
-      std::variant<
-          StaticFileHandler, GetSizeHandler, AuthHandler<CloudProviders>...,
-          OnRemoveHandler<CloudProviders>...,
-          ProxyHandler<typename CloudProviderAccount::template CloudProviderT<
-                           CloudProviders>,
-                       ThumbnailGenerator>...>
-          handler;
-    };
+    AccountManagerHandler* d;
+  };
 
-    const CloudFactory& factory;
-    const ThumbnailGenerator& thumbnail_generator;
-    std::vector<Handler> handlers;
-    AccountListener account_listener;
-    AuthTokenManagerT auth_token_manager;
-    std::list<CloudProviderAccount> accounts;
+  template <typename CloudProvider>
+  struct OnRemoveHandler {
+    Task<Response> operator()(Request request,
+                              stdx::stop_token stop_token) const {
+      co_await d->template RemoveCloudProvider<CloudProvider>(username);
+      co_return Response{.status = 302, .headers = {{"Location", "/"}}};
+    }
+    AccountManagerHandler* d;
+    std::string username;
+  };
+
+  template <typename CloudProvider>
+  void AddAuthHandler() {
+    handlers_.emplace_back(Handler{
+        .prefix = "/auth/" + std::string(GetCloudProviderId<CloudProvider>()),
+        .handler = AuthHandler<CloudProvider>{this}});
+  }
+
+  template <typename CloudProvider>
+  void OnCloudProviderCreated(CloudProviderAccount* account) {
+    std::string account_id = GetAccountId<CloudProvider>(account->username());
+    handlers_.emplace_back(
+        Handler{.id = std::string(account_id),
+                .prefix = StrCat("/remove/", account_id),
+                .handler = OnRemoveHandler<CloudProvider>{
+                    .d = this, .username = std::string(account->username())}});
+
+    auto& provider = std::get<
+        typename CloudProviderAccount::template CloudProviderT<CloudProvider>>(
+        account->provider());
+    handlers_.emplace_back(
+        Handler{.id = std::string(account_id),
+                .prefix = StrCat("/", account_id),
+                .handler = ProxyHandler(thumbnail_generator_, &provider,
+                                        StrCat("/", account_id))});
+
+    account_listener_.OnCreate(account);
+  }
+
+  template <typename CloudProvider>
+  CloudProviderAccount* CreateAccount(
+      typename CloudProvider::Auth::AuthToken auth_token,
+      std::shared_ptr<std::optional<std::string>> username) {
+    return CreateCloudProvider<CloudProvider>{}(
+        [&]<typename CloudProviderT, typename... Args>(Args && ... args) {
+          return &accounts_.emplace_back(username->value_or(""),
+                                         std::in_place_type_t<CloudProviderT>{},
+                                         std::forward<Args>(args)...);
+        },
+        factory_, std::move(auth_token),
+        OnAuthTokenChanged<CloudProvider>{&auth_token_manager_, username});
+  }
+
+  template <typename CloudProvider>
+  Task<CloudProviderAccount*> Create(
+      typename CloudProvider::Auth::AuthToken auth_token,
+      stdx::stop_token stop_token) {
+    using CloudProviderT =
+        typename CloudProviderAccount::template CloudProviderT<CloudProvider>;
+    auto username = std::make_shared<std::optional<std::string>>(std::nullopt);
+    auto* account = CreateAccount<CloudProvider>(auth_token, username);
+    try {
+      auto& provider = std::get<CloudProviderT>(account->provider());
+      auto general_data =
+          co_await provider.GetGeneralData(std::move(stop_token));
+      *username = std::move(general_data.username);
+      co_await RemoveCloudProvider<CloudProvider>(
+          GetAccountId<CloudProvider>(**username));
+      auth_token_manager_.template SaveToken<CloudProvider>(
+          std::move(auth_token), **username);
+      account->username_ = std::move(**username);
+    } catch (...) {
+      auto it =
+          std::find_if(accounts_.begin(), accounts_.end(),
+                       [&](const auto& entry) { return &entry == account; });
+      if (it != accounts_.end()) {
+        accounts_.erase(it);
+      }
+      throw;
+    }
+    OnCloudProviderCreated<CloudProvider>(account);
+    co_return account;
+  }
+
+  struct Handler {
+    std::string id;
+    std::string prefix;
+    std::variant<
+        StaticFileHandler, GetSizeHandler, AuthHandler<CloudProviders>...,
+        OnRemoveHandler<CloudProviders>...,
+        ProxyHandler<typename CloudProviderAccount::template CloudProviderT<
+                         CloudProviders>,
+                     ThumbnailGenerator>...>
+        handler;
   };
 
   AccountManagerHandler(
@@ -354,20 +341,25 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       const ThumbnailGenerator& thumbnail_generator,
       AccountListener account_listener,
       AuthTokenManagerT auth_token_manager = AuthTokenManagerT{})
-      : d_(std::make_unique<Data>(factory, thumbnail_generator,
-                                  std::move(account_listener),
-                                  std::move(auth_token_manager))) {
-    (d_->template AddAuthHandler<CloudProviders>(), ...);
-    for (const auto& any_token : d_->auth_token_manager.template LoadTokenData<
+      : factory_(factory),
+        thumbnail_generator_(thumbnail_generator),
+        account_listener_(std::move(account_listener)),
+        auth_token_manager_(std::move(auth_token_manager)) {
+    handlers_.emplace_back(
+        Handler{.prefix = "/static/", .handler = StaticFileHandler{}});
+    handlers_.emplace_back(
+        Handler{.prefix = "/size", .handler = GetSizeHandler{this}});
+    (AddAuthHandler<CloudProviders>(), ...);
+    for (const auto& any_token : auth_token_manager_.template LoadTokenData<
                                  coro::util::TypeList<CloudProviders...>>()) {
       std::visit(
-          [d = d_.get()]<typename AuthToken>(AuthToken token) {
+          [&]<typename AuthToken>(AuthToken token) {
             using CloudProvider = typename AuthToken::CloudProvider;
             auto id = std::move(token.id);
-            auto* account = d->template CreateAccount<CloudProvider>(
+            auto* account = CreateAccount<CloudProvider>(
                 std::move(token),
                 std::make_shared<std::optional<std::string>>(id));
-            d->template OnCloudProviderCreated<CloudProvider>(account);
+            OnCloudProviderCreated<CloudProvider>(account);
           },
           any_token);
     }
@@ -393,14 +385,14 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       co_return Response{.status = 400};
     }
     auto path = http::DecodeUri(std::move(*path_opt));
-    for (auto& handler : d_->handlers) {
+    for (auto& handler : handlers_) {
       if (path.starts_with(handler.prefix)) {
-        if (auto account_it =
-                std::find_if(d_->accounts.begin(), d_->accounts.end(),
-                             [&](const auto& account) {
-                               return account.GetId() == handler.id;
-                             });
-            account_it != d_->accounts.end()) {
+        if (auto account_it = std::find_if(accounts_.begin(), accounts_.end(),
+                                           [&](const auto& account) {
+                                             return account.GetId() ==
+                                                    handler.id;
+                                           });
+            account_it != accounts_.end()) {
           coro::util::StopTokenOr stop_token_or(account_it->stop_token(),
                                                 std::move(stop_token));
           co_return co_await std::visit(
@@ -424,7 +416,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         std::vector<std::string> responses = {GetElement(
             ElementData{.path = "/", .name = "root", .is_directory = true})};
         if (coro::http::GetHeader(request.headers, "Depth") == "1") {
-          for (const auto& account : d_->accounts) {
+          for (const auto& account : accounts_) {
             responses.push_back(
                 GetElement(ElementData{.path = "/" + account.GetId() + "/",
                                        .name = account.GetId(),
@@ -494,12 +486,12 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
               "<h3 class='table-header'>ADD CLOUD PROVIDERS</h3>"
               "</td></tr>"
               "<tr><td><div class='supported-providers'>";
-    (AppendAuthUrl<CloudProviders>(d_->factory, result), ...);
+    (AppendAuthUrl<CloudProviders>(factory_, result), ...);
     result << "</div></td></tr>"
               "</table>"
               "<h3 class='table-header'>ACCOUNT LIST</h3>"
               "<table class='content-table'>";
-    for (const auto& account : d_->accounts) {
+    for (const auto& account : accounts_) {
       auto provider_id = std::visit(
           []<typename CloudProvider>(const CloudProvider&) {
             return CloudProvider::Type::kId;
@@ -528,19 +520,13 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     co_yield std::move(body);
   }
 
-  std::unique_ptr<Data> d_;
+  const CloudFactory& factory_;
+  const ThumbnailGenerator& thumbnail_generator_;
+  std::vector<Handler> handlers_;
+  AccountListener account_listener_;
+  AuthTokenManagerT auth_token_manager_;
+  std::list<CloudProviderAccount> accounts_;
 };
-
-template <typename CloudProviderTypeList, typename CloudFactory,
-          typename AccountListener,
-          typename AuthTokenManagerT = AuthTokenManager>
-auto MakeAccountManagerHandler(
-    const CloudFactory& factory, AccountListener account_listener,
-    AuthTokenManagerT auth_token_manager = AuthTokenManagerT()) {
-  return AccountManagerHandler<CloudProviderTypeList, CloudFactory,
-                               AccountListener, AuthTokenManagerT>(
-      factory, std::move(account_listener), std::move(auth_token_manager));
-}
 
 }  // namespace coro::cloudstorage::util
 
