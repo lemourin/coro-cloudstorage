@@ -19,6 +19,7 @@ using ::coro::cloudstorage::util::AccountManagerHandler;
 using ::coro::cloudstorage::util::Muxer;
 using ::coro::cloudstorage::util::ThumbnailGenerator;
 using ::coro::http::CacheHttp;
+using ::coro::http::CacheHttpConfig;
 using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
 using ::coro::util::MakePointer;
@@ -75,7 +76,7 @@ class HttpHandler {
 
 Task<> CoMain(event_base* event_base) noexcept {
   try {
-    CacheHttp<CurlHttp> http{CurlHttp(event_base)};
+    CacheHttp<CurlHttp> http{CacheHttpConfig{}, event_base};
     coro::util::EventLoop event_loop(event_base);
     ThreadPool thread_pool(event_loop);
     ThumbnailGenerator thumbnail_generator(&thread_pool, &event_loop);
