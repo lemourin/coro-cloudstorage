@@ -467,8 +467,7 @@ Task<> Mega::CloudProvider::Data::LogIn(std::string session) {
 Task<> Mega::CloudProvider::Data::EnsureLoggedIn(std::string session,
                                                  stdx::stop_token stop_token) {
   if (!current_login) {
-    current_login =
-        SharedPromise(DoLogIn{.d = this, .session = std::move(session)});
+    current_login.emplace(DoLogIn{.d = this, .session = std::move(session)});
   }
   co_await current_login->Get(std::move(stop_token));
 }

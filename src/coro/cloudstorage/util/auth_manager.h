@@ -53,8 +53,8 @@ class AuthManager {
 
   ~AuthManager() { stop_source_.request_stop(); }
 
-  AuthManager(AuthManager&&) noexcept = default;
-  AuthManager& operator=(AuthManager&&) noexcept = default;
+  AuthManager(AuthManager&&) = delete;
+  AuthManager& operator=(AuthManager&&) = delete;
 
   template <typename Request>
   Task<typename Http::ResponseType> Fetch(Request request,
@@ -102,7 +102,7 @@ class AuthManager {
  private:
   Task<> RefreshAuthToken(stdx::stop_token stop_token) {
     if (!current_auth_refresh_) {
-      current_auth_refresh_ = SharedPromise(RefreshToken{this});
+      current_auth_refresh_.emplace(RefreshToken{this});
     }
     co_await current_auth_refresh_->Get(stop_token);
   }

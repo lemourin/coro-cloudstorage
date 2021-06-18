@@ -256,11 +256,14 @@ struct CreateCloudProvider {
   auto operator()(const F& create, const CloudFactory& factory,
                   typename CloudProvider::Auth::AuthToken auth_token,
                   OnTokenUpdated on_token_updated) const {
-    auto auth_manager = factory.template CreateAuthManager<CloudProvider>(
+    using Impl = typename CloudProvider::template CloudProvider<
+        typename CloudFactory::template AuthManagerT<CloudProvider,
+                                                     OnTokenUpdated>>;
+    return factory.template CreateAuthManager<CloudProvider>(
+        [&]<typename... Args>(Args && ... args) {
+          return create.template operator()<Impl>(std::forward<Args>(args)...);
+        },
         std::move(auth_token), std::move(on_token_updated));
-    using Impl =
-        typename CloudProvider::template CloudProvider<decltype(auth_manager)>;
-    return create.template operator()<Impl>(std::move(auth_manager));
   }
 };
 

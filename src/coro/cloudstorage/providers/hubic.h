@@ -185,12 +185,11 @@ class HubiC::CloudProvider
                       Auth::RefreshAccessToken<Http>{
                           .http = &http, .auth_data = std::move(auth_data)},
                       util::AuthorizeRequest{}),
-        provider_(OpenStackAuthManager(
-            auth_manager_.GetHttp(),
-            auth_manager_.GetAuthToken().openstack_auth_token,
-            OnOpenStackTokenUpdated{&auth_manager_},
-            RefreshOpenStackToken<AuthManager>{&auth_manager_},
-            OpenStack::AuthorizeRequest{})) {
+        provider_(auth_manager_.GetHttp(),
+                  auth_manager_.GetAuthToken().openstack_auth_token,
+                  OnOpenStackTokenUpdated{&auth_manager_},
+                  RefreshOpenStackToken<AuthManager>{&auth_manager_},
+                  OpenStack::AuthorizeRequest{}) {
     auth_manager_.refresh_token().current_openstack_token =
         &provider_.auth_token();
   }
