@@ -376,6 +376,7 @@ class ProxyHandler {
     co_yield "<!DOCTYPE html>"
               "<html>"
               "<head>"
+              "  <title>coro-cloudstorage</title>"
               "  <meta charset='UTF-8'>"
               "  <meta name='viewport' "
               "        content='width=device-width, initial-scale=1'>"

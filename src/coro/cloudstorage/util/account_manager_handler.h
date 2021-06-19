@@ -491,6 +491,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     std::stringstream result;
     result << "<html>"
               "<head>"
+              "  <title>coro-cloudstorage</title>"
               "  <meta name='viewport' "
               "        content='width=device-width, initial-scale=1'>"
               "  <link rel=stylesheet href='/static/default.css'>"
