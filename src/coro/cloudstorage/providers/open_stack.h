@@ -5,6 +5,7 @@
 #include <coro/cloudstorage/util/crypto_utils.h>
 #include <coro/cloudstorage/util/fetch_json.h>
 #include <coro/cloudstorage/util/file_utils.h>
+#include <coro/cloudstorage/util/recursive_visit.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
 #include <coro/cloudstorage/util/string_utils.h>
 #include <coro/generator.h>
