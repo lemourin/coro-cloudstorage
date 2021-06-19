@@ -114,22 +114,25 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     accounts_.clear();
   }
 
-  template <typename CloudProvider>
-  Task<> RemoveCloudProvider(std::string_view username) {
-    auth_token_manager_.template RemoveToken<CloudProvider>(username);
-    auto account_id = GetAccountId<CloudProvider>(username);
-    for (auto it = std::begin(accounts_); it != std::end(accounts_);) {
-      if (it->GetId() == account_id && !it->stop_token().stop_requested()) {
-        it->stop_source_.request_stop();
-        co_await account_listener_.OnDestroy(&*it);
-        it = accounts_.erase(it);
+  void RemoveHandler(std::string_view account_id) {
+    for (auto it = std::begin(handlers_); it != std::end(handlers_);) {
+      if (it->id == account_id) {
+        it = handlers_.erase(it);
       } else {
         it++;
       }
     }
-    for (auto it = std::begin(handlers_); it != std::end(handlers_);) {
-      if (it->id == account_id) {
-        it = handlers_.erase(it);
+  }
+
+  template <typename CloudProvider, typename F>
+  Task<> RemoveCloudProvider(const F& predicate) {
+    for (auto it = std::begin(accounts_); it != std::end(accounts_);) {
+      if (predicate(*it) && !it->stop_token().stop_requested()) {
+        it->stop_source_.request_stop();
+        co_await account_listener_.OnDestroy(&*it);
+        auth_token_manager_.template RemoveToken<CloudProvider>(it->username());
+        RemoveHandler(it->GetId());
+        it = accounts_.erase(it);
       } else {
         it++;
       }
@@ -244,7 +247,10 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   struct OnRemoveHandler {
     Task<Response> operator()(Request request,
                               stdx::stop_token stop_token) const {
-      co_await d->template RemoveCloudProvider<CloudProvider>(username);
+      co_await d->template RemoveCloudProvider<CloudProvider>(
+          [id = GetAccountId<CloudProvider>(username)](const auto& account) {
+            return account.GetId() == id;
+          });
       co_return Response{.status = 302, .headers = {{"Location", "/"}}};
     }
     AccountManagerHandler* d;
@@ -314,10 +320,13 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       auto general_data =
           co_await provider.GetGeneralData(std::move(stop_token));
       *username = std::move(general_data.username);
-      co_await RemoveCloudProvider<CloudProvider>(**username);
+      account->username_ = **username;
+      co_await RemoveCloudProvider<CloudProvider>([&](const auto& entry) {
+        return account != &entry &&
+               entry.GetId() == GetAccountId<CloudProvider>(**username);
+      });
       auth_token_manager_.template SaveToken<CloudProvider>(
           std::move(auth_token), **username);
-      account->username_ = std::move(**username);
     } catch (...) {
       auto it =
           std::find_if(accounts_.begin(), accounts_.end(),
