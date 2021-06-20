@@ -233,8 +233,11 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options) {
                                     nullptr, 0);
   CheckAVError(stream, "av_find_best_stream");
   if (context->duration > 0) {
-    CheckAVError(av_seek_frame(context.get(), -1, context->duration / 10, 0),
-                 "av_seek_frame");
+    if (av_seek_frame(context.get(), -1, context->duration / 10, 0) < 0) {
+      CheckAVError(av_seek_frame(context.get(), 0, 0,
+                                 AVSEEK_FLAG_BYTE | AVSEEK_FLAG_BACKWARD),
+                   "av_seek_frame");
+    }
   }
   auto codec_context = CreateCodecContext(context.get(), stream);
   auto size = GetThumbnailSize({codec_context->width, codec_context->height},
