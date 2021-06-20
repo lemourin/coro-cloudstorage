@@ -33,7 +33,7 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
       avio_context_free(&context);
     }
   };
-  const int kBufferSize = 4 * 1024;
+  const int kBufferSize = 4 * 1024 * 1024;
   auto buffer = static_cast<uint8_t*>(av_malloc(kBufferSize));
   std::unique_ptr<AVIOContext, AVIOContextDeleter> context(avio_alloc_context(
       buffer, kBufferSize, /*write_flag=*/0,
