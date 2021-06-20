@@ -54,8 +54,10 @@ class CloudProviderAccount<coro::util::TypeList<CloudProviders...>,
   using Ts = coro::util::TypeList<CloudProviderT<CloudProviders>...>;
 
   template <typename... Args>
-  explicit CloudProviderAccount(std::string username, Args&&... args)
+  explicit CloudProviderAccount(std::string username, int64_t version,
+                                Args&&... args)
       : username_(std::move(username)),
+        version_(version),
         provider_(std::forward<Args>(args)...) {}
 
   std::string GetId() const {
@@ -76,6 +78,7 @@ class CloudProviderAccount<coro::util::TypeList<CloudProviders...>,
   friend class AccountManagerHandler;
 
   std::string username_;
+  int64_t version_;
   std::variant<CloudProviderT<CloudProviders>...> provider_;
   stdx::stop_source stop_source_;
 };
@@ -288,12 +291,13 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   struct CreateF {
     template <typename CloudProviderT, typename... Args>
     CloudProviderAccount* operator()(Args&&... args) const {
-      return &accounts.emplace_back(username,
+      return &accounts.emplace_back(username, version,
                                     std::in_place_type_t<CloudProviderT>{},
                                     std::forward<Args>(args)...);
     }
 
     std::string username;
+    int64_t version;
     std::list<CloudProviderAccount>& accounts;
   };
 
@@ -302,7 +306,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       typename CloudProvider::Auth::AuthToken auth_token,
       std::shared_ptr<std::optional<std::string>> username) {
     return CreateCloudProvider<CloudProvider>{}(
-        CreateF{username->value_or(""), accounts_}, factory_,
+        CreateF{username->value_or(""), version_++, accounts_}, factory_,
         std::move(auth_token),
         OnAuthTokenChanged<CloudProvider>{&auth_token_manager_, username});
   }
@@ -315,6 +319,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         typename CloudProviderAccount::template CloudProviderT<CloudProvider>;
     auto username = std::make_shared<std::optional<std::string>>(std::nullopt);
     auto* account = CreateAccount<CloudProvider>(auth_token, username);
+    auto version = account->version_;
     auto& provider = std::get<CloudProviderT>(account->provider());
     try {
       auto general_data =
@@ -322,11 +327,9 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       *username = std::move(general_data.username);
       account->username_ = **username;
       co_await RemoveCloudProvider<CloudProvider>([&](const auto& entry) {
-        return account != &entry &&
+        return entry.version_ < account->version_ &&
                entry.GetId() == GetAccountId<CloudProvider>(**username);
       });
-      auth_token_manager_.template SaveToken<CloudProvider>(
-          std::move(auth_token), **username);
     } catch (...) {
       auto it =
           std::find_if(accounts_.begin(), accounts_.end(),
@@ -336,7 +339,14 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       }
       throw;
     }
-    OnCloudProviderCreated<CloudProvider>(account);
+    for (const auto& entry : accounts_) {
+      if (entry.version_ == version) {
+        OnCloudProviderCreated<CloudProvider>(account);
+        auth_token_manager_.template SaveToken<CloudProvider>(
+            std::move(auth_token), **username);
+        break;
+      }
+    }
     co_return account;
   }
 
@@ -543,6 +553,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   AccountListener account_listener_;
   AuthTokenManagerT auth_token_manager_;
   std::list<CloudProviderAccount> accounts_;
+  int64_t version_ = 0;
 };
 
 }  // namespace coro::cloudstorage::util
