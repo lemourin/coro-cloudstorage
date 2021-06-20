@@ -252,8 +252,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       handlers_.emplace_back(
           Handler{.id = std::string(account_id),
                   .prefix = StrCat("/", account_id),
-                  .handler = ProxyHandler(thumbnail_generator_, &provider,
-                                          StrCat("/", account_id))});
+                  .handler = ProxyHandler(thumbnail_generator_, &provider)});
 
       account_listener_.OnCreate(account);
     } catch (...) {

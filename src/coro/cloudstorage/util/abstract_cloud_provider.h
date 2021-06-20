@@ -190,14 +190,7 @@ class AbstractCloudProvider::CloudProviderImpl
   Task<Directory> CreateDirectory(Directory parent, std::string name,
                                   stdx::stop_token stop_token) const override {
     co_return co_await std::visit(
-        [&]<typename DirectoryT>(DirectoryT parent) -> Task<Directory> {
-          if constexpr (CanCreateDirectory<DirectoryT, CloudProviderT>) {
-            co_return Convert<Directory>(co_await provider_->CreateDirectory(
-                std::move(parent), std::move(name), std::move(stop_token)));
-          } else {
-            throw CloudException("can't create directory");
-          }
-        },
+        CreateDirectoryF{provider_, std::move(name), std::move(stop_token)},
         std::any_cast<ItemT&&>(std::move(parent.impl)));
   }
 
@@ -236,72 +229,118 @@ class AbstractCloudProvider::CloudProviderImpl
                         FileContent content,
                         stdx::stop_token stop_token) const override {
     co_return co_await std::visit(
-        [&]<typename DirectoryT>(DirectoryT parent) -> Task<File> {
-          if constexpr (CanCreateFile<DirectoryT, CloudProviderT>) {
-            typename CloudProviderT::FileContent ncontent;
-            ncontent.data = std::move(content.data);
-            if constexpr (std::is_convertible_v<decltype(ncontent.size),
-                                                int64_t>) {
-              ncontent.size = content.size.value();
-            } else {
-              ncontent.size = content.size;
-            }
-            co_return Convert<File>(co_await provider_->CreateFile(
-                std::move(parent), name, std::move(ncontent),
-                std::move(stop_token)));
-          } else {
-            throw CloudException("can't create file");
-          }
-        },
+        CreateFileF{provider_, std::string(name), std::move(content),
+                    std::move(stop_token)},
         std::any_cast<ItemT&&>(std::move(parent.impl)));
   }
 
  private:
   using ItemT = typename CloudProviderT::Item;
+  using FileContentT = typename CloudProviderT::FileContent;
+
+  struct CreateFileF {
+    template <typename DirectoryT>
+    Task<File> operator()(DirectoryT parent) && {
+      if constexpr (CanCreateFile<DirectoryT, CloudProviderT>) {
+        FileContentT ncontent;
+        ncontent.data = std::move(content.data);
+        if constexpr (std::is_convertible_v<decltype(ncontent.size), int64_t>) {
+          ncontent.size = content.size.value();
+        } else {
+          ncontent.size = content.size;
+        }
+        co_return Convert<File>(co_await provider->CreateFile(
+            std::move(parent), std::move(name), std::move(ncontent),
+            std::move(stop_token)));
+      } else {
+        throw CloudException("can't create file");
+      }
+    }
+    CloudProviderT* provider;
+    std::string name;
+    FileContent content;
+    stdx::stop_token stop_token;
+  };
+
+  struct CreateDirectoryF {
+    template <typename DirectoryT>
+    Task<Directory> operator()(DirectoryT parent) {
+      if constexpr (CanCreateDirectory<DirectoryT, CloudProviderT>) {
+        co_return Convert<Directory>(co_await provider->CreateDirectory(
+            std::move(parent), std::move(name), std::move(stop_token)));
+      } else {
+        throw CloudException("can't create directory");
+      }
+    }
+    CloudProviderT* provider;
+    std::string name;
+    stdx::stop_token stop_token;
+  };
+
+  template <typename Item>
+  struct RenameItemF {
+    template <typename Entry>
+    Task<Item> operator()(Entry entry) && {
+      if constexpr (CanRename<Entry, CloudProviderT>) {
+        co_return Convert<Item>(co_await provider->RenameItem(
+            std::move(entry), std::move(new_name), std::move(stop_token)));
+      } else {
+        throw CloudException("can't rename");
+      }
+    }
+    CloudProviderT* provider;
+    std::string new_name;
+    stdx::stop_token stop_token;
+  };
 
   template <typename Item>
   Task<Item> Rename(Item item, std::string new_name,
                     stdx::stop_token stop_token) const {
     co_return co_await std::visit(
-        [&]<typename Entry>(Entry entry) -> Task<Item> {
-          if constexpr (CanRename<Entry, CloudProviderT>) {
-            co_return Convert<Item>(co_await provider_->RenameItem(
-                std::move(entry), std::move(new_name), std::move(stop_token)));
-          } else {
-            throw CloudException("can't rename");
-          }
-        },
+        RenameItemF<Item>{provider_, std::move(new_name),
+                          std::move(stop_token)},
         std::any_cast<ItemT&&>(std::move(item.impl)));
   }
 
+  struct RemoveItemF {
+    template <typename Entry>
+    Task<> operator()(Entry entry) && {
+      if constexpr (CanRemove<Entry, CloudProviderT>) {
+        co_await provider->RemoveItem(std::move(entry), std::move(stop_token));
+      } else {
+        throw CloudException("can't remove");
+      }
+    }
+    CloudProviderT* provider;
+    stdx::stop_token stop_token;
+  };
+
   template <typename Item>
   Task<> Remove(Item item, stdx::stop_token stop_token) const {
-    co_return co_await std::visit(
-        [&]<typename Entry>(Entry entry) -> Task<> {
-          if constexpr (CanRemove<Entry, CloudProviderT>) {
-            co_await provider_->RemoveItem(std::move(entry),
-                                           std::move(stop_token));
-          } else {
-            throw CloudException("can't remove");
-          }
-        },
-        std::any_cast<ItemT&&>(std::move(item.impl)));
+    co_return co_await std::visit(RemoveItemF{provider_, std::move(stop_token)},
+                                  std::any_cast<ItemT&&>(std::move(item.impl)));
   }
+
+  template <typename Item>
+  struct MoveItemF {
+    template <typename SourceT, typename DestinationT>
+    Task<Item> operator()(SourceT source, DestinationT destination) && {
+      if constexpr (CanMove<SourceT, DestinationT, CloudProviderT>) {
+        co_return Convert<Item>(co_await provider->MoveItem(
+            std::move(source), std::move(destination), std::move(stop_token)));
+      } else {
+        throw CloudException("can't move");
+      }
+    }
+    CloudProviderT* provider;
+    stdx::stop_token stop_token;
+  };
 
   template <typename Item>
   Task<Item> Move(Item source, Directory destination,
                   stdx::stop_token stop_token) const {
     co_return co_await std::visit(
-        [&]<typename SourceT, typename DestinationT>(
-            SourceT source, DestinationT destination) -> Task<Item> {
-          if constexpr (CanMove<SourceT, DestinationT, CloudProviderT>) {
-            co_return Convert<Item>(co_await provider_->MoveItem(
-                std::move(source), std::move(destination),
-                std::move(stop_token)));
-          } else {
-            throw CloudException("can't move");
-          }
-        },
+        MoveItemF<Item>{provider_, std::move(stop_token)},
         std::any_cast<ItemT&&>(std::move(source.impl)),
         std::any_cast<ItemT&&>(std::move(destination.impl)));
   }
@@ -320,7 +359,7 @@ class AbstractCloudProvider::CloudProviderImpl
     if constexpr (IsFile<From, CloudProvider>) {
       result.mime_type = CloudProviderT::GetMimetype(d);
     }
-    result.impl = ItemT(std::move(d));
+    result.impl.template emplace<ItemT>(std::move(d));
     return result;
   }
 

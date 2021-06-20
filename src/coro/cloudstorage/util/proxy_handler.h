@@ -20,10 +20,8 @@ class ProxyHandler {
   using Response = http::Response<>;
 
   ProxyHandler(const ThumbnailGenerator& thumbnail_generator,
-               CloudProvider* provider, std::string path_prefix)
-      : thumbnail_generator_(&thumbnail_generator),
-        provider_(provider),
-        path_prefix_(std::move(path_prefix)) {}
+               CloudProvider* provider)
+      : thumbnail_generator_(&thumbnail_generator), provider_(provider) {}
 
   Task<Response> operator()(Request request, stdx::stop_token stop_token) {
     auto uri = http::ParseUri(request.url);
@@ -52,16 +50,7 @@ class ProxyHandler {
           throw CloudException("invalid path");
         }
         co_return co_await std::visit(
-            [&]<typename Item>(Item item) -> Task<Response> {
-              if constexpr (IsDirectory<Item, CloudProvider> &&
-                            CanCreateDirectory<Item, CloudProvider>) {
-                co_await provider_->CreateDirectory(std::move(item),
-                                                    path.back(), stop_token);
-                co_return Response{.status = 201};
-              } else {
-                co_return Response{.status = 501};
-              }
-            },
+            CreateDirectoryF{provider_, path.back(), stop_token},
             co_await provider_->GetItemByPathComponents(GetDirectoryPath(path),
                                                         stop_token));
       }
@@ -70,17 +59,8 @@ class ProxyHandler {
           throw CloudException("invalid path");
         }
         co_return co_await std::visit(
-            [&]<typename Item>(Item item) -> Task<Response> {
-              if constexpr (IsDirectory<Item, CloudProvider> &&
-                            CanCreateFile<Item, CloudProvider>) {
-                co_await provider_->CreateFile(
-                    std::move(item), path.back(),
-                    ToFileContent(std::move(request)), stop_token);
-                co_return Response{.status = 201};
-              } else {
-                co_return Response{.status = 501};
-              }
-            },
+            CreateFileF{provider_, path.back(),
+                        ToFileContent(std::move(request)), stop_token},
             co_await provider_->GetItemByPathComponents(GetDirectoryPath(path),
                                                         stop_token));
       }
@@ -215,23 +195,13 @@ class ProxyHandler {
       }
       auto destination_path = GetDirectoryPath(destination);
       auto destination_name = destination.back();
-      using ItemT = typename CloudProvider::Item;
       ItemT new_item = d;
       if (!Equal(GetDirectoryPath(path), destination_path)) {
         auto destination_directory =
             co_await provider_->GetItemByPathComponents(destination_path,
                                                         stop_token);
         auto item = co_await std::visit(
-            [&]<typename Destination>(
-                Destination destination) mutable -> Task<std::optional<ItemT>> {
-              if constexpr (CanMove<Item, Destination, CloudProvider>) {
-                co_return co_await provider_->MoveItem(std::move(d),
-                                                       std::move(destination),
-                                                       std::move(stop_token));
-              } else {
-                co_return std::nullopt;
-              }
-            },
+            MoveItemF<Item>{provider_, std::move(d), std::move(stop_token)},
             std::move(destination_directory));
         if (!item) {
           co_return Response{.status = 501};
@@ -244,16 +214,8 @@ class ProxyHandler {
       }
       if (path.back() != destination_name) {
         auto item = co_await std::visit(
-            [&]<typename Source>(
-                Source item) mutable -> Task<std::optional<ItemT>> {
-              if constexpr (CanRename<Source, CloudProvider>) {
-                co_return co_await provider_->RenameItem(
-                    std::move(item), std::move(destination_name),
-                    std::move(stop_token));
-              } else {
-                co_return std::nullopt;
-              }
-            },
+            RenameItemF{provider_, std::move(destination_name),
+                        std::move(stop_token)},
             std::move(new_item));
         if (!item) {
           co_return Response{.status = 501};
@@ -494,9 +456,79 @@ class ProxyHandler {
     return components;
   }
 
+  struct CreateDirectoryF {
+    template <typename Item>
+    Task<Response> operator()(Item item) && {
+      if constexpr (IsDirectory<Item, CloudProvider> &&
+                    CanCreateDirectory<Item, CloudProvider>) {
+        co_await provider->CreateDirectory(std::move(item), name,
+                                           std::move(stop_token));
+        co_return Response{.status = 201};
+      } else {
+        co_return Response{.status = 501};
+      }
+    }
+    CloudProvider* provider;
+    std::string name;
+    stdx::stop_token stop_token;
+  };
+
+  struct CreateFileF {
+    template <typename Item>
+    Task<Response> operator()(Item item) && {
+      if constexpr (IsDirectory<Item, CloudProvider> &&
+                    CanCreateFile<Item, CloudProvider>) {
+        co_await provider->CreateFile(std::move(item), std::move(name),
+                                      std::move(content),
+                                      std::move(stop_token));
+        co_return Response{.status = 201};
+      } else {
+        co_return Response{.status = 501};
+      }
+    }
+
+    CloudProvider* provider;
+    std::string name;
+    typename CloudProvider::FileContent content;
+    stdx::stop_token stop_token;
+  };
+
+  using ItemT = typename CloudProvider::Item;
+
+  template <typename Item>
+  struct MoveItemF {
+    template <typename Destination>
+    Task<std::optional<ItemT>> operator()(Destination destination) && {
+      if constexpr (CanMove<Item, Destination, CloudProvider>) {
+        co_return co_await provider->MoveItem(
+            std::move(source), std::move(destination), std::move(stop_token));
+      } else {
+        co_return std::nullopt;
+      }
+    }
+    CloudProvider* provider;
+    Item source;
+    stdx::stop_token stop_token;
+  };
+
+  struct RenameItemF {
+    template <typename Source>
+    Task<std::optional<ItemT>> operator()(Source item) && {
+      if constexpr (CanRename<Source, CloudProvider>) {
+        co_return co_await provider->RenameItem(std::move(item),
+                                                std::move(destination_name),
+                                                std::move(stop_token));
+      } else {
+        co_return std::nullopt;
+      }
+    }
+    CloudProvider* provider;
+    std::string destination_name;
+    stdx::stop_token stop_token;
+  };
+
   const ThumbnailGenerator* thumbnail_generator_;
   CloudProvider* provider_;
-  std::string path_prefix_;
 };
 
 }  // namespace coro::cloudstorage::util
