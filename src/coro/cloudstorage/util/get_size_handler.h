@@ -5,6 +5,8 @@
 #include <coro/http/http_parse.h>
 #include <coro/stdx/stop_token.h>
 
+#include <list>
+
 namespace coro::cloudstorage::util {
 
 template <typename CloudProviderAccount>
