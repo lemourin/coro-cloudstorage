@@ -153,6 +153,10 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
  private:
   template <typename CloudProvider>
+  using CloudProviderT =
+      typename CloudProviderAccount::template CloudProviderT<CloudProvider>;
+
+  template <typename CloudProvider>
   using OnAuthTokenChanged =
       internal::OnAuthTokenChanged<AuthTokenManagerT, CloudProvider>;
 
@@ -236,22 +240,26 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   template <typename CloudProvider>
   void OnCloudProviderCreated(CloudProviderAccount* account) {
     std::string account_id = GetAccountId<CloudProvider>(account->username());
-    handlers_.emplace_back(
-        Handler{.id = std::string(account_id),
-                .prefix = StrCat("/remove/", account_id),
-                .handler = OnRemoveHandler<CloudProvider>{
-                    .d = this, .username = std::string(account->username())}});
+    try {
+      handlers_.emplace_back(Handler{
+          .id = std::string(account_id),
+          .prefix = StrCat("/remove/", account_id),
+          .handler = OnRemoveHandler<CloudProvider>{
+              .d = this, .username = std::string(account->username())}});
 
-    auto& provider = std::get<
-        typename CloudProviderAccount::template CloudProviderT<CloudProvider>>(
-        account->provider());
-    handlers_.emplace_back(
-        Handler{.id = std::string(account_id),
-                .prefix = StrCat("/", account_id),
-                .handler = ProxyHandler(thumbnail_generator_, &provider,
-                                        StrCat("/", account_id))});
+      auto& provider =
+          std::get<CloudProviderT<CloudProvider>>(account->provider());
+      handlers_.emplace_back(
+          Handler{.id = std::string(account_id),
+                  .prefix = StrCat("/", account_id),
+                  .handler = ProxyHandler(thumbnail_generator_, &provider,
+                                          StrCat("/", account_id))});
 
-    account_listener_.OnCreate(account);
+      account_listener_.OnCreate(account);
+    } catch (...) {
+      RemoveHandler(account_id);
+      throw;
+    }
   }
 
   struct CreateF {
@@ -281,39 +289,38 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   Task<CloudProviderAccount*> Create(
       typename CloudProvider::Auth::AuthToken auth_token,
       stdx::stop_token stop_token) {
-    using CloudProviderT =
-        typename CloudProviderAccount::template CloudProviderT<CloudProvider>;
     auto username = std::make_shared<std::optional<std::string>>(std::nullopt);
     auto* account = CreateAccount<CloudProvider>(auth_token, username);
     auto version = account->version_;
-    auto& provider = std::get<CloudProviderT>(account->provider());
+    auto& provider =
+        std::get<CloudProviderT<CloudProvider>>(account->provider());
+    bool on_create_called = false;
+    std::exception_ptr exception;
     try {
       auto general_data =
           co_await provider.GetGeneralData(std::move(stop_token));
       *username = std::move(general_data.username);
       account->username_ = **username;
       co_await RemoveCloudProvider<CloudProvider>([&](const auto& entry) {
-        return entry.version_ < account->version_ &&
+        return entry.version_ < version &&
                entry.GetId() == GetAccountId<CloudProvider>(**username);
       });
+      for (const auto& entry : accounts_) {
+        if (entry.version_ == version) {
+          OnCloudProviderCreated<CloudProvider>(account);
+          on_create_called = true;
+          auth_token_manager_.template SaveToken<CloudProvider>(
+              std::move(auth_token), **username);
+          break;
+        }
+      }
+      co_return account;
     } catch (...) {
-      auto it =
-          std::find_if(accounts_.begin(), accounts_.end(),
-                       [&](const auto& entry) { return &entry == account; });
-      if (it != accounts_.end()) {
-        accounts_.erase(it);
-      }
-      throw;
+      exception = std::current_exception();
     }
-    for (const auto& entry : accounts_) {
-      if (entry.version_ == version) {
-        OnCloudProviderCreated<CloudProvider>(account);
-        auth_token_manager_.template SaveToken<CloudProvider>(
-            std::move(auth_token), **username);
-        break;
-      }
-    }
-    co_return account;
+    co_await RemoveCloudProvider<CloudProvider>(
+        [&](const auto& entry) { return entry.version_ == version; });
+    std::rethrow_exception(exception);
   }
 
   using StaticFileHandler =
@@ -328,9 +335,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     std::variant<
         StaticFileHandler, GetSizeHandler, AuthHandler<CloudProviders>...,
         OnRemoveHandler<CloudProviders>...,
-        ProxyHandler<typename CloudProviderAccount::template CloudProviderT<
-                         CloudProviders>,
-                     ThumbnailGenerator>...>
+        ProxyHandler<CloudProviderT<CloudProviders>, ThumbnailGenerator>...>
         handler;
   };
 
