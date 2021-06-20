@@ -5,6 +5,7 @@
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/auth_token_manager.h>
 #include <coro/cloudstorage/util/cloud_provider_account.h>
+#include <coro/cloudstorage/util/get_size_handler.h>
 #include <coro/cloudstorage/util/proxy_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
 #include <coro/cloudstorage/util/static_file_handler.h>
@@ -62,7 +63,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     handlers_.emplace_back(
         Handler{.prefix = "/static/", .handler = StaticFileHandler{}});
     handlers_.emplace_back(
-        Handler{.prefix = "/size", .handler = GetSizeHandler{this}});
+        Handler{.prefix = "/size", .handler = GetSizeHandler{&accounts_}});
     (AddAuthHandler<CloudProviders>(), ...);
     for (const auto& any_token : auth_token_manager_.template LoadTokenData<
                                  coro::util::TypeList<CloudProviders...>>()) {
@@ -179,38 +180,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       }
     }
   }
-
-  struct GetSizeHandler {
-    Task<Response> operator()(Request request,
-                              stdx::stop_token stop_token) const {
-      auto query = http::ParseQuery(http::ParseUri(request.url).query.value());
-      auto account_id = query.find("account_id");
-      if (account_id == query.end()) {
-        co_return Response{.status = 400};
-      }
-      for (CloudProviderAccount& account : d->accounts_) {
-        if (account.GetId() == account_id->second) {
-          VolumeData volume_data = co_await std::visit(
-              [&](auto& provider) {
-                return GetVolumeData(&provider, stop_token);
-              },
-              account.provider());
-          nlohmann::json json;
-          if (volume_data.space_total) {
-            json["space_total"] = *volume_data.space_total;
-          }
-          if (volume_data.space_used) {
-            json["space_used"] = *volume_data.space_used;
-          }
-          co_return Response{.status = 200,
-                             .headers = {{"Content-Type", "application/json"}},
-                             .body = http::CreateBody(json.dump())};
-        }
-      }
-      co_return Response{.status = 404};
-    }
-    AccountManagerHandler* d;
-  };
 
   template <typename CloudProvider>
   struct AuthHandler {
@@ -350,6 +319,9 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   using StaticFileHandler =
       coro::cloudstorage::util::StaticFileHandler<CloudProviders...>;
 
+  using GetSizeHandler =
+      coro::cloudstorage::util::GetSizeHandler<CloudProviderAccount>;
+
   struct Handler {
     std::string id;
     std::string prefix;
@@ -372,28 +344,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     stream << fmt::format(
         kAssetsHtmlProviderEntryHtml, fmt::arg("provider_url", url),
         fmt::arg("image_url", util::StrCat("/static/", id, ".png")));
-  }
-
-  struct VolumeData {
-    std::optional<int64_t> space_used;
-    std::optional<int64_t> space_total;
-  };
-
-  template <typename CloudProvider>
-  static Task<VolumeData> GetVolumeData(CloudProvider* provider,
-                                        stdx::stop_token stop_token) {
-    using CloudProviderT = typename CloudProvider::Type;
-    if constexpr (HasUsageData<typename CloudProviderT::GeneralData>) {
-      try {
-        auto data = co_await provider->GetGeneralData(stop_token);
-        co_return VolumeData{.space_used = data.space_used,
-                             .space_total = data.space_total};
-      } catch (...) {
-        co_return VolumeData{};
-      }
-    } else {
-      co_return VolumeData{};
-    }
   }
 
   Generator<std::string> GetHomePage(stdx::stop_token stop_token) {
