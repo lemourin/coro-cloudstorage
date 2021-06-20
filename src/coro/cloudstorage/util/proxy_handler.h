@@ -5,7 +5,6 @@
 #include <coro/cloudstorage/util/thumbnail_options.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http_parse.h>
-#include <coro/stdx/bind_front.h>
 #include <coro/util/lru_cache.h>
 #include <fmt/format.h>
 
@@ -52,10 +51,17 @@ class ProxyHandler {
         if (path.empty()) {
           throw CloudException("invalid path");
         }
-        auto create_directory = stdx::BindFront(CreateDirectoryF{}, provider_,
-                                                path.back(), stop_token);
         co_return co_await std::visit(
-            std::move(create_directory),
+            [&]<typename Item>(Item item) -> Task<Response> {
+              if constexpr (IsDirectory<Item, CloudProvider> &&
+                            CanCreateDirectory<Item, CloudProvider>) {
+                co_await provider_->CreateDirectory(std::move(item),
+                                                    path.back(), stop_token);
+                co_return Response{.status = 201};
+              } else {
+                co_return Response{.status = 501};
+              }
+            },
             co_await provider_->GetItemByPathComponents(GetDirectoryPath(path),
                                                         stop_token));
       }
@@ -63,12 +69,20 @@ class ProxyHandler {
         if (path.empty()) {
           throw CloudException("invalid path");
         }
-        auto create_file =
-            stdx::BindFront(CreateFileF{}, provider_, path.back(),
-                            std::move(request), stop_token);
         co_return co_await std::visit(
-            std::move(create_file), co_await provider_->GetItemByPathComponents(
-                                        GetDirectoryPath(path), stop_token));
+            [&]<typename Item>(Item item) -> Task<Response> {
+              if constexpr (IsDirectory<Item, CloudProvider> &&
+                            CanCreateFile<Item, CloudProvider>) {
+                co_await provider_->CreateFile(
+                    std::move(item), path.back(),
+                    ToFileContent(std::move(request)), stop_token);
+                co_return Response{.status = 201};
+              } else {
+                co_return Response{.status = 501};
+              }
+            },
+            co_await provider_->GetItemByPathComponents(GetDirectoryPath(path),
+                                                        stop_token));
       }
       co_return co_await std::visit(
           [&](const auto& d) {
@@ -88,10 +102,6 @@ class ProxyHandler {
   }
 
  private:
-  static Generator<std::string> GetGenerator(std::string content) {
-    co_yield std::move(content);
-  }
-
   static Generator<std::string> GetDashPlayer(std::string path) {
     co_yield fmt::format(kAssetsHtmlDashPlayerHtml,
                          fmt::arg("video_url", path));
@@ -144,7 +154,7 @@ class ProxyHandler {
                     {"Cache-Control", "max-age=604800"},
                     {"Content-Type", std::move(mime_type)},
                     {"Content-Length", std::to_string(content.size())}},
-        .body = GetGenerator(std::string(content))};
+        .body = http::CreateBody(std::string(content))};
   }
 
   template <typename Item>
@@ -205,14 +215,24 @@ class ProxyHandler {
       }
       auto destination_path = GetDirectoryPath(destination);
       auto destination_name = destination.back();
-      typename CloudProvider::Item new_item = d;
+      using ItemT = typename CloudProvider::Item;
+      ItemT new_item = d;
       if (!Equal(GetDirectoryPath(path), destination_path)) {
         auto destination_directory =
             co_await provider_->GetItemByPathComponents(destination_path,
                                                         stop_token);
-        auto move_item = stdx::BindFront(MoveItemF{}, provider_, d, stop_token);
-        auto item =
-            co_await std::visit(std::move(move_item), destination_directory);
+        auto item = co_await std::visit(
+            [&]<typename Destination>(
+                Destination destination) mutable -> Task<std::optional<ItemT>> {
+              if constexpr (CanMove<Item, Destination, CloudProvider>) {
+                co_return co_await provider_->MoveItem(std::move(d),
+                                                       std::move(destination),
+                                                       std::move(stop_token));
+              } else {
+                co_return std::nullopt;
+              }
+            },
+            std::move(destination_directory));
         if (!item) {
           co_return Response{.status = 501};
         } else {
@@ -223,9 +243,18 @@ class ProxyHandler {
         throw CloudException("invalid path");
       }
       if (path.back() != destination_name) {
-        auto rename_item = stdx::BindFront(
-            RenameItemF{}, provider_, std::move(destination_name), stop_token);
-        auto item = co_await std::visit(std::move(rename_item), new_item);
+        auto item = co_await std::visit(
+            [&]<typename Source>(
+                Source item) mutable -> Task<std::optional<ItemT>> {
+              if constexpr (CanRename<Source, CloudProvider>) {
+                co_return co_await provider_->RenameItem(
+                    std::move(item), std::move(destination_name),
+                    std::move(stop_token));
+              } else {
+                co_return std::nullopt;
+              }
+            },
+            std::move(new_item));
         if (!item) {
           co_return Response{.status = 501};
         } else {
@@ -464,66 +493,6 @@ class ProxyHandler {
     components.erase(components.begin());
     return components;
   }
-
-  struct RenameItemF {
-    template <typename Item>
-    Task<std::optional<typename CloudProvider::Item>> operator()(
-        CloudProvider* provider, std::string new_name,
-        stdx::stop_token stop_token, Item item) {
-      if constexpr (CanRename<Item, CloudProvider>) {
-        co_return co_await provider->RenameItem(
-            std::move(item), std::move(new_name), std::move(stop_token));
-      } else {
-        co_return std::nullopt;
-      }
-    }
-  };
-
-  struct MoveItemF {
-    template <typename Destination, typename Item>
-    Task<std::optional<typename CloudProvider::Item>> operator()(
-        CloudProvider* provider, Item item, stdx::stop_token stop_token,
-        Destination destination) {
-      if constexpr (CanMove<Item, Destination, CloudProvider>) {
-        co_return co_await provider->MoveItem(
-            std::move(item), std::move(destination), std::move(stop_token));
-      } else {
-        co_return std::nullopt;
-      }
-    }
-  };
-
-  struct CreateDirectoryF {
-    template <typename Item>
-    Task<Response> operator()(CloudProvider* provider, std::string name,
-                              stdx::stop_token stop_token, const Item& item) {
-      if constexpr (IsDirectory<Item, CloudProvider> &&
-                    CanCreateDirectory<Item, CloudProvider>) {
-        co_await provider->CreateDirectory(item, std::move(name),
-                                           std::move(stop_token));
-        co_return Response{.status = 201};
-      } else {
-        co_return Response{.status = 501};
-      }
-    }
-  };
-
-  struct CreateFileF {
-    template <typename Item>
-    Task<Response> operator()(CloudProvider* provider, std::string name,
-                              Request request, stdx::stop_token stop_token,
-                              const Item& item) {
-      if constexpr (IsDirectory<Item, CloudProvider> &&
-                    CanCreateFile<Item, CloudProvider>) {
-        co_await provider->CreateFile(item, name,
-                                      ToFileContent(std::move(request)),
-                                      std::move(stop_token));
-        co_return Response{.status = 201};
-      } else {
-        co_return Response{.status = 501};
-      }
-    }
-  };
 
   const ThumbnailGenerator* thumbnail_generator_;
   CloudProvider* provider_;
