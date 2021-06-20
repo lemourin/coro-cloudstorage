@@ -4,6 +4,7 @@
 #include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/auth_token_manager.h>
+#include <coro/cloudstorage/util/cloud_provider_account.h>
 #include <coro/cloudstorage/util/proxy_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
 #include <coro/cloudstorage/util/static_file_handler.h>
@@ -18,71 +19,6 @@
 #include <list>
 
 namespace coro::cloudstorage::util {
-
-template <typename CloudProvider>
-static std::string GetAccountId(std::string_view username) {
-  return StrCat("[", CloudProvider::kId, "] ", username);
-}
-
-namespace internal {
-template <typename AuthTokenManagerT, typename CloudProvider>
-struct OnAuthTokenChanged {
-  void operator()(typename CloudProvider::Auth::AuthToken auth_token) {
-    if (*account_id) {
-      d->template SaveToken<CloudProvider>(std::move(auth_token), **account_id);
-    }
-  }
-  AuthTokenManagerT* d;
-  std::shared_ptr<std::optional<std::string>> account_id;
-};
-}  // namespace internal
-
-template <typename CloudProviderTypeList, typename CloudFactory,
-          typename AuthTokenManagerT = AuthTokenManager>
-class CloudProviderAccount;
-
-template <typename... CloudProviders, typename CloudFactory,
-          typename AuthTokenManagerT>
-class CloudProviderAccount<coro::util::TypeList<CloudProviders...>,
-                           CloudFactory, AuthTokenManagerT> {
- public:
-  template <typename T>
-  using CloudProviderT =
-      decltype(std::declval<CloudFactory>().template Create<T>(
-          std::declval<typename T::Auth::AuthToken>(),
-          std::declval<internal::OnAuthTokenChanged<AuthTokenManagerT, T>>()));
-
-  using Ts = coro::util::TypeList<CloudProviderT<CloudProviders>...>;
-
-  template <typename... Args>
-  explicit CloudProviderAccount(std::string username, int64_t version,
-                                Args&&... args)
-      : username_(std::move(username)),
-        version_(version),
-        provider_(std::forward<Args>(args)...) {}
-
-  std::string GetId() const {
-    return std::visit(
-        [&]<typename CloudProvider>(const CloudProvider&) {
-          return GetAccountId<typename CloudProvider::Type>(username_);
-        },
-        provider_);
-  }
-
-  std::string_view username() const { return username_; }
-  auto& provider() { return provider_; }
-  const auto& provider() const { return provider_; }
-  stdx::stop_token stop_token() const { return stop_source_.get_token(); }
-
- private:
-  template <typename, typename, typename, typename, typename>
-  friend class AccountManagerHandler;
-
-  std::string username_;
-  int64_t version_;
-  std::variant<CloudProviderT<CloudProviders>...> provider_;
-  stdx::stop_source stop_source_;
-};
 
 template <typename CloudProviderTypeList, typename CloudFactory,
           typename ThumbnailGenerator, typename AccountListener,
@@ -99,10 +35,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   using Request = coro::http::Request<>;
   using Response = coro::http::Response<>;
 
-  template <typename CloudProvider>
-  using OnAuthTokenChanged =
-      internal::OnAuthTokenChanged<AuthTokenManagerT, CloudProvider>;
-
   using CloudProviderAccount = coro::cloudstorage::util::CloudProviderAccount<
       coro::util::TypeList<CloudProviders...>, CloudFactory, AuthTokenManagerT>;
 
@@ -117,6 +49,111 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     co_await WhenAll(std::move(tasks));
     accounts_.clear();
   }
+
+  AccountManagerHandler(
+      const CloudFactory& factory,
+      const ThumbnailGenerator& thumbnail_generator,
+      AccountListener account_listener,
+      AuthTokenManagerT auth_token_manager = AuthTokenManagerT{})
+      : factory_(factory),
+        thumbnail_generator_(thumbnail_generator),
+        account_listener_(std::move(account_listener)),
+        auth_token_manager_(std::move(auth_token_manager)) {
+    handlers_.emplace_back(
+        Handler{.prefix = "/static/", .handler = StaticFileHandler{}});
+    handlers_.emplace_back(
+        Handler{.prefix = "/size", .handler = GetSizeHandler{this}});
+    (AddAuthHandler<CloudProviders>(), ...);
+    for (const auto& any_token : auth_token_manager_.template LoadTokenData<
+                                 coro::util::TypeList<CloudProviders...>>()) {
+      std::visit(
+          [&]<typename AuthToken>(AuthToken token) {
+            using CloudProvider = typename AuthToken::CloudProvider;
+            auto id = std::move(token.id);
+            auto* account = CreateAccount<CloudProvider>(
+                std::move(token),
+                std::make_shared<std::optional<std::string>>(id));
+            OnCloudProviderCreated<CloudProvider>(account);
+          },
+          any_token);
+    }
+  }
+
+  AccountManagerHandler(AccountManagerHandler&&) = delete;
+  AccountManagerHandler& operator=(AccountManagerHandler&&) = delete;
+
+  Task<Response> operator()(Request request,
+                            coro::stdx::stop_token stop_token) {
+    if (request.method == coro::http::Method::kOptions) {
+      co_return Response{
+          .status = 204,
+          .headers = {{"Allow",
+                       "OPTIONS, GET, HEAD, POST, PUT, DELETE, MOVE, "
+                       "MKCOL, PROPFIND, PATCH, PROPPATCH"},
+                      {"DAV", "1"},
+                      {"Access-Control-Allow-Origin", "*"},
+                      {"Access-Control-Allow-Headers", "*"}}};
+    }
+    auto path_opt = http::ParseUri(request.url).path;
+    if (!path_opt) {
+      co_return Response{.status = 400};
+    }
+    auto path = http::DecodeUri(std::move(*path_opt));
+    for (auto& handler : handlers_) {
+      if (path.starts_with(handler.prefix)) {
+        if (auto account_it = std::find_if(accounts_.begin(), accounts_.end(),
+                                           [&](const auto& account) {
+                                             return account.GetId() ==
+                                                    handler.id;
+                                           });
+            account_it != accounts_.end()) {
+          coro::util::StopTokenOr stop_token_or(account_it->stop_token(),
+                                                std::move(stop_token));
+          co_return co_await std::visit(
+              [request = std::move(request),
+               stop_token = stop_token_or.GetToken()](auto& d) mutable {
+                return d(std::move(request), std::move(stop_token));
+              },
+              handler.handler);
+        } else {
+          co_return co_await std::visit(
+              [request = std::move(request),
+               stop_token = std::move(stop_token)](auto& d) mutable {
+                return d(std::move(request), std::move(stop_token));
+              },
+              handler.handler);
+        }
+      }
+    }
+    if (path.empty() || path == "/") {
+      if (request.method == coro::http::Method::kPropfind) {
+        std::vector<std::string> responses = {GetElement(
+            ElementData{.path = "/", .name = "root", .is_directory = true})};
+        if (coro::http::GetHeader(request.headers, "Depth") == "1") {
+          for (const auto& account : accounts_) {
+            responses.push_back(
+                GetElement(ElementData{.path = "/" + account.GetId() + "/",
+                                       .name = account.GetId(),
+                                       .is_directory = true}));
+          }
+        }
+        co_return Response{
+            .status = 207,
+            .headers = {{"Content-Type", "text/xml"}},
+            .body = http::CreateBody(GetMultiStatusResponse(responses))};
+      } else {
+        co_return Response{.status = 200,
+                           .body = GetHomePage(std::move(stop_token))};
+      }
+    } else {
+      co_return Response{.status = 302, .headers = {{"Location", "/"}}};
+    }
+  }
+
+ private:
+  template <typename CloudProvider>
+  using OnAuthTokenChanged =
+      internal::OnAuthTokenChanged<AuthTokenManagerT, CloudProvider>;
 
   void RemoveHandler(std::string_view account_id) {
     for (auto it = std::begin(handlers_); it != std::end(handlers_);) {
@@ -310,107 +347,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     co_return account;
   }
 
-  AccountManagerHandler(
-      const CloudFactory& factory,
-      const ThumbnailGenerator& thumbnail_generator,
-      AccountListener account_listener,
-      AuthTokenManagerT auth_token_manager = AuthTokenManagerT{})
-      : factory_(factory),
-        thumbnail_generator_(thumbnail_generator),
-        account_listener_(std::move(account_listener)),
-        auth_token_manager_(std::move(auth_token_manager)) {
-    handlers_.emplace_back(
-        Handler{.prefix = "/static/", .handler = StaticFileHandler{}});
-    handlers_.emplace_back(
-        Handler{.prefix = "/size", .handler = GetSizeHandler{this}});
-    (AddAuthHandler<CloudProviders>(), ...);
-    for (const auto& any_token : auth_token_manager_.template LoadTokenData<
-                                 coro::util::TypeList<CloudProviders...>>()) {
-      std::visit(
-          [&]<typename AuthToken>(AuthToken token) {
-            using CloudProvider = typename AuthToken::CloudProvider;
-            auto id = std::move(token.id);
-            auto* account = CreateAccount<CloudProvider>(
-                std::move(token),
-                std::make_shared<std::optional<std::string>>(id));
-            OnCloudProviderCreated<CloudProvider>(account);
-          },
-          any_token);
-    }
-  }
-
-  AccountManagerHandler(AccountManagerHandler&&) = delete;
-  AccountManagerHandler& operator=(AccountManagerHandler&&) = delete;
-
-  Task<Response> operator()(Request request,
-                            coro::stdx::stop_token stop_token) {
-    if (request.method == coro::http::Method::kOptions) {
-      co_return Response{
-          .status = 204,
-          .headers = {{"Allow",
-                       "OPTIONS, GET, HEAD, POST, PUT, DELETE, MOVE, "
-                       "MKCOL, PROPFIND, PATCH, PROPPATCH"},
-                      {"DAV", "1"},
-                      {"Access-Control-Allow-Origin", "*"},
-                      {"Access-Control-Allow-Headers", "*"}}};
-    }
-    auto path_opt = http::ParseUri(request.url).path;
-    if (!path_opt) {
-      co_return Response{.status = 400};
-    }
-    auto path = http::DecodeUri(std::move(*path_opt));
-    for (auto& handler : handlers_) {
-      if (path.starts_with(handler.prefix)) {
-        if (auto account_it = std::find_if(accounts_.begin(), accounts_.end(),
-                                           [&](const auto& account) {
-                                             return account.GetId() ==
-                                                    handler.id;
-                                           });
-            account_it != accounts_.end()) {
-          coro::util::StopTokenOr stop_token_or(account_it->stop_token(),
-                                                std::move(stop_token));
-          co_return co_await std::visit(
-              [request = std::move(request),
-               stop_token = stop_token_or.GetToken()](auto& d) mutable {
-                return d(std::move(request), std::move(stop_token));
-              },
-              handler.handler);
-        } else {
-          co_return co_await std::visit(
-              [request = std::move(request),
-               stop_token = std::move(stop_token)](auto& d) mutable {
-                return d(std::move(request), std::move(stop_token));
-              },
-              handler.handler);
-        }
-      }
-    }
-    if (path.empty() || path == "/") {
-      if (request.method == coro::http::Method::kPropfind) {
-        std::vector<std::string> responses = {GetElement(
-            ElementData{.path = "/", .name = "root", .is_directory = true})};
-        if (coro::http::GetHeader(request.headers, "Depth") == "1") {
-          for (const auto& account : accounts_) {
-            responses.push_back(
-                GetElement(ElementData{.path = "/" + account.GetId() + "/",
-                                       .name = account.GetId(),
-                                       .is_directory = true}));
-          }
-        }
-        co_return Response{
-            .status = 207,
-            .headers = {{"Content-Type", "text/xml"}},
-            .body = http::CreateBody(GetMultiStatusResponse(responses))};
-      } else {
-        co_return Response{.status = 200,
-                           .body = GetHomePage(std::move(stop_token))};
-      }
-    } else {
-      co_return Response{.status = 302, .headers = {{"Location", "/"}}};
-    }
-  }
-
- private:
   using StaticFileHandler =
       coro::cloudstorage::util::StaticFileHandler<CloudProviders...>;
 
