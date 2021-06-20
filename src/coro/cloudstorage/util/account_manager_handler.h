@@ -6,6 +6,7 @@
 #include <coro/cloudstorage/util/auth_token_manager.h>
 #include <coro/cloudstorage/util/proxy_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
+#include <coro/cloudstorage/util/static_file_handler.h>
 #include <coro/cloudstorage/util/string_utils.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http.h>
@@ -142,47 +143,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
   }
 
-  struct StaticFileHandler {
-    template <typename CloudProvider>
-    static bool GetIcon(std::string_view name,
-                        std::optional<std::string_view>& output) {
-      if (name == StrCat("/static/", CloudProvider::kId, ".png")) {
-        output = CloudProvider::kIcon;
-        return true;
-      } else {
-        return false;
-      }
-    }
-
-    Task<Response> operator()(Request request, stdx::stop_token) const {
-      std::optional<std::string_view> content;
-      std::string mime_type;
-      (GetIcon<CloudProviders>(request.url, content) || ...);
-      if (content) {
-        mime_type = "image/png";
-      } else if (request.url == "/static/default.css") {
-        content = util::kAssetsStylesDefaultCss;
-        mime_type = "text/css";
-      } else if (request.url == "/static/user-trash.svg") {
-        content = util::kAssetsIconsUserTrashSvg;
-        mime_type = "image/svg+xml";
-      } else if (request.url == "/static/account_list_main.js") {
-        content = util::kAssetsJsAccountListMainJs;
-        mime_type = "text/javascript;charset=UTF-8";
-      }
-      if (!content) {
-        co_return Response{.status = 404};
-      }
-      co_return Response{
-          .status = 200,
-          .headers = {{"Content-Type", std::move(mime_type)},
-                      {"Content-Length", std::to_string(content->size())},
-                      {"Cache-Control", "public"},
-                      {"Cache-Control", "max-age=604800"}},
-          .body = CreateBody(std::string(*content))};
-    }
-  };
-
   struct GetSizeHandler {
     Task<Response> operator()(Request request,
                               stdx::stop_token stop_token) const {
@@ -207,7 +167,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           }
           co_return Response{.status = 200,
                              .headers = {{"Content-Type", "application/json"}},
-                             .body = CreateBody(json.dump())};
+                             .body = http::CreateBody(json.dump())};
         }
       }
       co_return Response{.status = 404};
@@ -350,18 +310,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     co_return account;
   }
 
-  struct Handler {
-    std::string id;
-    std::string prefix;
-    std::variant<
-        StaticFileHandler, GetSizeHandler, AuthHandler<CloudProviders>...,
-        OnRemoveHandler<CloudProviders>...,
-        ProxyHandler<typename CloudProviderAccount::template CloudProviderT<
-                         CloudProviders>,
-                     ThumbnailGenerator>...>
-        handler;
-  };
-
   AccountManagerHandler(
       const CloudFactory& factory,
       const ThumbnailGenerator& thumbnail_generator,
@@ -452,7 +400,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         co_return Response{
             .status = 207,
             .headers = {{"Content-Type", "text/xml"}},
-            .body = CreateBody(GetMultiStatusResponse(responses))};
+            .body = http::CreateBody(GetMultiStatusResponse(responses))};
       } else {
         co_return Response{.status = 200,
                            .body = GetHomePage(std::move(stop_token))};
@@ -463,6 +411,21 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   }
 
  private:
+  using StaticFileHandler =
+      coro::cloudstorage::util::StaticFileHandler<CloudProviders...>;
+
+  struct Handler {
+    std::string id;
+    std::string prefix;
+    std::variant<
+        StaticFileHandler, GetSizeHandler, AuthHandler<CloudProviders>...,
+        OnRemoveHandler<CloudProviders>...,
+        ProxyHandler<typename CloudProviderAccount::template CloudProviderT<
+                         CloudProviders>,
+                     ThumbnailGenerator>...>
+        handler;
+  };
+
   template <typename CloudProvider>
   static void AppendAuthUrl(const CloudFactory& factory,
                             std::stringstream& stream) {
@@ -541,10 +504,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
               "</body>"
               "</html>";
     co_yield std::move(result).str();
-  }
-
-  static Generator<std::string> CreateBody(std::string body) {
-    co_yield std::move(body);
   }
 
   const CloudFactory& factory_;
