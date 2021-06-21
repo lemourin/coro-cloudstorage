@@ -5,7 +5,6 @@
 #include <coro/util/event_loop.h>
 
 #include <cerrno>
-#include <future>
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -41,14 +40,13 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
                   std::move(stop_token)},
       [](void* opaque, uint8_t* buf, int buf_size) -> int {
         auto data = reinterpret_cast<Context*>(opaque);
-        std::promise<int> promise;
-        data->event_loop->RunOnEventLoop([&]() -> Task<> {
+        return data->event_loop->Do([&]() -> Task<int> {
           try {
             if (data->offset == CloudProvider::GetSize(data->file)) {
-              co_return promise.set_value(AVERROR_EOF);
+              co_return AVERROR_EOF;
             }
             if (data->stop_token.stop_requested()) {
-              co_return promise.set_value(AVERROR(EINTR));
+              co_return AVERROR(EINTR);
             }
             if (!data->generator) {
               data->generator = data->provider->GetFileContent(
@@ -60,12 +58,11 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
                 *data->generator, *data->it, static_cast<size_t>(buf_size)));
             data->offset += buffer.size();
             memcpy(buf, buffer.data(), buffer.size());
-            promise.set_value(static_cast<int>(buffer.size()));
+            co_return static_cast<int>(buffer.size());
           } catch (...) {
-            promise.set_value(-1);
+            co_return -1;
           }
         });
-        return promise.get_future().get();
       },
       /*write_packet=*/nullptr,
       [](void* opaque, int64_t offset, int whence) -> int64_t {
@@ -91,21 +88,19 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
         if (data->offset == new_offset) {
           return new_offset;
         }
-        std::promise<int64_t> promise;
-        data->event_loop->RunOnEventLoop([&]() -> Task<> {
+        return data->event_loop->Do([&]() -> Task<int64_t> {
           try {
             if (data->stop_token.stop_requested()) {
-              co_return promise.set_value(-1);
+              co_return data->offset = -1;
             }
             data->generator = data->provider->GetFileContent(
                 data->file, http::Range{.start = new_offset}, data->stop_token);
             data->it = co_await data->generator->begin();
-            promise.set_value(new_offset);
+            co_return data->offset = new_offset;
           } catch (...) {
-            promise.set_value(-1);
+            co_return data->offset = -1;
           }
         });
-        return data->offset = promise.get_future().get();
       }));
   if (!context) {
     throw std::runtime_error("avio_alloc_context");
