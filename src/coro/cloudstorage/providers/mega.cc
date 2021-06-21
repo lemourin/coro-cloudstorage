@@ -12,6 +12,8 @@ namespace coro::cloudstorage {
 
 namespace {
 
+using ::coro::util::AtScopeExit;
+
 constexpr auto kLogin = static_cast<void (::mega::MegaClient::*)(
     const char*, const uint8_t*, const char*)>(&::mega::MegaClient::login);
 constexpr auto kLoginWithSalt = static_cast<void (::mega::MegaClient::*)(
@@ -279,22 +281,12 @@ struct Mega::CloudProvider::App : ::mega::MegaApp {
     }
   }
 
+  explicit App(Data* d) : d(d) {}
+
   struct Request {
     Promise<void> semaphore;
     RequestType type;
   };
-
-  auto GetRequest(int tag, RequestType type) {
-    auto result = coro::util::MakePointer(new Request{.type = type},
-                                          [this, tag](Request* r) {
-                                            request.erase(tag);
-                                            delete r;
-                                          });
-    request.insert({tag, result.get()});
-    return result;
-  }
-
-  explicit App(Data* d) : d(d) {}
 
   std::unordered_map<int, Request*> request;
   std::any last_result;
@@ -335,11 +327,13 @@ struct Mega::CloudProvider::Data {
       (mega_client.*Method)(args...);
     }
     OnEvent();
-    auto request = mega_app.GetRequest(tag, type);
+    App::Request request{.type = type};
+    mega_app.request.insert({tag, &request});
+    auto scope_guard = AtScopeExit([&] { mega_app.request.erase(tag); });
     stdx::stop_callback callback(stop_token, [&] {
-      request->semaphore.SetException(InterruptedException());
+      request.semaphore.SetException(InterruptedException());
     });
-    co_await request->semaphore;
+    co_await request.semaphore;
     auto result = std::move(mega_app.last_result);
     co_await wait_(0, std::move(stop_token));
     co_return result;
@@ -627,9 +621,7 @@ Generator<std::string> Mega::CloudProvider::GetFileContent(
   auto size = range.end.value_or(node->size - 1) - range.start + 1;
   auto data = std::make_shared<ReadData>();
   d_->mega_app.read_data.insert({tag, data});
-  auto guard = coro::util::MakePointer(this, [tag](Mega::CloudProvider* m) {
-    m->d_->mega_app.read_data.erase(tag);
-  });
+  auto guard = AtScopeExit([&] { d_->mega_app.read_data.erase(tag); });
 
   stdx::stop_callback callback(stop_token, [data] {
     data->semaphore.SetException(InterruptedException());

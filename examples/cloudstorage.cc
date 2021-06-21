@@ -22,7 +22,6 @@ using ::coro::http::CacheHttp;
 using ::coro::http::CacheHttpConfig;
 using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
-using ::coro::util::MakePointer;
 using ::coro::util::ThreadPool;
 
 using CloudProviders = ::coro::util::TypeList<coro::cloudstorage::Mega>;
@@ -110,7 +109,8 @@ int main() {
   signal(SIGPIPE, SIG_IGN);
 #endif
 
-  auto base = MakePointer(event_base_new(), event_base_free);
+  std::unique_ptr<event_base, coro::util::EventBaseDeleter> base(
+      event_base_new());
   Invoke(CoMain(base.get()));
   return event_base_dispatch(base.get());
 }
