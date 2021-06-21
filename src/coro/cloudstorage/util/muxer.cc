@@ -6,8 +6,8 @@ namespace {
 
 auto CreateMuxerIOContext(std::FILE* file) {
   const int kBufferSize = 4 * 1024;
-  auto buffer = static_cast<uint8_t*>(av_malloc(kBufferSize));
-  return avio_alloc_context(
+  auto* buffer = static_cast<uint8_t*>(av_malloc(kBufferSize));
+  auto* io_context = avio_alloc_context(
       buffer, kBufferSize, /*write_flag=*/1, file,
       /*read_packet=*/nullptr,
       /*write_packet=*/
@@ -20,6 +20,10 @@ auto CreateMuxerIOContext(std::FILE* file) {
         whence &= ~AVSEEK_FORCE;
         return Fseek(file, offset, whence);
       });
+  if (!io_context) {
+    throw std::runtime_error("avio_alloc_context");
+  }
+  return io_context;
 }
 
 }  // namespace

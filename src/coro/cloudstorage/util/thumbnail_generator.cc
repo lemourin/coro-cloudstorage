@@ -17,6 +17,8 @@ namespace coro::cloudstorage::util {
 
 namespace {
 
+using ::coro::util::AtScopeExit;
+
 struct ImageSize {
   int width;
   int height;
@@ -64,6 +66,9 @@ auto DecodeFrame(AVFormatContext* context, AVCodecContext* codec_context,
       }
     }
     std::unique_ptr<AVFrame, AVFrameDeleter> frame(av_frame_alloc());
+    if (!frame) {
+      throw std::runtime_error("av_frame_alloc");
+    }
     auto code = avcodec_receive_frame(codec_context, frame.get());
     if (code == 0) {
       result_frame = std::move(frame);
@@ -95,7 +100,11 @@ auto ConvertFrame(AVFrame* frame, ImageSize size, AVPixelFormat format) {
     throw std::runtime_error("sws_getContext returned null");
   }
   std::unique_ptr<AVFrame, AVFrameConvertedDeleter> rgb_frame(av_frame_alloc());
-  av_frame_copy_props(rgb_frame.get(), frame);
+  if (!rgb_frame) {
+    throw std::runtime_error("av_frame_alloc");
+  }
+  CheckAVError(av_frame_copy_props(rgb_frame.get(), frame),
+               "av_frame_copy_props");
   rgb_frame->format = format;
   rgb_frame->width = size.width;
   rgb_frame->height = size.height;
@@ -131,6 +140,9 @@ std::string EncodeFrame(AVFrame* input_frame, ThumbnailOptions options) {
                        false, /*loss_ptr=*/nullptr));
   std::unique_ptr<AVCodecContext, AVCodecContextDeleter> context(
       avcodec_alloc_context3(codec));
+  if (!context) {
+    throw std::runtime_error("avcodec_alloc_context3");
+  }
   context->time_base = {1, 24};
   context->pix_fmt = AVPixelFormat(frame->format);
   context->width = frame->width;
@@ -174,18 +186,23 @@ auto CreateSourceFilter(AVFormatContext* format_context, int stream,
     throw std::logic_error("filter buffer unavailable");
   }
   AVDictionary* d = nullptr;
-  av_dict_set_int(&d, "width", codec_context->width, 0);
-  av_dict_set_int(&d, "height", codec_context->height, 0);
-  av_dict_set_int(&d, "pix_fmt", codec_context->pix_fmt, 0);
-  av_dict_set(
-      &d, "time_base",
-      (std::to_string(format_context->streams[stream]->time_base.num) + "/" +
-       std::to_string(format_context->streams[stream]->time_base.den))
-          .c_str(),
-      0);
-  auto err = avfilter_init_dict(filter.get(), &d);
-  av_dict_free(&d);
-  CheckAVError(err, "avfilter_init_dict source");
+  auto scope_guard = AtScopeExit([&] { av_dict_free(&d); });
+  CheckAVError(av_dict_set_int(&d, "width", codec_context->width, 0),
+               "av_dict_set_int");
+  CheckAVError(av_dict_set_int(&d, "height", codec_context->height, 0),
+               "av_dict_set_int");
+  CheckAVError(av_dict_set_int(&d, "pix_fmt", codec_context->pix_fmt, 0),
+               "av_dict_set_int");
+  CheckAVError(
+      av_dict_set(
+          &d, "time_base",
+          (std::to_string(format_context->streams[stream]->time_base.num) +
+           "/" + std::to_string(format_context->streams[stream]->time_base.den))
+              .c_str(),
+          0),
+      "av_dict_set");
+  CheckAVError(avfilter_init_dict(filter.get(), &d),
+               "avfilter_init_dict source");
   return filter;
 }
 
@@ -219,11 +236,11 @@ auto CreateScaleFilter(AVFilterGraph* graph, ImageSize size) {
     throw std::logic_error("filter thumbnail unavailable");
   }
   AVDictionary* d = nullptr;
-  av_dict_set_int(&d, "width", size.width, 0);
-  av_dict_set_int(&d, "height", size.height, 0);
-  auto err = avfilter_init_dict(filter.get(), &d);
-  av_dict_free(&d);
-  CheckAVError(err, "avfilter_init_dict");
+  auto scope_guard = AtScopeExit([&] { av_dict_free(&d); });
+  CheckAVError(av_dict_set_int(&d, "width", size.width, 0), "av_dict_set_int");
+  CheckAVError(av_dict_set_int(&d, "height", size.height, 0),
+               "av_dict_set_int");
+  CheckAVError(avfilter_init_dict(filter.get(), &d), "avfilter_init_dict");
   return filter;
 }
 
