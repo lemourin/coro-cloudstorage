@@ -15,13 +15,15 @@ concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
 };
 
 template <typename EventLoopT, coro::http::HttpClient HttpT,
-          typename ThumbnailGenerator, typename Muxer,
+          typename ThumbnailGeneratorT, typename MuxerT,
           typename AuthDataT = coro::cloudstorage::util::AuthData>
 class CloudFactory {
  public:
   using EventLoop = EventLoopT;
   using Http = HttpT;
   using AuthData = AuthDataT;
+  using ThumbnailGenerator = ThumbnailGeneratorT;
+  using Muxer = MuxerT;
 
   CloudFactory(const EventLoop& event_loop, const Http& http,
                const ThumbnailGenerator& thumbnail_generator,
