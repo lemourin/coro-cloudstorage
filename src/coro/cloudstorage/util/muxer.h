@@ -14,10 +14,10 @@ namespace coro::cloudstorage::util {
 
 class MuxerContext {
  public:
-  MuxerContext(::coro::util::ThreadPool* thread_pool, AVIOContext* video,
-               AVIOContext* audio);
+  MuxerContext(AVIOContext* video, AVIOContext* audio);
 
-  Generator<std::string> GetContent();
+  template <typename ThreadPool>
+  Generator<std::string> GetContent(ThreadPool* thread_pool);
 
  private:
   struct AVIOContextDeleter {
@@ -43,17 +43,16 @@ class MuxerContext {
 
   Stream CreateStream(AVIOContext* video, AVMediaType type) const;
 
-  coro::util::ThreadPool* thread_pool_;
   std::unique_ptr<std::FILE, FileDeleter> file_;
   std::unique_ptr<AVIOContext, AVIOContextDeleter> io_context_;
   std::unique_ptr<AVFormatContext, AVFormatWriteContextDeleter> format_context_;
   std::vector<Stream> streams_;
 };
 
+template <typename EventLoop, typename ThreadPool>
 class Muxer {
  public:
-  Muxer(::coro::util::EventLoop* event_loop,
-        ::coro::util::ThreadPool* thread_pool)
+  Muxer(EventLoop* event_loop, ThreadPool* thread_pool)
       : event_loop_(event_loop), thread_pool_(thread_pool) {}
 
   template <typename VideoCloudProvider, typename Video,
@@ -68,10 +67,10 @@ class Muxer {
     auto audio_io_context = CreateIOContext(audio_cloud_provider,
                                             std::move(audio_track), stop_token);
     auto muxer_context = co_await thread_pool_->Invoke([&] {
-      return MuxerContext(thread_pool_, video_io_context.get(),
-                          audio_io_context.get());
+      return MuxerContext<ThreadPool>(video_io_context.get(),
+                                      audio_io_context.get());
     });
-    FOR_CO_AWAIT(std::string & chunk, muxer_context.GetContent()) {
+    FOR_CO_AWAIT(std::string & chunk, muxer_context.GetContent(thread_pool_)) {
       if (!chunk.empty()) {
         co_yield std::move(chunk);
       }
@@ -85,9 +84,71 @@ class Muxer {
     return ::coro::cloudstorage::util::CreateIOContext(
         event_loop_, provider, std::move(item), std::move(stop_token));
   }
-  ::coro::util::EventLoop* event_loop_;
-  ::coro::util::ThreadPool* thread_pool_;
+  EventLoop* event_loop_;
+  ThreadPool* thread_pool_;
 };
+
+template <typename ThreadPool>
+Generator<std::string> MuxerContext::GetContent(ThreadPool* thread_pool) {
+  while (true) {
+    for (auto& stream : streams_) {
+      if (!stream.is_eof && !stream.packet) {
+        stream.packet = CreatePacket();
+        while (true) {
+          auto read_packet = co_await thread_pool->Invoke(
+              av_read_frame, stream.format_context.get(), stream.packet.get());
+          if (read_packet != 0 && read_packet != AVERROR_EOF) {
+            CheckAVError(read_packet, "av_read_frame");
+          } else {
+            if (read_packet == 0 &&
+                stream.packet->stream_index != stream.source_stream_index) {
+              continue;
+            }
+            if (read_packet == AVERROR_EOF) {
+              stream.is_eof = true;
+              stream.packet.reset();
+            } else {
+              CheckAVError(av_packet_make_writable(stream.packet.get()),
+                           "av_packet_make_writable");
+              av_packet_rescale_ts(
+                  stream.packet.get(),
+                  stream.format_context->streams[stream.source_stream_index]
+                      ->time_base,
+                  stream.stream->time_base);
+              stream.packet->stream_index = stream.stream->index;
+            }
+            break;
+          }
+        }
+      }
+    }
+    Stream* picked_stream = nullptr;
+    for (auto& stream : streams_) {
+      if (stream.packet &&
+          (!picked_stream ||
+           av_compare_ts(stream.packet->dts, stream.stream->time_base,
+                         picked_stream->packet->dts,
+                         picked_stream->stream->time_base) == -1)) {
+        picked_stream = &stream;
+      }
+    }
+    if (!picked_stream) {
+      break;
+    }
+    CheckAVError(
+        av_write_frame(format_context_.get(), picked_stream->packet.get()),
+        "av_write_frame");
+    picked_stream->packet.reset();
+  }
+
+  CheckAVError(av_write_frame(format_context_.get(), nullptr),
+               "av_write_frame");
+  CheckAVError(av_write_trailer(format_context_.get()), "av_write_trailer");
+
+  FOR_CO_AWAIT(std::string & chunk, ReadFile(thread_pool, file_.get())) {
+    co_yield std::move(chunk);
+  }
+}
 
 }  // namespace coro::cloudstorage::util
 

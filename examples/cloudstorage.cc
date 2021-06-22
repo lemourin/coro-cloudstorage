@@ -15,6 +15,7 @@
 
 using ::coro::Promise;
 using ::coro::Task;
+using ::coro::cloudstorage::CloudFactory;
 using ::coro::cloudstorage::util::AccountManagerHandler;
 using ::coro::cloudstorage::util::Muxer;
 using ::coro::cloudstorage::util::ThumbnailGenerator;
@@ -22,11 +23,13 @@ using ::coro::http::CacheHttp;
 using ::coro::http::CacheHttpConfig;
 using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
+using ::coro::util::EventLoop;
 using ::coro::util::ThreadPool;
+using ::coro::util::TypeList;
 
-using CloudProviders = ::coro::util::TypeList<coro::cloudstorage::Mega>;
+using CloudProviders = TypeList<coro::cloudstorage::Mega>;
 
-template <typename CloudFactory>
+template <typename CloudFactory, typename ThumbnailGenerator>
 class HttpHandler {
  public:
   using Request = coro::http::Request<>;
@@ -35,7 +38,8 @@ class HttpHandler {
   HttpHandler(const CloudFactory& factory,
               const ThumbnailGenerator& thumbnail_generator,
               Promise<void>* quit)
-      : auth_handler_(factory, thumbnail_generator, AccountListener{}),
+      : account_manager_handler_(factory, thumbnail_generator,
+                                 AccountListener{}),
         quit_(quit) {}
 
   Task<Response> operator()(Request request,
@@ -51,7 +55,7 @@ class HttpHandler {
       quit_->SetValue();
       co_return Response{.status = 200};
     }
-    co_return co_await auth_handler_(std::move(request), stop_token);
+    co_return co_await account_manager_handler_(std::move(request), stop_token);
   }
 
  private:
@@ -69,24 +73,24 @@ class HttpHandler {
 
   AccountManagerHandler<CloudProviders, CloudFactory, ThumbnailGenerator,
                         AccountListener>
-      auth_handler_;
+      account_manager_handler_;
   Promise<void>* quit_;
 };
 
 Task<> CoMain(event_base* event_base) noexcept {
   try {
     CacheHttp<CurlHttp> http{CacheHttpConfig{}, event_base};
-    coro::util::EventLoop event_loop(event_base);
+    EventLoop event_loop(event_base);
     ThreadPool thread_pool(event_loop);
     ThumbnailGenerator thumbnail_generator(&thread_pool, &event_loop);
     Muxer muxer(&event_loop, &thread_pool);
-    coro::cloudstorage::CloudFactory cloud_factory(event_loop, http,
-                                                   thumbnail_generator, muxer);
+    CloudFactory cloud_factory(event_loop, http, thumbnail_generator, muxer);
 
     Promise<void> quit;
-    HttpServer<HttpHandler<decltype(cloud_factory)>> http_server(
-        event_base, {.address = "127.0.0.1", .port = 12345}, cloud_factory,
-        thumbnail_generator, &quit);
+    HttpServer<
+        HttpHandler<decltype(cloud_factory), decltype(thumbnail_generator)>>
+        http_server(event_base, {.address = "127.0.0.1", .port = 12345},
+                    cloud_factory, thumbnail_generator, &quit);
     co_await quit;
     co_await http_server.Quit();
   } catch (const std::exception& exception) {
