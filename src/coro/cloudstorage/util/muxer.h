@@ -67,8 +67,7 @@ class Muxer {
     auto audio_io_context = CreateIOContext(audio_cloud_provider,
                                             std::move(audio_track), stop_token);
     auto muxer_context = co_await thread_pool_->Invoke([&] {
-      return MuxerContext<ThreadPool>(video_io_context.get(),
-                                      audio_io_context.get());
+      return MuxerContext(video_io_context.get(), audio_io_context.get());
     });
     FOR_CO_AWAIT(std::string & chunk, muxer_context.GetContent(thread_pool_)) {
       if (!chunk.empty()) {
