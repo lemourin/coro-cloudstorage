@@ -55,7 +55,7 @@ struct YouTube {
     }
   };
 
-  template <typename AuthManager>
+  template <typename AuthManager, typename Muxer>
   struct CloudProvider;
 
   enum class Presentation { kDash, kStream, kMuxedStream };
@@ -139,13 +139,14 @@ struct YouTube {
   static inline constexpr auto& kIcon = util::kAssetsProvidersYoutubePng;
 };
 
-template <typename AuthManager>
+template <typename AuthManager, typename Muxer>
 struct YouTube::CloudProvider
-    : coro::cloudstorage::CloudProvider<YouTube, CloudProvider<AuthManager>> {
+    : coro::cloudstorage::CloudProvider<YouTube,
+                                        CloudProvider<AuthManager, Muxer>> {
   using Request = http::Request<std::string>;
 
   template <typename... Args>
-  CloudProvider(const util::Muxer& muxer, Args&&... args)
+  CloudProvider(const Muxer& muxer, Args&&... args)
       : auth_manager_(std::forward<Args>(args)...),
         muxer_(&muxer),
         stream_cache_(32, GetStreamData{auth_manager_.GetHttp()}) {}
@@ -446,7 +447,7 @@ struct YouTube::CloudProvider
   };
 
   AuthManager auth_manager_;
-  const util::Muxer* muxer_;
+  const Muxer* muxer_;
   mutable coro::util::LRUCache<std::string, GetStreamData> stream_cache_;
 };
 
@@ -458,7 +459,8 @@ struct CreateCloudProvider<YouTube> {
                   OnAuthTokenChanged on_auth_token_changed) const {
     using CloudProviderT =
         YouTube::CloudProvider<typename CloudFactory::template AuthManagerT<
-            YouTube, OnAuthTokenChanged>>;
+                                   YouTube, OnAuthTokenChanged>,
+                               typename CloudFactory::Muxer>;
     return factory.template CreateAuthManager<YouTube>(
         [&]<typename... Args>(Args && ... args) {
           return create.template operator()<CloudProviderT>(
