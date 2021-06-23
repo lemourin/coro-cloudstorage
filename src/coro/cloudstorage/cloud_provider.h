@@ -102,7 +102,7 @@ concept HasThumbnail = requires(
     decltype(provider.GetItemThumbnail(v, range, stop_token)) thumbnail_promise,
     typename decltype(thumbnail_promise)::type thumbnail) {
   {
-    std::declval<decltype(thumbnail)>()
+    thumbnail
     } -> stdx::convertible_to<typename CloudProvider::Type::Thumbnail>;
 };
 
