@@ -29,10 +29,12 @@ class ThumbnailGenerator {
   Task<std::string> operator()(CloudProvider* provider, File file,
                                ThumbnailOptions options,
                                stdx::stop_token stop_token) const {
+    decltype(CreateIOContext(event_loop_, provider, file,
+                             stop_token)) io_context;
     co_return co_await thread_pool_->Invoke([&] {
-      auto io_context = event_loop_->Do([&] {
-        return CreateIOContext(event_loop_, provider, std::move(file),
-                               std::move(stop_token));
+      event_loop_->Do([&] {
+        io_context = CreateIOContext(event_loop_, provider, std::move(file),
+                                     std::move(stop_token));
       });
       return GenerateThumbnail(io_context.get(), options);
     });
