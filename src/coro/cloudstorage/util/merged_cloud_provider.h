@@ -342,7 +342,7 @@ auto MergedCloudProvider<coro::util::TypeList<CloudProviders...>>::
     co_return co_await std::visit(
         [&]<typename FileT>(const FileT &d) -> Task<ItemT> {
           using CloudProviderT = ItemToCloudProviderT<FileT>;
-          if constexpr (CanRename<FileT, CloudProvider>) {
+          if constexpr (CanRename<FileT, CloudProviderT>) {
             auto *account = GetAccount(item.account_id);
             auto *p = std::get<CloudProviderT *>(account->provider);
             coro::util::StopTokenOr stop_token_or(
