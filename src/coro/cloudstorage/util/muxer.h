@@ -69,21 +69,21 @@ class Muxer {
       std::promise<void> promise;
       coro::RunTask([&]() -> Task<> {
         try {
-          auto video_task = thread_pool_->Do([&] {
-            return CreateIOContext(video_cloud_provider, std::move(video_track),
-                                   stop_token);
-          });
-          auto audio_task = thread_pool_->Do([&] {
-            return CreateIOContext(audio_cloud_provider, std::move(audio_track),
-                                   stop_token);
-          });
-          std::tie(video_io_context, audio_io_context) =
-              co_await WhenAll(std::move(video_task), std::move(audio_task));
+          std::tie(video_io_context, audio_io_context) = co_await WhenAll(
+              thread_pool_->Do([&] {
+                return CreateIOContext(video_cloud_provider,
+                                       std::move(video_track), stop_token);
+              }),
+              thread_pool_->Do([&] {
+                return CreateIOContext(audio_cloud_provider,
+                                       std::move(audio_track), stop_token);
+              }));
           promise.set_value();
         } catch (...) {
           promise.set_exception(std::current_exception());
         }
       });
+      promise.get_future().get();
       return MuxerContext(video_io_context.get(), audio_io_context.get());
     });
     FOR_CO_AWAIT(std::string & chunk, muxer_context.GetContent(thread_pool_)) {
