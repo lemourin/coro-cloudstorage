@@ -7,8 +7,7 @@
 #include <coro/generator.h>
 #include <coro/util/event_loop.h>
 #include <coro/util/thread_pool.h>
-
-#include <iostream>
+#include <coro/when_all.h>
 
 namespace coro::cloudstorage::util {
 
@@ -62,11 +61,29 @@ class Muxer {
                                     AudioCloudProvider* audio_cloud_provider,
                                     Audio audio_track,
                                     stdx::stop_token stop_token) const {
-    auto video_io_context = CreateIOContext(video_cloud_provider,
-                                            std::move(video_track), stop_token);
-    auto audio_io_context = CreateIOContext(audio_cloud_provider,
-                                            std::move(audio_track), stop_token);
+    decltype(CreateIOContext(video_cloud_provider, video_track,
+                             stop_token)) video_io_context;
+    decltype(CreateIOContext(audio_cloud_provider, audio_track,
+                             stop_token)) audio_io_context;
     auto muxer_context = co_await thread_pool_->Do([&] {
+      std::promise<void> promise;
+      coro::RunTask([&]() -> Task<> {
+        try {
+          auto video_task = thread_pool_->Do([&] {
+            return CreateIOContext(video_cloud_provider, std::move(video_track),
+                                   stop_token);
+          });
+          auto audio_task = thread_pool_->Do([&] {
+            return CreateIOContext(audio_cloud_provider, std::move(audio_track),
+                                   stop_token);
+          });
+          std::tie(video_io_context, audio_io_context) =
+              co_await WhenAll(std::move(video_task), std::move(audio_task));
+          promise.set_value();
+        } catch (...) {
+          promise.set_exception(std::current_exception());
+        }
+      });
       return MuxerContext(video_io_context.get(), audio_io_context.get());
     });
     FOR_CO_AWAIT(std::string & chunk, muxer_context.GetContent(thread_pool_)) {
@@ -80,7 +97,7 @@ class Muxer {
   template <typename CloudProvider, typename Item>
   auto CreateIOContext(CloudProvider* provider, Item item,
                        stdx::stop_token stop_token) const {
-    return ::coro::cloudstorage::util::CreateIOContext(
+    return coro::cloudstorage::util::CreateIOContext(
         event_loop_, provider, std::move(item), std::move(stop_token));
   }
   EventLoop* event_loop_;
