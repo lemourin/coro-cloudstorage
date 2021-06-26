@@ -222,7 +222,7 @@ struct Mega::CloudProvider::App : ::mega::MegaApp {
       it->second->semaphore.SetValue();
       return ~static_cast<::mega::dstime>(0);
     } else {
-      coro::Invoke(Retry(1 << (retry / 2)));
+      coro::RunTask(Retry(1 << (retry / 2)));
       return 1 << (retry / 2);
     }
   }
@@ -252,7 +252,7 @@ struct Mega::CloudProvider::App : ::mega::MegaApp {
   }
 
   void notify_retry(::mega::dstime time, ::mega::retryreason_t reason) final {
-    coro::Invoke(Retry(time, /*abortbackoff=*/false));
+    coro::RunTask(Retry(time, /*abortbackoff=*/false));
   }
 
   void fa_complete(::mega::handle, ::mega::fatype, const char* data,

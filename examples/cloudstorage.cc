@@ -115,6 +115,6 @@ int main() {
 
   std::unique_ptr<event_base, coro::util::EventBaseDeleter> base(
       event_base_new());
-  Invoke(CoMain(base.get()));
+  coro::RunTask(CoMain(base.get()));
   return event_base_dispatch(base.get());
 }

@@ -63,7 +63,7 @@ std::unique_ptr<std::FILE, FileDeleter> CreateTmpFile() {
 }
 
 Task<int64_t> GetFileSize(ThreadPool* thread_pool, std::FILE* file) {
-  return thread_pool->Invoke([=] {
+  return thread_pool->Do([=] {
     if (Fseek(file, 0, SEEK_END) != 0) {
       throw std::runtime_error("fseek failed");
     }
@@ -74,12 +74,12 @@ Task<int64_t> GetFileSize(ThreadPool* thread_pool, std::FILE* file) {
 Generator<std::string> ReadFile(ThreadPool* thread_pool, std::FILE* file) {
   const int kBufferSize = 4096;
   char buffer[kBufferSize];
-  if (co_await thread_pool->Invoke(Fseek, file, 0, SEEK_SET) != 0) {
+  if (co_await thread_pool->Do(Fseek, file, 0, SEEK_SET) != 0) {
     throw std::runtime_error("fseek failed");
   }
   while (feof(file) == 0) {
     size_t size =
-        co_await thread_pool->Invoke(fread, &buffer, 1, kBufferSize, file);
+        co_await thread_pool->Do(fread, &buffer, 1, kBufferSize, file);
     if (ferror(file) != 0) {
       throw std::runtime_error("read error");
     }
@@ -89,7 +89,7 @@ Generator<std::string> ReadFile(ThreadPool* thread_pool, std::FILE* file) {
 
 Task<std::string> ReadFile(ThreadPool* thread_pool, std::FILE* file,
                            int64_t offset, size_t size) {
-  return thread_pool->Invoke([=] {
+  return thread_pool->Do([=] {
     if (Fseek(file, offset, SEEK_SET) != 0) {
       throw std::runtime_error("fseek failed " + std::to_string(offset));
     }
@@ -103,7 +103,7 @@ Task<std::string> ReadFile(ThreadPool* thread_pool, std::FILE* file,
 
 Task<> WriteFile(ThreadPool* thread_pool, std::FILE* file, int64_t offset,
                  std::string_view data) {
-  return thread_pool->Invoke([=] {
+  return thread_pool->Do([=] {
     if (Fseek(file, offset, SEEK_SET) != 0) {
       throw std::runtime_error("fseek failed " + std::to_string(offset) + " " +
                                std::to_string(errno));

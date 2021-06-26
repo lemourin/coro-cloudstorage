@@ -91,7 +91,7 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
     }
 
     void asyncsysread(::mega::AsyncIOContext* context) final {
-      Invoke(DoAsyncRead(context));
+      RunTask(DoAsyncRead(context));
     }
 
     ::mega::AsyncIOContext* newasynccontext() final {

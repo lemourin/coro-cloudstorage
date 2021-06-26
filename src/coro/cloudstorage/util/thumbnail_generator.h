@@ -31,7 +31,7 @@ class ThumbnailGenerator {
                                stdx::stop_token stop_token) const {
     decltype(CreateIOContext(event_loop_, provider, file,
                              stop_token)) io_context;
-    co_return co_await thread_pool_->Invoke([&] {
+    co_return co_await thread_pool_->Do([&] {
       event_loop_->Do([&] {
         io_context = CreateIOContext(event_loop_, provider, std::move(file),
                                      std::move(stop_token));

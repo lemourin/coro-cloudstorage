@@ -142,7 +142,7 @@ class TimingOutCloudProvider<CloudProviderT>::CloudProvider
     content.data =
         ContentStream(std::move(content.data), &chunk_index, &stop_source);
 
-    Invoke(InstallTimer(&chunk_index, &stop_source));
+    RunTask(InstallTimer(&chunk_index, &stop_source));
 
     co_return co_await provider_->CreateFile(parent, name, std::move(content),
                                              stop_source.get_token());
@@ -164,7 +164,7 @@ class TimingOutCloudProvider<CloudProviderT>::CloudProvider
     auto it = co_await generator.begin();
     while (it != generator.end()) {
       (*chunk_index)++;
-      Invoke(InstallTimer(chunk_index, stop_source));
+      RunTask(InstallTimer(chunk_index, stop_source));
       co_yield std::move(*it);
       co_await ++it;
     }

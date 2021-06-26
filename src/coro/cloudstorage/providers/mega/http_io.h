@@ -22,7 +22,7 @@ class HttpIO : public ::mega::HttpIO {
   HttpIO& operator=(HttpIO&&) = delete;
 
   void post(::mega::HttpReq* r, const char* data, unsigned size) final {
-    Invoke(DoRequest(r, data, size));
+    RunTask(DoRequest(r, data, size));
   }
   void cancel(::mega::HttpReq* r) final {
     auto stop_source =
