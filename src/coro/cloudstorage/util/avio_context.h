@@ -42,6 +42,9 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
         auto data = reinterpret_cast<Context*>(opaque);
         return data->event_loop->Do([&]() -> Task<int> {
           try {
+            if (data->offset == -1) {
+              co_return AVERROR(EIO);
+            }
             if (data->offset == CloudProvider::GetSize(data->file)) {
               co_return AVERROR_EOF;
             }
@@ -58,9 +61,12 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
                 *data->generator, *data->it, static_cast<size_t>(buf_size)));
             data->offset += buffer.size();
             memcpy(buf, buffer.data(), buffer.size());
+            if (buffer.size() == 0) {
+              co_return AVERROR_EOF;
+            }
             co_return static_cast<int>(buffer.size());
           } catch (...) {
-            co_return -1;
+            co_return AVERROR(EIO);
           }
         });
       },
@@ -69,7 +75,7 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
         auto data = reinterpret_cast<Context*>(opaque);
         whence &= ~AVSEEK_FORCE;
         if (whence == AVSEEK_SIZE) {
-          return CloudProvider::GetSize(data->file).value_or(-1);
+          return CloudProvider::GetSize(data->file).value_or(AVERROR(ENOSYS));
         }
         int64_t new_offset = -1;
         if (whence == SEEK_SET) {
@@ -79,11 +85,11 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
         } else if (whence == SEEK_END) {
           auto size = CloudProvider::GetSize(data->file);
           if (!size) {
-            return -1;
+            return AVERROR(ENOSYS);
           }
           new_offset = *size + offset;
         } else {
-          return -1;
+          return AVERROR(EINVAL);
         }
         if (data->offset == new_offset) {
           return new_offset;
@@ -91,14 +97,16 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
         return data->event_loop->Do([&]() -> Task<int64_t> {
           try {
             if (data->stop_token.stop_requested()) {
-              co_return data->offset = -1;
+              data->offset = -1;
+              co_return AVERROR(EINTR);
             }
             data->generator = data->provider->GetFileContent(
                 data->file, http::Range{.start = new_offset}, data->stop_token);
             data->it = co_await data->generator->begin();
             co_return data->offset = new_offset;
           } catch (...) {
-            co_return data->offset = -1;
+            data->offset = -1;
+            co_return AVERROR(EIO);
           }
         });
       }));
