@@ -66,24 +66,15 @@ class Muxer {
     decltype(CreateIOContext(audio_cloud_provider, audio_track,
                              stop_token)) audio_io_context;
     auto muxer_context = co_await thread_pool_->Do([&] {
-      std::promise<void> promise;
-      coro::RunTask([&]() -> Task<> {
-        try {
-          std::tie(video_io_context, audio_io_context) = co_await WhenAll(
-              thread_pool_->Do([&] {
-                return CreateIOContext(video_cloud_provider,
-                                       std::move(video_track), stop_token);
-              }),
-              thread_pool_->Do([&] {
-                return CreateIOContext(audio_cloud_provider,
-                                       std::move(audio_track), stop_token);
-              }));
-          promise.set_value();
-        } catch (...) {
-          promise.set_exception(std::current_exception());
-        }
-      });
-      promise.get_future().get();
+      std::tie(video_io_context, audio_io_context) = InParallel(
+          [&] {
+            return CreateIOContext(video_cloud_provider, std::move(video_track),
+                                   stop_token);
+          },
+          [&] {
+            return CreateIOContext(audio_cloud_provider, std::move(audio_track),
+                                   stop_token);
+          });
       return MuxerContext(video_io_context.get(), audio_io_context.get());
     });
     FOR_CO_AWAIT(std::string & chunk, muxer_context.GetContent(thread_pool_)) {
@@ -100,6 +91,21 @@ class Muxer {
     return coro::cloudstorage::util::CreateIOContext(
         event_loop_, provider, std::move(item), std::move(stop_token));
   }
+  template <typename F1, typename F2>
+  auto InParallel(F1&& f1, F2&& f2) const {
+    std::promise<std::tuple<decltype(f1()), decltype(f2())>> promise;
+    coro::RunTask([&]() -> Task<> {
+      try {
+        promise.set_value(
+            co_await WhenAll(thread_pool_->Do(std::forward<F1>(f1)),
+                             thread_pool_->Do(std::forward<F2>(f2))));
+      } catch (...) {
+        promise.set_exception(std::current_exception());
+      }
+    });
+    return promise.get_future().get();
+  }
+
   EventLoop* event_loop_;
   ThreadPool* thread_pool_;
 };
