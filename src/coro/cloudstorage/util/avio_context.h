@@ -66,6 +66,8 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
             }
             co_return static_cast<int>(buffer.size());
           } catch (...) {
+            data->generator.reset();
+            data->offset = -1;
             co_return AVERROR(EIO);
           }
         });
@@ -105,6 +107,7 @@ auto CreateIOContext(EventLoop* event_loop, CloudProvider* provider, File file,
             data->it = co_await data->generator->begin();
             co_return data->offset = new_offset;
           } catch (...) {
+            data->generator.reset();
             data->offset = -1;
             co_return AVERROR(EIO);
           }
