@@ -308,7 +308,7 @@ struct Mega::CloudProvider::Data {
 
   void OnEvent();
 
-  template <auto Method, RequestType type, typename... Args>
+  template <auto Method, RequestType Type, typename... Args>
   Task<std::any> Do(stdx::stop_token stop_token, Args... args) {
     auto tag = mega_client.nextreqtag();
     if constexpr (std::is_same_v<bool,
@@ -327,7 +327,7 @@ struct Mega::CloudProvider::Data {
       (mega_client.*Method)(args...);
     }
     OnEvent();
-    App::Request request{.type = type};
+    App::Request request{.type = Type};
     mega_app.request.insert({tag, &request});
     auto scope_guard = AtScopeExit([&] { mega_app.request.erase(tag); });
     stdx::stop_callback callback(stop_token, [&] {
@@ -397,13 +397,6 @@ Task<std::string> Mega::CloudProvider::GetSession(Data* data,
 }
 
 void Mega::CloudProvider::DataDeleter::operator()(Data* d) const { delete d; }
-
-template <auto Method, Mega::CloudProvider::RequestType Type, typename... Args>
-Task<std::any> Mega::CloudProvider::Do(stdx::stop_token stop_token,
-                                       Args&&... args) {
-  return d_->Do<Method, Type>(std::move(stop_token),
-                              std::forward<Args>(args)...);
-}
 
 Task<std::string> Mega::CloudProvider::Data::GetSession(
     UserCredential credentials, stdx::stop_token stop_token) {
@@ -486,7 +479,7 @@ Task<> Mega::CloudProvider::SetThumbnail(const File& file,
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
   auto node = d_->GetNode(file.id);
   std::any result =
-      co_await Do<&::mega::MegaClient::putfa, RequestType::kOther>(
+      co_await d_->Do<&::mega::MegaClient::putfa, RequestType::kOther>(
           stop_token, node->nodehandle, ::mega::GfxProc::THUMBNAIL,
           node->nodecipher(), new std::string(std::move(thumbnail)),
           /*checkAccess=*/false);
@@ -520,7 +513,7 @@ Task<Mega::Item> Mega::CloudProvider::RenameItem(
       std::visit([](const auto& d) { return std::cref(d.id); }, item));
   node->attrs.map['n'] = std::move(new_name);
   std::any result =
-      co_await Do<&::mega::MegaClient::setattr, RequestType::kOther>(
+      co_await d_->Do<&::mega::MegaClient::setattr, RequestType::kOther>(
           std::move(stop_token), node, nullptr);
   const auto& [handle, error] = std::move(
       std::any_cast<std::tuple<::mega::handle, ::mega::error>>(result));
@@ -535,7 +528,7 @@ Task<Mega::Item> Mega::CloudProvider::MoveItem(
       std::visit([](const auto& d) { return std::cref(d.id); }, source));
   auto destination_node = d_->GetNode(destination.id);
   std::any result =
-      co_await Do<&::mega::MegaClient::rename, RequestType::kOther>(
+      co_await d_->Do<&::mega::MegaClient::rename, RequestType::kOther>(
           std::move(stop_token), source_node, destination_node,
           ::mega::SYNCDEL_NONE, ::mega::UNDEF);
   const auto& [handle, error] =
@@ -571,7 +564,7 @@ Task<Mega::Directory> Mega::CloudProvider::CreateDirectory(
   folder.attrstring = new std::string;
   d_->mega_client.makeattr(&key, folder.attrstring, attr_str.c_str());
 
-  std::any result = co_await Do<kPutNodes, RequestType::kOther>(
+  std::any result = co_await d_->Do<kPutNodes, RequestType::kOther>(
       stop_token, parent.id, &folder, 1, nullptr);
   if (result.type() == typeid(::mega::error)) {
     throw CloudException(
@@ -585,7 +578,7 @@ Task<> Mega::CloudProvider::RemoveItem(Item item,
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
 
   std::any result =
-      co_await Do<&::mega::MegaClient::unlink, RequestType::kOther>(
+      co_await d_->Do<&::mega::MegaClient::unlink, RequestType::kOther>(
           stop_token,
           d_->GetNode(std::visit([](const auto& d) { return d.id; }, item)),
           false);
@@ -599,9 +592,10 @@ Task<Mega::GeneralData> Mega::CloudProvider::GetGeneralData(
     coro::stdx::stop_token stop_token) {
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
   std::any result =
-      co_await Do<&::mega::MegaClient::getaccountdetails, RequestType::kOther>(
-          stop_token, new ::mega::AccountDetails, true, false, false, false,
-          false, false);
+      co_await d_
+          ->Do<&::mega::MegaClient::getaccountdetails, RequestType::kOther>(
+              stop_token, new ::mega::AccountDetails, true, false, false, false,
+              false, false);
   if (result.type() == typeid(::mega::error)) {
     throw CloudException(
         GetErrorDescription(std::any_cast<::mega::error>(result)));
@@ -677,7 +671,7 @@ auto Mega::CloudProvider::CreateFile(Directory parent, std::string_view name,
   file.localname = std::to_string(reinterpret_cast<intptr_t>(&content));
   file.size = content.size;
   std::any result =
-      co_await Do<&::mega::MegaClient::startxfer, RequestType::kUpload>(
+      co_await d_->Do<&::mega::MegaClient::startxfer, RequestType::kUpload>(
           stop_token, ::mega::PUT, &file, /*skipdupes=*/false,
           /*startfirst=*/false);
   if (result.type() == typeid(::mega::error)) {
@@ -725,7 +719,7 @@ auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
   auto node = d_->GetNode(item.id);
   std::any result;
   try {
-    result = co_await Do<&::mega::MegaClient::getfa, RequestType::kOther>(
+    result = co_await d_->Do<&::mega::MegaClient::getfa, RequestType::kOther>(
         stop_token, node->nodehandle, &node->fileattrstring, &node->nodekey,
         ::mega::GfxProc::THUMBNAIL, /*cancel=*/false);
   } catch (...) {

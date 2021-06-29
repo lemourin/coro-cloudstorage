@@ -181,8 +181,6 @@ class Mega::CloudProvider
 
   Task<> SetThumbnail(const File& file, std::string thumbnail,
                       stdx::stop_token);
-  template <auto Method, RequestType type, typename... Args>
-  Task<std::any> Do(stdx::stop_token stop_token, Args&&... args);
 
   AuthToken auth_token_;
   ThumbnailGeneratorT thumbnail_generator_;
