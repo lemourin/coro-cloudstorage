@@ -55,7 +55,7 @@ check_include_file(io.h HAVE_IO_H)
 check_include_file(unistd.h HAVE_UNISTD_H)
 check_include_file(arpa/inet.h HAVE_ARPA_INET_H)
 check_include_file(poll.h HAVE_POLL_H)
-check_include_file(bcrypt.h HAVE_BCRYPT)
+check_include_files("windows.h;bcrypt.h" HAVE_BCRYPT)
 
 check_symbol_exists(VirtualAlloc "windows.h" HAVE_VIRTUALALLOC)
 check_symbol_exists(GetSystemTimeAsFileTime "windows.h" HAVE_GETSYSTEMTIMEASFILETIME)
