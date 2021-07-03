@@ -268,7 +268,7 @@ class Dropbox::CloudProvider
             static_cast<size_t>(
                 content.size.value_or((std::numeric_limits<size_t>::max)()) -
                 offset));
-        FileContent chunk{.data = util::Take(it, chunk_size),
+        FileContent chunk{.data = util::Take(content.data, it, chunk_size),
                           .size = chunk_size};
         if (!session) {
           session = co_await CreateUploadSession(std::move(parent), name,

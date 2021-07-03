@@ -278,7 +278,7 @@ struct OneDrive::CloudProvider
       while (true) {
         auto chunk_size = std::min<size_t>(
             60 * 1024 * 1024, static_cast<size_t>(content.size - offset));
-        FileContent chunk{.data = util::Take(it, chunk_size),
+        FileContent chunk{.data = util::Take(content.data, it, chunk_size),
                           .size = static_cast<int64_t>(chunk_size)};
         auto response = co_await WriteChunk(session, std::move(chunk), offset,
                                             content.size, stop_token);
