@@ -38,7 +38,7 @@ class CloudFactory {
   auto Create(typename CloudProvider::Auth::AuthToken auth_token,
               Args&&... args) const {
     return CreateCloudProvider<CloudProvider>{}(
-        CreateF{}, *this, std::move(auth_token), std::forward<Args>(args)...);
+        *this, std::move(auth_token), std::forward<Args>(args)...);
   }
 
   template <typename CloudProvider>
@@ -83,13 +83,6 @@ class CloudFactory {
 
   template <typename>
   friend struct ::coro::cloudstorage::util::CreateAuthHandler;
-
-  struct CreateF {
-    template <typename ImplT, typename... ArgsT>
-    ImplT operator()(ArgsT&&... args) const {
-      return ImplT(std::forward<ArgsT>(args)...);
-    }
-  };
 
   const EventLoop* event_loop_;
   const Http* http_;

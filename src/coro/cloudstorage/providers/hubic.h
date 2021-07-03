@@ -281,15 +281,15 @@ class HubiC::CloudProvider
 
 template <>
 struct CreateCloudProvider<HubiC> {
-  template <typename F, typename CloudFactory, typename OnTokenUpdated>
-  auto operator()(const F& create, const CloudFactory& factory,
+  template <typename CloudFactory, typename OnTokenUpdated>
+  auto operator()(const CloudFactory& factory,
                   HubiC::Auth::AuthToken auth_token,
                   OnTokenUpdated on_token_updated) const {
     using CloudProviderT =
         HubiC::CloudProvider<typename CloudFactory::Http, OnTokenUpdated>;
-    return create.template operator()<CloudProviderT>(
-        *factory.http_, std::move(auth_token),
-        factory.template GetAuthData<HubiC>(), std::move(on_token_updated));
+    return CloudProviderT(*factory.http_, std::move(auth_token),
+                          factory.template GetAuthData<HubiC>(),
+                          std::move(on_token_updated));
   }
 };
 

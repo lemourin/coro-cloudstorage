@@ -45,12 +45,12 @@ class CloudProviderAccount<coro::util::TypeList<CloudProviders...>,
 
   using Ts = coro::util::TypeList<CloudProviderT<CloudProviders>...>;
 
-  template <typename... Args>
+  template <typename CloudProvider>
   explicit CloudProviderAccount(std::string username, int64_t version,
-                                Args&&... args)
+                                CloudProvider account)
       : username_(std::move(username)),
         version_(version),
-        provider_(std::forward<Args>(args)...) {}
+        provider_(std::move(account)) {}
 
   std::string GetId() const {
     return std::visit(

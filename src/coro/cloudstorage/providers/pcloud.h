@@ -412,12 +412,11 @@ struct CreateAuthHandler<PCloud> {
 
 template <>
 struct CreateCloudProvider<PCloud> {
-  template <typename F, typename CloudFactory, typename... Args>
-  auto operator()(const F& create, const CloudFactory& factory,
+  template <typename CloudFactory, typename... Args>
+  auto operator()(const CloudFactory& factory,
                   PCloud::Auth::AuthToken auth_token, Args&&...) const {
     using CloudProviderT = PCloud::CloudProvider<typename CloudFactory::Http>;
-    return create.template operator()<CloudProviderT>(*factory.http_,
-                                                      std::move(auth_token));
+    return CloudProviderT(*factory.http_, std::move(auth_token));
   }
 };
 

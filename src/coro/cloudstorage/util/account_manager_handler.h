@@ -271,27 +271,15 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
   }
 
-  struct CreateF {
-    template <typename CloudProviderT, typename... Args>
-    CloudProviderAccount* operator()(Args&&... args) const {
-      return &accounts.emplace_back(username, version,
-                                    std::in_place_type_t<CloudProviderT>{},
-                                    std::forward<Args>(args)...);
-    }
-
-    std::string username;
-    int64_t version;
-    std::list<CloudProviderAccount>& accounts;
-  };
-
   template <typename CloudProvider>
   CloudProviderAccount* CreateAccount(
       typename CloudProvider::Auth::AuthToken auth_token,
       std::shared_ptr<std::optional<std::string>> username) {
-    return CreateCloudProvider<CloudProvider>{}(
-        CreateF{username->value_or(""), version_++, accounts_}, factory_,
-        std::move(auth_token),
-        OnAuthTokenChanged<CloudProvider>{&auth_token_manager_, username});
+    return &accounts_.emplace_back(
+        username->value_or(""), version_++,
+        factory_.template Create<CloudProvider>(
+            std::move(auth_token),
+            OnAuthTokenChanged<CloudProvider>{&auth_token_manager_, username}));
   }
 
   template <typename CloudProvider>

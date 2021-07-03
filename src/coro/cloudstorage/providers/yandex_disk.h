@@ -357,14 +357,14 @@ class YandexDisk::CloudProvider
 
 template <>
 struct CreateCloudProvider<YandexDisk> {
-  template <typename F, typename CloudFactory, typename... Args>
-  auto operator()(const F& create, const CloudFactory& factory,
+  template <typename CloudFactory, typename... Args>
+  auto operator()(const CloudFactory& factory,
                   YandexDisk::Auth::AuthToken auth_token, Args&&...) const {
     using CloudProviderT =
         YandexDisk::CloudProvider<typename CloudFactory::Http,
                                   typename CloudFactory::EventLoop>;
-    return create.template operator()<CloudProviderT>(
-        *factory.http_, *factory.event_loop_, std::move(auth_token));
+    return CloudProviderT(*factory.http_, *factory.event_loop_,
+                          std::move(auth_token));
   }
 };
 
