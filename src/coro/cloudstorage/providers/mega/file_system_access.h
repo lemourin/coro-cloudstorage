@@ -68,8 +68,8 @@ class FileSystemAccess : public ::mega::FileSystemAccess {
         if (!current_it_) {
           current_it_ = co_await content_->data.begin();
         }
-        auto chunk =
-            co_await http::GetBody(util::Take(*current_it_, context->len));
+        auto chunk = co_await http::GetBody(
+            util::Take(content_->data, *current_it_, context->len));
         last_read_ = context->pos + context->len;
         context->failed = false;
         context->retry = false;
