@@ -141,7 +141,7 @@ struct GoogleDrive::CloudProvider
   using Request = http::Request<std::string>;
 
   explicit CloudProvider(AuthManager auth_manager)
-      : auth_manager_(std::move(auth_manager)...) {}
+      : auth_manager_(std::move(auth_manager)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {
     Directory d{{.id = "root"}};

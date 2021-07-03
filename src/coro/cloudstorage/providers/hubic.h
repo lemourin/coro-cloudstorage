@@ -185,18 +185,24 @@ class HubiC::CloudProvider
                       Auth::RefreshAccessToken<Http>{
                           .http = &http, .auth_data = std::move(auth_data)},
                       util::AuthorizeRequest{}),
-        provider_(OpenStackAuthManager(
-            auth_manager_.GetHttp(),
-            auth_manager_.GetAuthToken().openstack_auth_token,
-            OnOpenStackTokenUpdated{&auth_manager_},
-            RefreshOpenStackToken<AuthManager>{&auth_manager_},
-            OpenStack::AuthorizeRequest{})) {
+        provider_(CreateOpenStackProvider()) {
     auth_manager_.refresh_token().current_openstack_token =
         &provider_.auth_token();
   }
 
-  CloudProvider(CloudProvider&&) = delete;
-  CloudProvider& operator=(CloudProvider&&) = delete;
+  CloudProvider(CloudProvider&& other) noexcept
+      : auth_manager_(std::move(other.auth_manager_)),
+        provider_(CreateOpenStackProvider()) {
+    auth_manager_.refresh_token().current_openstack_token =
+        &provider_.auth_token();
+  }
+
+  CloudProvider& operator=(CloudProvider&& other) noexcept {
+    auth_manager_ = std::move(other.auth_manager_);
+    provider_ = CreateOpenStackProvider();
+    auth_manager_.refresh_token().current_openstack_token =
+        &provider_.auth_token();
+  }
 
   auto GetRoot(stdx::stop_token stop_token) const {
     return provider_.GetRoot(std::move(stop_token));
@@ -260,6 +266,15 @@ class HubiC::CloudProvider
   }
 
  private:
+  auto CreateOpenStackProvider() {
+    return OpenStack::CloudProvider<OpenStackAuthManager>(
+        OpenStackAuthManager(auth_manager_.GetHttp(),
+                             auth_manager_.GetAuthToken().openstack_auth_token,
+                             OnOpenStackTokenUpdated{&auth_manager_},
+                             RefreshOpenStackToken<AuthManager>{&auth_manager_},
+                             OpenStack::AuthorizeRequest{}));
+  }
+
   AuthManager auth_manager_;
   OpenStack::CloudProvider<OpenStackAuthManager> provider_;
 };
