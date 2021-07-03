@@ -650,6 +650,9 @@ auto Mega::CloudProvider::CreateFile(Directory parent, std::string_view name,
                                      FileContent content,
                                      stdx::stop_token stop_token)
     -> Task<File> {
+  if (content.size < 0) {
+    throw CloudException("negative size");
+  }
   co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
 
   class FileUpload : public ::mega::File {
