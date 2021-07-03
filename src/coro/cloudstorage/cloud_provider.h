@@ -259,11 +259,9 @@ struct CreateCloudProvider {
     using Impl = typename CloudProvider::template CloudProvider<
         typename CloudFactory::template AuthManagerT<CloudProvider,
                                                      OnTokenUpdated>>;
-    return factory.template CreateAuthManager<CloudProvider>(
-        [&]<typename... Args>(Args && ... args) {
-          return create.template operator()<Impl>(std::forward<Args>(args)...);
-        },
-        std::move(auth_token), std::move(on_token_updated));
+    return create.template operator()<Impl>(
+        factory.template CreateAuthManager<CloudProvider>(
+            std::move(auth_token), std::move(on_token_updated)));
   }
 };
 

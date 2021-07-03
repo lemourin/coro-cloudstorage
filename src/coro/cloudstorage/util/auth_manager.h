@@ -51,10 +51,12 @@ class AuthManager {
         refresh_token_(std::move(refresh_token)),
         authorize_request_(std::move(authorize_request)) {}
 
-  ~AuthManager() { stop_source_.request_stop(); }
+  AuthManager(const AuthManager&) = delete;
+  AuthManager(AuthManager&&) noexcept = default;
+  AuthManager& operator=(const AuthManager&) = delete;
+  AuthManager& operator=(AuthManager&&) noexcept = default;
 
-  AuthManager(AuthManager&&) = delete;
-  AuthManager& operator=(AuthManager&&) = delete;
+  ~AuthManager() { stop_source_.request_stop(); }
 
   template <typename Request>
   Task<typename Http::ResponseType> Fetch(Request request,

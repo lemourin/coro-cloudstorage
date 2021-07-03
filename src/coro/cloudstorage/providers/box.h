@@ -129,9 +129,8 @@ class Box::CloudProvider
   using json = nlohmann::json;
   using Request = http::Request<std::string>;
 
-  template <typename... Args>
-  explicit CloudProvider(Args&&... args)
-      : auth_manager_(std::forward<Args>(args)...) {}
+  explicit CloudProvider(AuthManager auth_manager)
+      : auth_manager_(std::move(auth_manager)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {
     Directory root{{.id = "0"}};
