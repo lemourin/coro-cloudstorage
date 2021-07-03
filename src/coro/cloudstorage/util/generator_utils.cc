@@ -10,7 +10,11 @@ Generator<std::string> Take(Generator<std::string>& generator,
   }
   while (at_most > 0) {
     if ((*iterator).empty()) {
-      co_await ++iterator;
+      try {
+        co_await ++iterator;
+      } catch (...) {
+        throw;
+      }
     }
     if (iterator == generator.end()) {
       break;
