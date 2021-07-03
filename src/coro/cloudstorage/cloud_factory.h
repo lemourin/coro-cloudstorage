@@ -34,11 +34,11 @@ class CloudFactory {
         muxer_(&muxer),
         auth_data_(std::move(auth_data)) {}
 
-  template <typename CloudProvider, typename... Args>
+  template <typename CloudProvider, typename OnTokenUpdated>
   auto Create(typename CloudProvider::Auth::AuthToken auth_token,
-              Args&&... args) const {
-    return CreateCloudProvider<CloudProvider>{}(
-        *this, std::move(auth_token), std::forward<Args>(args)...);
+              OnTokenUpdated on_token_updated) const {
+    return CreateCloudProvider<CloudProvider>{}(*this, std::move(auth_token),
+                                                std::move(on_token_updated));
   }
 
   template <typename CloudProvider>
