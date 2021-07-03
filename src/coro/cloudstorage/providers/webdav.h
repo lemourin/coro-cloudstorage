@@ -65,7 +65,7 @@ class WebDAV {
     std::optional<int64_t> size;
   };
 
-  template <http::HttpClient Http>
+  template <typename Http = class HttpT>
   class CloudProvider;
 
   static constexpr std::string_view kId = "webdav";
@@ -118,14 +118,14 @@ class WebDAV {
   static T ToItemImpl(const WebDAV::XmlNode<pugi::xml_node>& node);
 };
 
-template <http::HttpClient Http>
+template <typename Http>
 class WebDAV::CloudProvider
     : public coro::cloudstorage::CloudProvider<WebDAV, CloudProvider<Http>> {
  public:
   using Request = http::Request<std::string>;
 
-  CloudProvider(const Http& http, WebDAV::Auth::AuthToken auth_token)
-      : http_(&http), auth_token_(std::move(auth_token)) {}
+  CloudProvider(const Http* http, WebDAV::Auth::AuthToken auth_token)
+      : http_(http), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) const {
     Directory d{{.id = "/"}};
@@ -384,16 +384,6 @@ struct CreateAuthHandler<WebDAV> {
 };
 
 }  // namespace util
-
-template <>
-struct CreateCloudProvider<WebDAV> {
-  template <typename CloudFactory, typename... Args>
-  auto operator()(const CloudFactory& factory,
-                  WebDAV::Auth::AuthToken auth_token, Args&&...) const {
-    using CloudProviderT = WebDAV::CloudProvider<typename CloudFactory::Http>;
-    return CloudProviderT(*factory.http_, std::move(auth_token));
-  }
-};
 
 }  // namespace coro::cloudstorage
 

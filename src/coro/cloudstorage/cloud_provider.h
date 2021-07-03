@@ -18,6 +18,12 @@
 
 namespace coro::cloudstorage {
 
+class HttpT;
+class AuthManagerT;
+class EventLoopT;
+class OnAuthTokenUpdatedT;
+class ThumbnailGeneratorT;
+
 template <typename T>
 concept HasTimestamp = requires(T v) {
   { v.timestamp } -> stdx::convertible_to<std::optional<int64_t>>;
@@ -247,20 +253,6 @@ class CloudProvider {
     co_return co_await GetItemByPathComponents(
         std::move(current_directory), util::SplitString(std::string(path), '/'),
         std::move(stop_token));
-  }
-};
-
-template <typename CloudProvider>
-struct CreateCloudProvider {
-  template <typename CloudFactory, typename OnTokenUpdated>
-  auto operator()(const CloudFactory& factory,
-                  typename CloudProvider::Auth::AuthToken auth_token,
-                  OnTokenUpdated on_token_updated) const {
-    using Impl = typename CloudProvider::template CloudProvider<
-        typename CloudFactory::template AuthManagerT<CloudProvider,
-                                                     OnTokenUpdated>>;
-    return Impl(factory.template CreateAuthManager<CloudProvider>(
-        std::move(auth_token), std::move(on_token_updated)));
   }
 };
 

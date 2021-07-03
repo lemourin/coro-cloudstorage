@@ -131,7 +131,8 @@ class HubiC : public OpenStack {
     return util::StrCat("https://api.hubic.com/1.0", endpoint);
   }
 
-  template <http::HttpClient Http, typename OnAuthTokenUpdated>
+  template <typename Http = class HttpT,
+            typename OnAuthTokenUpdated = class OnAuthTokenUpdatedT>
   class CloudProvider;
 
   template <typename AuthManager>
@@ -156,7 +157,7 @@ class HubiC : public OpenStack {
   static inline constexpr auto& kIcon = util::kAssetsProvidersHubicPng;
 };
 
-template <http::HttpClient Http, typename OnAuthTokenUpdated>
+template <typename Http, typename OnAuthTokenUpdated>
 class HubiC::CloudProvider
     : public coro::cloudstorage::CloudProvider<
           HubiC, CloudProvider<Http, OnAuthTokenUpdated>> {
@@ -177,13 +178,13 @@ class HubiC::CloudProvider
       util::AuthManager<Http, OpenStack::Auth, OnOpenStackTokenUpdated,
                         RefreshOpenStackToken<AuthManager>, AuthorizeRequest>;
 
-  CloudProvider(const Http& http, Auth::AuthToken auth_token,
+  CloudProvider(const Http* http, Auth::AuthToken auth_token,
                 Auth::AuthData auth_data,
                 OnAuthTokenUpdated on_auth_token_updated)
       : auth_manager_(http, std::move(auth_token),
                       std::move(on_auth_token_updated),
                       Auth::RefreshAccessToken<Http>{
-                          .http = &http, .auth_data = std::move(auth_data)},
+                          .http = http, .auth_data = std::move(auth_data)},
                       util::AuthorizeRequest{}),
         provider_(CreateOpenStackProvider()) {
     auth_manager_.refresh_token().current_openstack_token =
@@ -268,7 +269,7 @@ class HubiC::CloudProvider
  private:
   auto CreateOpenStackProvider() {
     return OpenStack::CloudProvider<OpenStackAuthManager>(
-        OpenStackAuthManager(auth_manager_.GetHttp(),
+        OpenStackAuthManager(&auth_manager_.GetHttp(),
                              auth_manager_.GetAuthToken().openstack_auth_token,
                              OnOpenStackTokenUpdated{&auth_manager_},
                              RefreshOpenStackToken<AuthManager>{&auth_manager_},
@@ -277,20 +278,6 @@ class HubiC::CloudProvider
 
   AuthManager auth_manager_;
   OpenStack::CloudProvider<OpenStackAuthManager> provider_;
-};
-
-template <>
-struct CreateCloudProvider<HubiC> {
-  template <typename CloudFactory, typename OnTokenUpdated>
-  auto operator()(const CloudFactory& factory,
-                  HubiC::Auth::AuthToken auth_token,
-                  OnTokenUpdated on_token_updated) const {
-    using CloudProviderT =
-        HubiC::CloudProvider<typename CloudFactory::Http, OnTokenUpdated>;
-    return CloudProviderT(*factory.http_, std::move(auth_token),
-                          factory.template GetAuthData<HubiC>(),
-                          std::move(on_token_updated));
-  }
 };
 
 namespace util {

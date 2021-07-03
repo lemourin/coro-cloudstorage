@@ -88,7 +88,7 @@ struct GoogleDrive {
     }
   };
 
-  template <typename AuthManager>
+  template <typename AuthManager = AuthManagerT>
   struct CloudProvider;
 
   struct GeneralData {

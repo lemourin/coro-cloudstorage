@@ -85,17 +85,18 @@ class Mega::CloudProvider
   using AuthData = Auth::AuthData;
   using UserCredential = Auth::UserCredential;
 
-  template <typename EventLoop, http::HttpClient HttpClient,
-            typename ThumbnailGenerator>
-  CloudProvider(const EventLoop& event_loop, const HttpClient& http,
-                const ThumbnailGenerator& thumbnail_generator,
+  template <typename EventLoop = class EventLoopT,
+            typename HttpClient = class HttpT,
+            typename ThumbnailGenerator = class ThumbnailGeneratorT>
+  CloudProvider(const EventLoop* event_loop, const HttpClient* http,
+                const ThumbnailGenerator* thumbnail_generator,
                 AuthToken auth_token, AuthData auth_data)
       : auth_token_(std::move(auth_token)),
         thumbnail_generator_(
             [&](CloudProvider* provider, File file,
                 util::ThumbnailOptions options,
                 stdx::stop_token stop_token) -> Task<std::string> {
-              co_return co_await thumbnail_generator(
+              co_return co_await (*thumbnail_generator)(
                   provider, std::move(file), options, std::move(stop_token));
             }),
         d_(CreateData(event_loop, http, std::move(auth_data))) {}
@@ -185,17 +186,6 @@ class Mega::CloudProvider
   AuthToken auth_token_;
   ThumbnailGeneratorT thumbnail_generator_;
   std::unique_ptr<Data, DataDeleter> d_;
-};
-
-template <>
-struct CreateCloudProvider<Mega> {
-  template <typename CloudFactory, typename... Args>
-  auto operator()(const CloudFactory& factory, Mega::Auth::AuthToken auth_token,
-                  Args&&...) const {
-    return Mega::CloudProvider(
-        *factory.event_loop_, *factory.http_, *factory.thumbnail_generator_,
-        std::move(auth_token), factory.auth_data_.template operator()<Mega>());
-  }
 };
 
 namespace util {

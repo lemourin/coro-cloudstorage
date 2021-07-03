@@ -114,7 +114,7 @@ struct Box {
     static inline constexpr std::string_view mime_type = "image/png";
   };
 
-  template <typename AuthManager>
+  template <typename AuthManager = class AuthManagerT>
   class CloudProvider;
 
   static constexpr std::string_view kId = "box";

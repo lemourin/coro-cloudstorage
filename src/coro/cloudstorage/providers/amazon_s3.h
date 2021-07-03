@@ -62,7 +62,7 @@ class AmazonS3 {
     int64_t size;
   };
 
-  template <http::HttpClient Http>
+  template <typename Http = class HttpT>
   class CloudProvider;
 
   static constexpr std::string_view kId = "amazons3";
@@ -131,14 +131,14 @@ class AmazonS3 {
   static pugi::xml_document GetXmlDocument(std::string data);
 };
 
-template <http::HttpClient Http>
+template <typename Http>
 class AmazonS3::CloudProvider
     : public coro::cloudstorage::CloudProvider<AmazonS3, CloudProvider<Http>> {
  public:
   using Request = http::Request<std::string>;
 
-  CloudProvider(const Http& http, AmazonS3::Auth::AuthToken auth_token)
-      : http_(&http), auth_token_(std::move(auth_token)) {}
+  CloudProvider(const Http* http, AmazonS3::Auth::AuthToken auth_token)
+      : http_(http), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) const {
     Directory d{{.id = ""}};
@@ -406,16 +406,6 @@ struct CreateAuthHandler<AmazonS3> {
 };
 
 }  // namespace util
-
-template <>
-struct CreateCloudProvider<AmazonS3> {
-  template <typename CloudFactory, typename... Args>
-  auto operator()(const CloudFactory& factory,
-                  AmazonS3::Auth::AuthToken auth_token, Args&&...) const {
-    using CloudProviderT = AmazonS3::CloudProvider<typename CloudFactory::Http>;
-    return CloudProviderT(*factory.http_, std::move(auth_token));
-  }
-};
 
 }  // namespace coro::cloudstorage
 

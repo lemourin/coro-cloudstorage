@@ -4,6 +4,7 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/auth_data.h>
+#include <coro/cloudstorage/util/auth_token_manager.h>
 #include <coro/cloudstorage/util/fetch_json.h>
 #include <coro/http/http.h>
 #include <coro/when_all.h>
@@ -92,22 +93,22 @@ struct PCloud {
     std::string mime_type;
   };
 
-  template <http::HttpClient Http>
+  template <typename Http = class HttpT>
   class CloudProvider;
 
   static constexpr std::string_view kId = "pcloud";
   static inline constexpr auto& kIcon = util::kAssetsProvidersPcloudPng;
 };
 
-template <http::HttpClient Http>
+template <typename Http>
 class PCloud::CloudProvider
     : public coro::cloudstorage::CloudProvider<PCloud, CloudProvider<Http>> {
  public:
   using json = nlohmann::json;
   using Request = http::Request<std::string>;
 
-  CloudProvider(const Http& http, PCloud::Auth::AuthToken auth_token)
-      : http_(&http), auth_token_(std::move(auth_token)) {}
+  CloudProvider(const Http* http, PCloud::Auth::AuthToken auth_token)
+      : http_(http), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {
     Directory d{{.id = 0}};
@@ -409,16 +410,6 @@ struct CreateAuthHandler<PCloud> {
   }
 };
 }  // namespace util
-
-template <>
-struct CreateCloudProvider<PCloud> {
-  template <typename CloudFactory, typename... Args>
-  auto operator()(const CloudFactory& factory,
-                  PCloud::Auth::AuthToken auth_token, Args&&...) const {
-    using CloudProviderT = PCloud::CloudProvider<typename CloudFactory::Http>;
-    return CloudProviderT(*factory.http_, std::move(auth_token));
-  }
-};
 
 namespace util {
 template <>

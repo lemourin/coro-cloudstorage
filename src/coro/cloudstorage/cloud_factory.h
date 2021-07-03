@@ -7,6 +7,9 @@
 #include <coro/http/http.h>
 #include <coro/util/type_list.h>
 
+#include <boost/di.hpp>
+#include <iostream>
+
 namespace coro::cloudstorage {
 
 template <typename T>
@@ -25,6 +28,10 @@ class CloudFactory {
   using ThumbnailGenerator = ThumbnailGeneratorT;
   using Muxer = MuxerT;
 
+  template <typename CloudProvider, typename OnTokenUpdated>
+  using AuthManagerT =
+      util::AuthManager<Http, typename CloudProvider::Auth, OnTokenUpdated>;
+
   CloudFactory(const EventLoop& event_loop, const Http& http,
                const ThumbnailGenerator& thumbnail_generator,
                const Muxer& muxer, AuthData auth_data = AuthData{})
@@ -37,8 +44,23 @@ class CloudFactory {
   template <typename CloudProvider, typename OnTokenUpdated>
   auto Create(typename CloudProvider::Auth::AuthToken auth_token,
               OnTokenUpdated on_token_updated) const {
-    return CreateCloudProvider<CloudProvider>{}(*this, std::move(auth_token),
-                                                std::move(on_token_updated));
+    namespace di = boost::di;
+
+    auto injector = di::make_injector(
+        di::bind<class OnAuthTokenUpdatedT>().to<OnTokenUpdated>(
+            on_token_updated),
+        di::bind<typename CloudProvider::Auth::AuthToken>().to(auth_token),
+        di::bind<typename CloudProvider::Auth::AuthData>().to(
+            GetAuthData<CloudProvider>()),
+        di::bind<class coro::cloudstorage::AuthManagerT>()
+            .to<AuthManagerT<CloudProvider, OnTokenUpdated>>(),
+        di::bind<class coro::cloudstorage::HttpT>().to<HttpT>(http_),
+        di::bind<class coro::cloudstorage::EventLoopT>().to<EventLoopT>(
+            event_loop_),
+        di::bind<class coro::cloudstorage::ThumbnailGeneratorT>()
+            .to<ThumbnailGeneratorT>(thumbnail_generator_));
+
+    return injector.template create<CloudProvider::template CloudProvider>();
   }
 
   template <typename CloudProvider>
@@ -57,30 +79,12 @@ class CloudFactory {
     }
   }
 
-  template <typename CloudProvider, typename OnTokenUpdated>
-  using AuthManagerT =
-      util::AuthManager<Http, typename CloudProvider::Auth, OnTokenUpdated>;
-
-  template <typename CloudProvider, typename OnTokenUpdated,
-            typename Auth = typename CloudProvider::Auth>
-  auto CreateAuthManager(typename Auth::AuthToken auth_token,
-                         OnTokenUpdated on_token_updated) const {
-    return AuthManagerT<CloudProvider, OnTokenUpdated>(
-        *http_, std::move(auth_token), std::move(on_token_updated),
-        util::RefreshToken<HttpT, Auth>{
-            .http = http_, .auth_data = GetAuthData<CloudProvider>()},
-        util::AuthorizeRequest{});
-  }
-
   template <typename CloudProvider>
   auto GetAuthData() const {
     return auth_data_.template operator()<CloudProvider>();
   }
 
  private:
-  template <typename>
-  friend struct CreateCloudProvider;
-
   template <typename>
   friend struct ::coro::cloudstorage::util::CreateAuthHandler;
 

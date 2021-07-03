@@ -91,14 +91,14 @@ struct YandexDisk {
     std::string mime_type;
   };
 
-  template <http::HttpClient Http, typename EventLoop>
+  template <typename Http = class HttpT, typename EventLoop = class EventLoopT>
   class CloudProvider;
 
   static constexpr std::string_view kId = "yandex";
   static inline constexpr auto& kIcon = util::kAssetsProvidersYandexPng;
 };
 
-template <http::HttpClient Http, typename EventLoop>
+template <typename Http, typename EventLoop>
 class YandexDisk::CloudProvider
     : public coro::cloudstorage::CloudProvider<YandexDisk,
                                                CloudProvider<Http, EventLoop>> {
@@ -106,10 +106,10 @@ class YandexDisk::CloudProvider
   using json = nlohmann::json;
   using Request = http::Request<std::string>;
 
-  CloudProvider(const Http& http, const EventLoop& event_loop,
+  CloudProvider(const Http* http, const EventLoop* event_loop,
                 YandexDisk::Auth::AuthToken auth_token)
-      : http_(&http),
-        event_loop_(&event_loop),
+      : http_(http),
+        event_loop_(event_loop),
         auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {
@@ -353,19 +353,6 @@ class YandexDisk::CloudProvider
   const Http* http_;
   const EventLoop* event_loop_;
   YandexDisk::Auth::AuthToken auth_token_;
-};
-
-template <>
-struct CreateCloudProvider<YandexDisk> {
-  template <typename CloudFactory, typename... Args>
-  auto operator()(const CloudFactory& factory,
-                  YandexDisk::Auth::AuthToken auth_token, Args&&...) const {
-    using CloudProviderT =
-        YandexDisk::CloudProvider<typename CloudFactory::Http,
-                                  typename CloudFactory::EventLoop>;
-    return CloudProviderT(*factory.http_, *factory.event_loop_,
-                          std::move(auth_token));
-  }
 };
 
 namespace util {

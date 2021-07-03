@@ -42,10 +42,10 @@ class AuthManager {
   using AuthToken = typename Auth::AuthToken;
   using Http = HttpT;
 
-  AuthManager(const Http& http, AuthToken auth_token,
+  AuthManager(const Http* http, AuthToken auth_token,
               OnAuthTokenUpdatedT on_auth_token_updated,
               RefreshTokenT refresh_token, AuthorizeRequestT authorize_request)
-      : http_(&http),
+      : http_(http),
         auth_token_(std::move(auth_token)),
         on_auth_token_updated_(std::move(on_auth_token_updated)),
         refresh_token_(std::move(refresh_token)),

@@ -11,6 +11,8 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 
+#define Dropbox DropboxV2
+
 namespace coro::cloudstorage {
 
 struct Dropbox {
@@ -97,22 +99,22 @@ struct Dropbox {
     static inline constexpr std::string_view mime_type = "image/jpeg";
   };
 
-  template <http::HttpClient Http>
+  template <typename Http = class HttpT>
   class CloudProvider;
 
   static constexpr std::string_view kId = "dropbox";
   static inline constexpr auto& kIcon = util::kAssetsProvidersDropboxPng;
 };
 
-template <http::HttpClient Http>
+template <typename Http>
 class Dropbox::CloudProvider
     : public coro::cloudstorage::CloudProvider<Dropbox, CloudProvider<Http>> {
  public:
   using json = nlohmann::json;
   using Request = http::Request<std::string>;
 
-  CloudProvider(const Http& http, Dropbox::Auth::AuthToken auth_token)
-      : http_(&http), auth_token_(std::move(auth_token)) {}
+  CloudProvider(const Http* http, Dropbox::Auth::AuthToken auth_token)
+      : http_(http), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) {
     Directory d{{.id = ""}};
@@ -425,16 +427,6 @@ class Dropbox::CloudProvider
 
   const Http* http_;
   Dropbox::Auth::AuthToken auth_token_;
-};
-
-template <>
-struct CreateCloudProvider<Dropbox> {
-  template <typename CloudFactory, typename... Args>
-  auto operator()(const CloudFactory& factory,
-                  Dropbox::Auth::AuthToken auth_token, Args&&...) const {
-    using CloudProviderT = Dropbox::CloudProvider<typename CloudFactory::Http>;
-    return CloudProviderT(*factory.http_, std::move(auth_token));
-  }
 };
 
 namespace util {
