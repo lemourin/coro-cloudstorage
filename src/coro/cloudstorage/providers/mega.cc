@@ -12,6 +12,7 @@ namespace coro::cloudstorage {
 
 namespace {
 
+using ::coro::cloudstorage::util::AbstractCloudProvider;
 using ::coro::util::AtScopeExit;
 
 constexpr auto kLogin = static_cast<void (::mega::MegaClient::*)(
@@ -296,7 +297,7 @@ struct Mega::CloudProvider::App : ::mega::MegaApp {
 
 struct Mega::CloudProvider::Data {
   stdx::stop_source stop_source;
-  WaitT wait_;
+  coro::util::WaitF wait_;
   App mega_app;
   mega::HttpIO http_io;
   mega::FileSystemAccess fs;
@@ -353,7 +354,7 @@ struct Mega::CloudProvider::Data {
     }
   }
 
-  Data(WaitT wait, FetchT fetch, const AuthData& auth_data)
+  Data(coro::util::WaitF wait, http::FetchF fetch, const AuthData& auth_data)
       : stop_source(),
         wait_(std::move(wait)),
         mega_app(this),
@@ -382,7 +383,8 @@ Task<> Mega::CloudProvider::DoLogIn::operator()() {
   co_await d->LogIn(std::move(session));
 }
 
-auto Mega::CloudProvider::CreateDataImpl(WaitT wait, FetchT fetch,
+auto Mega::CloudProvider::CreateDataImpl(coro::util::WaitF wait,
+                                         http::FetchF fetch,
                                          const AuthData& auth_data)
     -> std::unique_ptr<Data, DataDeleter> {
   return std::unique_ptr<Data, DataDeleter>(
@@ -472,6 +474,26 @@ void Mega::CloudProvider::Data::OnEvent() {
     OnEvent();
   }
 }
+
+Mega::CloudProvider::CloudProvider(
+    coro::util::WaitF wait, http::FetchF fetch,
+    util::ThumbnailGeneratorF thumbnail_generator, AuthToken auth_token,
+    AuthData auth_data)
+    : auth_token_(std::move(auth_token)),
+      thumbnail_generator_(
+          [thumbnail_generator = std::move(thumbnail_generator)](
+              CloudProvider* provider, File file,
+              util::ThumbnailOptions options,
+              stdx::stop_token stop_token) -> Task<std::string> {
+            using Impl =
+                util::AbstractCloudProvider::CloudProviderImpl<CloudProvider>;
+            Impl p(provider);
+            co_return co_await thumbnail_generator(
+                &p, Impl::Convert<util::AbstractCloudProvider::File>(file),
+                options, std::move(stop_token));
+          }),
+      d_(CreateDataImpl(std::move(wait), std::move(fetch),
+                        std::move(auth_data))) {}
 
 Task<> Mega::CloudProvider::SetThumbnail(const File& file,
                                          std::string thumbnail,

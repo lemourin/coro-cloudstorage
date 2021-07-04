@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_UTIL_GENERATE_THUMBNAIL_H
 
 #include <coro/cloudstorage/cloud_provider.h>
+#include <coro/cloudstorage/util/abstract_cloud_provider.h>
 #include <coro/cloudstorage/util/avio_context.h>
 #include <coro/cloudstorage/util/generator_utils.h>
 #include <coro/cloudstorage/util/thumbnail_options.h>
@@ -41,6 +42,23 @@ class ThumbnailGenerator {
  private:
   ThreadPool* thread_pool_;
   EventLoop* event_loop_;
+};
+
+class ThumbnailGeneratorF
+    : public std::function<Task<std::string>(
+          AbstractCloudProvider::CloudProvider*, AbstractCloudProvider::File,
+          ThumbnailOptions, stdx::stop_token)> {
+ public:
+  template <typename F>
+  explicit ThumbnailGeneratorF(const F* f)
+      : std::function<Task<std::string>(AbstractCloudProvider::CloudProvider*,
+                                        AbstractCloudProvider::File,
+                                        ThumbnailOptions, stdx::stop_token)>(
+            [f](AbstractCloudProvider::CloudProvider* p,
+                AbstractCloudProvider::File file, ThumbnailOptions options,
+                stdx::stop_token stop_token) {
+              return (*f)(p, std::move(file), options, std::move(stop_token));
+            }) {}
 };
 
 }  // namespace coro::cloudstorage::util

@@ -6,8 +6,10 @@
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
+#include <coro/cloudstorage/util/thumbnail_generator.h>
 #include <coro/cloudstorage/util/thumbnail_options.h>
 #include <coro/stdx/stop_token.h>
+#include <coro/util/event_loop.h>
 #include <coro/util/function_traits.h>
 #include <coro/util/raii_utils.h>
 #include <coro/util/type_list.h>
@@ -85,21 +87,9 @@ class Mega::CloudProvider
   using AuthData = Auth::AuthData;
   using UserCredential = Auth::UserCredential;
 
-  template <typename EventLoop = class EventLoopT,
-            typename HttpClient = class HttpT,
-            typename ThumbnailGenerator = class ThumbnailGeneratorT>
-  CloudProvider(const EventLoop* event_loop, const HttpClient* http,
-                const ThumbnailGenerator* thumbnail_generator,
-                AuthToken auth_token, AuthData auth_data)
-      : auth_token_(std::move(auth_token)),
-        thumbnail_generator_(
-            [&](CloudProvider* provider, File file,
-                util::ThumbnailOptions options,
-                stdx::stop_token stop_token) -> Task<std::string> {
-              co_return co_await (*thumbnail_generator)(
-                  provider, std::move(file), options, std::move(stop_token));
-            }),
-        d_(CreateData(event_loop, http, std::move(auth_data))) {}
+  CloudProvider(coro::util::WaitF wait, http::FetchF fetch,
+                util::ThumbnailGeneratorF thumbnail_generator,
+                AuthToken auth_token, AuthData auth_data);
 
   Task<Item> RenameItem(Item item, std::string new_name,
                         coro::stdx::stop_token);
@@ -145,9 +135,6 @@ class Mega::CloudProvider
   }
 
  private:
-  using WaitT = std::function<Task<>(int ms, stdx::stop_token)>;
-  using FetchT = std::function<Task<http::Response<>>(
-      http::Request<std::string>, stdx::stop_token)>;
   using ThumbnailGeneratorT = std::function<Task<std::string>(
       CloudProvider*, File, util::ThumbnailOptions, stdx::stop_token)>;
 
@@ -160,22 +147,16 @@ class Mega::CloudProvider
   template <typename EventLoop, http::HttpClient HttpClient>
   static auto CreateData(const EventLoop& event_loop, const HttpClient& http,
                          const AuthData& auth_data) {
-    return CreateDataImpl(
-        [event_loop = &event_loop](int ms, stdx::stop_token stop_token)
-            -> Task<> { co_await event_loop->Wait(ms, std::move(stop_token)); },
-        [http = &http](http::Request<std::string> request,
-                       stdx::stop_token stop_token) -> Task<http::Response<>> {
-          co_return co_await http->Fetch(std::move(request),
-                                         std::move(stop_token));
-        },
-        std::move(auth_data));
+    return CreateDataImpl(coro::util::WaitF(&event_loop), http::FetchF(&http),
+                          std::move(auth_data));
   }
 
   struct DataDeleter {
     void operator()(Data*) const;
   };
 
-  static std::unique_ptr<Data, DataDeleter> CreateDataImpl(WaitT, FetchT,
+  static std::unique_ptr<Data, DataDeleter> CreateDataImpl(coro::util::WaitF,
+                                                           http::FetchF,
                                                            const AuthData&);
   static Task<std::string> GetSession(Data* data, UserCredential credential,
                                       stdx::stop_token stop_token);

@@ -4,7 +4,9 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_handler.h>
+#include <coro/cloudstorage/util/thumbnail_generator.h>
 #include <coro/http/http.h>
+#include <coro/util/event_loop.h>
 #include <coro/util/type_list.h>
 
 #include <boost/di.hpp>
@@ -54,9 +56,13 @@ class CloudFactory {
             GetAuthData<CloudProvider>()),
         di::bind<class coro::cloudstorage::AuthManagerT>()
             .to<AuthManagerT<CloudProvider, OnTokenUpdated>>(),
+        di::bind<http::FetchF>().to(http::FetchF(http_)),
         di::bind<class coro::cloudstorage::HttpT>().to<HttpT>(http_),
+        di::bind<coro::util::WaitF>().to(coro::util::WaitF(event_loop_)),
         di::bind<class coro::cloudstorage::EventLoopT>().to<EventLoopT>(
             event_loop_),
+        di::bind<util::ThumbnailGeneratorF>().to(
+            util::ThumbnailGeneratorF(thumbnail_generator_)),
         di::bind<class coro::cloudstorage::ThumbnailGeneratorT>()
             .to<ThumbnailGeneratorT>(thumbnail_generator_));
 

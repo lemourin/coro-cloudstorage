@@ -234,6 +234,24 @@ class AbstractCloudProvider::CloudProviderImpl
         std::any_cast<ItemT&&>(std::move(parent.impl)));
   }
 
+  template <typename To, typename From>
+  static To Convert(From d) {
+    To result;
+    result.id = [&] {
+      std::stringstream stream;
+      stream << d.id;
+      return std::move(stream).str();
+    }();
+    result.name = d.name;
+    result.size = CloudProviderT::GetSize(d);
+    result.timestamp = CloudProviderT::GetTimestamp(d);
+    if constexpr (IsFile<From, CloudProvider>) {
+      result.mime_type = CloudProviderT::GetMimetype(d);
+    }
+    result.impl.template emplace<ItemT>(std::move(d));
+    return result;
+  }
+
  private:
   using ItemT = typename CloudProviderT::Item;
   using FileContentT = typename CloudProviderT::FileContent;
@@ -343,24 +361,6 @@ class AbstractCloudProvider::CloudProviderImpl
         MoveItemF<Item>{provider_, std::move(stop_token)},
         std::any_cast<ItemT&&>(std::move(source.impl)),
         std::any_cast<ItemT&&>(std::move(destination.impl)));
-  }
-
-  template <typename To, typename From>
-  static To Convert(From d) {
-    To result;
-    result.id = [&] {
-      std::stringstream stream;
-      stream << d.id;
-      return std::move(stream).str();
-    }();
-    result.name = d.name;
-    result.size = CloudProviderT::GetSize(d);
-    result.timestamp = CloudProviderT::GetTimestamp(d);
-    if constexpr (IsFile<From, CloudProvider>) {
-      result.mime_type = CloudProviderT::GetMimetype(d);
-    }
-    result.impl.template emplace<ItemT>(std::move(d));
-    return result;
   }
 
   CloudProviderT* provider_;
