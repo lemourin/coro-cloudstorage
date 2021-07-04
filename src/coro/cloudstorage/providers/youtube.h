@@ -55,7 +55,8 @@ struct YouTube {
     }
   };
 
-  template <typename AuthManager, typename Muxer>
+  template <typename AuthManager = class AuthManagerT,
+            typename Muxer = class MuxerT>
   struct CloudProvider;
 
   enum class Presentation { kDash, kStream, kMuxedStream };
@@ -145,10 +146,9 @@ struct YouTube::CloudProvider
                                         CloudProvider<AuthManager, Muxer>> {
   using Request = http::Request<std::string>;
 
-  template <typename... Args>
-  CloudProvider(const Muxer& muxer, Args&&... args)
-      : auth_manager_(std::forward<Args>(args)...),
-        muxer_(&muxer),
+  CloudProvider(AuthManager auth_manager, const Muxer* muxer)
+      : auth_manager_(std::move(auth_manager)),
+        muxer_(muxer),
         stream_cache_(32, GetStreamData{auth_manager_.GetHttp()}) {}
 
   Task<RootDirectory> GetRoot(stdx::stop_token) {
@@ -449,25 +449,6 @@ struct YouTube::CloudProvider
   AuthManager auth_manager_;
   const Muxer* muxer_;
   mutable coro::util::LRUCache<std::string, GetStreamData> stream_cache_;
-};
-
-template <>
-struct CreateCloudProvider<YouTube> {
-  template <typename F, typename CloudFactory, typename OnAuthTokenChanged>
-  auto operator()(const F& create, const CloudFactory& factory,
-                  YouTube::Auth::AuthToken auth_token,
-                  OnAuthTokenChanged on_auth_token_changed) const {
-    using CloudProviderT =
-        YouTube::CloudProvider<typename CloudFactory::template AuthManagerT<
-                                   YouTube, OnAuthTokenChanged>,
-                               typename CloudFactory::Muxer>;
-    return factory.template CreateAuthManager<YouTube>(
-        [&]<typename... Args>(Args && ... args) {
-          return create.template operator()<CloudProviderT>(
-              *factory.muxer_, std::forward<Args>(args)...);
-        },
-        std::move(auth_token), std::move(on_auth_token_changed));
-  }
 };
 
 namespace util {
