@@ -61,8 +61,11 @@ WebDAV::Auth::AuthData GetAuthData<WebDAV>() {
   return {};
 }
 
+}  // namespace util
+
 Task<std::variant<http::Response<>, WebDAV::Auth::AuthToken>>
-WebDAVAuthHandler::operator()(http::Request<> request, stdx::stop_token) const {
+WebDAV::Auth::AuthHandler::operator()(http::Request<> request,
+                                      stdx::stop_token) const {
   if (request.method == http::Method::kPost) {
     auto query =
         http::ParseQuery(co_await http::GetBody(std::move(*request.body)));
@@ -87,8 +90,6 @@ WebDAVAuthHandler::operator()(http::Request<> request, stdx::stop_token) const {
     co_return http::Response<>{.status = 200, .body = GenerateLoginPage()};
   }
 }
-
-}  // namespace util
 
 std::optional<std::string> WebDAV::GetNamespace(const pugi::xml_node& node) {
   pugi::xml_attribute attr =

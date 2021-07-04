@@ -36,6 +36,8 @@ struct Mega {
       std::string password;
       std::optional<std::string> twofactor;
     };
+
+    class AuthHandler;
   };
 
   struct ItemData {
@@ -125,12 +127,13 @@ class Mega::CloudProvider
   Task<Thumbnail> GetItemThumbnail(File item, http::Range range,
                                    stdx::stop_token stop_token);
 
-  template <typename EventLoop, http::HttpClient HttpClient>
-  static Task<std::string> GetSession(
-      const EventLoop& event_loop, const HttpClient& http,
-      UserCredential credential, AuthData auth_data,
-      stdx::stop_token stop_token = stdx::stop_token()) {
-    auto d = CreateData(event_loop, http, std::move(auth_data));
+  static Task<std::string> GetSession(coro::util::WaitF wait,
+                                      http::FetchF fetch,
+                                      UserCredential credential,
+                                      AuthData auth_data,
+                                      stdx::stop_token stop_token) {
+    auto d =
+        CreateDataImpl(std::move(wait), std::move(fetch), std::move(auth_data));
     co_return co_await GetSession(d.get(), credential, std::move(stop_token));
   }
 
@@ -143,13 +146,6 @@ class Mega::CloudProvider
   struct App;
   struct DoLogIn;
   enum class RequestType;
-
-  template <typename EventLoop, http::HttpClient HttpClient>
-  static auto CreateData(const EventLoop& event_loop, const HttpClient& http,
-                         const AuthData& auth_data) {
-    return CreateDataImpl(coro::util::WaitF(&event_loop), http::FetchF(&http),
-                          std::move(auth_data));
-  }
 
   struct DataDeleter {
     void operator()(Data*) const;
@@ -169,6 +165,20 @@ class Mega::CloudProvider
   std::unique_ptr<Data, DataDeleter> d_;
 };
 
+class Mega::Auth::AuthHandler {
+ public:
+  AuthHandler(coro::util::WaitF wait, http::FetchF fetch,
+              Mega::Auth::AuthData auth_data);
+
+  Task<std::variant<http::Response<>, Mega::Auth::AuthToken>> operator()(
+      coro::http::Request<> request, coro::stdx::stop_token stop_token) const;
+
+ private:
+  coro::util::WaitF wait_;
+  http::FetchF fetch_;
+  Mega::Auth::AuthData auth_data_;
+};
+
 namespace util {
 template <>
 inline nlohmann::json ToJson<Mega::Auth::AuthToken>(
@@ -185,63 +195,6 @@ inline Mega::Auth::AuthToken ToAuthToken<Mega::Auth::AuthToken>(
   return {.email = json.at("email"),
           .session = http::FromBase64(std::string(json.at("session")))};
 }
-
-template <typename EventLoop, http::HttpClient HttpClient>
-class MegaAuthHandler {
- public:
-  MegaAuthHandler(const EventLoop& event_loop, const HttpClient& http,
-                  Mega::Auth::AuthData auth_data)
-      : event_loop_(&event_loop),
-        http_(&http),
-        auth_data_(std::move(auth_data)) {}
-
-  Task<std::variant<http::Response<>, Mega::Auth::AuthToken>> operator()(
-      coro::http::Request<> request, coro::stdx::stop_token stop_token) const {
-    if (request.method == http::Method::kPost) {
-      auto query =
-          http::ParseQuery(co_await http::GetBody(std::move(*request.body)));
-      auto it1 = query.find("email");
-      auto it2 = query.find("password");
-      if (it1 != std::end(query) && it2 != std::end(query)) {
-        auto it3 = query.find("twofactor");
-        Mega::Auth::UserCredential credential = {
-            .email = it1->second,
-            .password = it2->second,
-            .twofactor = it3 != std::end(query)
-                             ? std::make_optional(it3->second)
-                             : std::nullopt};
-        std::string session = co_await Mega::CloudProvider::GetSession(
-            *event_loop_, *http_, std::move(credential), auth_data_,
-            stop_token);
-        co_return Mega::Auth::AuthToken{.email = it1->second,
-                                        .session = std::move(session)};
-      } else {
-        throw http::HttpException(http::HttpException::kBadRequest);
-      }
-    } else {
-      co_return http::Response<>{.status = 200, .body = GenerateLoginPage()};
-    }
-  }
-
- private:
-  Generator<std::string> GenerateLoginPage() const {
-    co_yield std::string(kAssetsHtmlMegaLoginHtml);
-  }
-
-  const EventLoop* event_loop_;
-  const HttpClient* http_;
-  Mega::Auth::AuthData auth_data_;
-};
-
-template <>
-struct CreateAuthHandler<Mega> {
-  template <typename CloudFactory>
-  auto operator()(const CloudFactory& cloud_factory,
-                  Mega::Auth::AuthData auth_data) const {
-    return MegaAuthHandler(*cloud_factory.event_loop_, *cloud_factory.http_,
-                           std::move(auth_data));
-  }
-};
 
 template <>
 inline Mega::Auth::AuthData GetAuthData<Mega>() {

@@ -55,6 +55,9 @@ class AmazonS3 {
       std::string bucket;
     };
     struct AuthData {};
+
+    template <typename Http = class HttpT>
+    class AuthHandler;
   };
 
   struct FileContent {
@@ -338,23 +341,10 @@ class AmazonS3::CloudProvider
   AmazonS3::Auth::AuthToken auth_token_;
 };
 
-namespace util {
-
-template <>
-nlohmann::json ToJson<AmazonS3::Auth::AuthToken>(
-    AmazonS3::Auth::AuthToken token);
-
-template <>
-AmazonS3::Auth::AuthToken ToAuthToken<AmazonS3::Auth::AuthToken>(
-    const nlohmann::json& json);
-
-template <>
-AmazonS3::Auth::AuthData GetAuthData<AmazonS3>();
-
-template <http::HttpClient HttpT>
-class AmazonS3AuthHandler {
+template <typename HttpT>
+class AmazonS3::Auth::AuthHandler {
  public:
-  explicit AmazonS3AuthHandler(const HttpT& http) : http_(&http) {}
+  explicit AuthHandler(const HttpT* http) : http_(http) {}
 
   Task<std::variant<http::Response<>, AmazonS3::Auth::AuthToken>> operator()(
       http::Request<> request, stdx::stop_token stop_token) const {
@@ -395,15 +385,18 @@ class AmazonS3AuthHandler {
   const HttpT* http_;
 };
 
+namespace util {
+
 template <>
-struct CreateAuthHandler<AmazonS3> {
-  template <typename CloudFactory>
-  auto operator()(const CloudFactory& cloud_factory,
-                  AmazonS3::Auth::AuthData) const {
-    return AmazonS3AuthHandler<typename CloudFactory::Http>(
-        *cloud_factory.http_);
-  }
-};
+nlohmann::json ToJson<AmazonS3::Auth::AuthToken>(
+    AmazonS3::Auth::AuthToken token);
+
+template <>
+AmazonS3::Auth::AuthToken ToAuthToken<AmazonS3::Auth::AuthToken>(
+    const nlohmann::json& json);
+
+template <>
+AmazonS3::Auth::AuthData GetAuthData<AmazonS3>();
 
 }  // namespace util
 

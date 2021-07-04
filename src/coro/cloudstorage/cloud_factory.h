@@ -19,6 +19,11 @@ concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
   { v.GetAuthorizationUrl({}) } -> stdx::convertible_to<std::string>;
 };
 
+template <typename T>
+concept HasAuthHandler = requires {
+  T::Auth::AuthHandler;
+};
+
 template <typename EventLoopT, coro::http::HttpClient HttpT,
           typename ThumbnailGeneratorT, typename MuxerT,
           typename AuthDataT = coro::cloudstorage::util::AuthData>
@@ -52,27 +57,22 @@ class CloudFactory {
         di::bind<class OnAuthTokenUpdatedT>().to<OnTokenUpdated>(
             on_token_updated),
         di::bind<typename CloudProvider::Auth::AuthToken>().to(auth_token),
-        di::bind<typename CloudProvider::Auth::AuthData>().to(
-            GetAuthData<CloudProvider>()),
         di::bind<class coro::cloudstorage::AuthManagerT>()
             .to<AuthManagerT<CloudProvider, OnTokenUpdated>>(),
-        di::bind<http::FetchF>().to(http::FetchF(http_)),
-        di::bind<class coro::cloudstorage::HttpT>().to<HttpT>(http_),
-        di::bind<coro::util::WaitF>().to(coro::util::WaitF(event_loop_)),
-        di::bind<class coro::cloudstorage::EventLoopT>().to<EventLoopT>(
-            event_loop_),
-        di::bind<util::ThumbnailGeneratorF>().to(
-            util::ThumbnailGeneratorF(thumbnail_generator_)),
-        di::bind<class coro::cloudstorage::ThumbnailGeneratorT>()
-            .to<ThumbnailGeneratorT>(thumbnail_generator_));
+        GetConfig<CloudProvider>());
 
     return injector.template create<CloudProvider::template CloudProvider>();
   }
 
   template <typename CloudProvider>
   auto CreateAuthHandler() const {
-    return ::coro::cloudstorage::util::CreateAuthHandler<CloudProvider>{}(
-        *this, auth_data_.template operator()<CloudProvider>());
+    auto injector = GetConfig<CloudProvider>();
+    if constexpr (HasAuthHandler<CloudProvider>) {
+      return injector
+          .template create<CloudProvider::Auth::template AuthHandler>();
+    } else {
+      return injector.template create<util::AuthHandler>();
+    }
   }
 
   template <typename CloudProvider>
@@ -91,8 +91,25 @@ class CloudFactory {
   }
 
  private:
-  template <typename>
-  friend struct ::coro::cloudstorage::util::CreateAuthHandler;
+  template <typename CloudProvider>
+  auto GetConfig() const {
+    namespace di = boost::di;
+
+    return di::make_injector(
+        di::bind<class coro::cloudstorage::CloudProviderT>()
+            .to<CloudProvider>(),
+        di::bind<typename CloudProvider::Auth::AuthData>().to(
+            GetAuthData<CloudProvider>()),
+        di::bind<http::FetchF>().to(http::FetchF(http_)),
+        di::bind<class coro::cloudstorage::HttpT>().to<HttpT>(http_),
+        di::bind<coro::util::WaitF>().to(coro::util::WaitF(event_loop_)),
+        di::bind<class coro::cloudstorage::EventLoopT>().to<EventLoopT>(
+            event_loop_),
+        di::bind<util::ThumbnailGeneratorF>().to(
+            util::ThumbnailGeneratorF(thumbnail_generator_)),
+        di::bind<class coro::cloudstorage::ThumbnailGeneratorT>()
+            .to<ThumbnailGeneratorT>(thumbnail_generator_));
+  }
 
   const EventLoop* event_loop_;
   const Http* http_;

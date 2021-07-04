@@ -788,4 +788,39 @@ auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
   co_return thumbnail;
 }
 
+Mega::Auth::AuthHandler::AuthHandler(coro::util::WaitF wait, http::FetchF fetch,
+                                     Mega::Auth::AuthData auth_data)
+    : wait_(std::move(wait)),
+      fetch_(std::move(fetch)),
+      auth_data_(std::move(auth_data)) {}
+
+Task<std::variant<http::Response<>, Mega::Auth::AuthToken>>
+Mega::Auth::AuthHandler::operator()(coro::http::Request<> request,
+                                    coro::stdx::stop_token stop_token) const {
+  if (request.method == http::Method::kPost) {
+    auto query =
+        http::ParseQuery(co_await http::GetBody(std::move(*request.body)));
+    auto it1 = query.find("email");
+    auto it2 = query.find("password");
+    if (it1 != std::end(query) && it2 != std::end(query)) {
+      auto it3 = query.find("twofactor");
+      Mega::Auth::UserCredential credential = {
+          .email = it1->second,
+          .password = it2->second,
+          .twofactor = it3 != std::end(query) ? std::make_optional(it3->second)
+                                              : std::nullopt};
+      std::string session = co_await Mega::CloudProvider::GetSession(
+          wait_, fetch_, std::move(credential), auth_data_, stop_token);
+      co_return Mega::Auth::AuthToken{.email = it1->second,
+                                      .session = std::move(session)};
+    } else {
+      throw http::HttpException(http::HttpException::kBadRequest);
+    }
+  } else {
+    co_return http::Response<>{
+        .status = 200,
+        .body = http::CreateBody(std::string(util::kAssetsHtmlMegaLoginHtml))};
+  }
+}
+
 }  // namespace coro::cloudstorage

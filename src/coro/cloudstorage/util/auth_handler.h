@@ -1,17 +1,19 @@
 #ifndef CORO_CLOUDSTORAGE_AUTH_HANDLER_H
 #define CORO_CLOUDSTORAGE_AUTH_HANDLER_H
 
+#include <coro/cloudstorage/cloud_provider.h>
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
 
 namespace coro::cloudstorage::util {
 
-template <typename CloudProvider, coro::http::HttpClient HttpClient>
+template <typename CloudProvider = class CloudProviderT,
+          typename HttpClient = class HttpT>
 class AuthHandler {
  public:
-  AuthHandler(const HttpClient& http,
+  AuthHandler(const HttpClient* http,
               typename CloudProvider::Auth::AuthData auth_data)
-      : http_(&http), auth_data_(std::move(auth_data)) {}
+      : http_(http), auth_data_(std::move(auth_data)) {}
 
   Task<typename CloudProvider::Auth::AuthToken> operator()(
       coro::http::Request<> request, coro::stdx::stop_token stop_token) const {
@@ -29,16 +31,6 @@ class AuthHandler {
  private:
   const HttpClient* http_;
   typename CloudProvider::Auth::AuthData auth_data_;
-};
-
-template <typename CloudProvider>
-struct CreateAuthHandler {
-  template <typename CloudFactory>
-  auto operator()(const CloudFactory& cloud_factory,
-                  typename CloudProvider::Auth::AuthData auth_data) const {
-    return AuthHandler<CloudProvider, typename CloudFactory::Http>(
-        *cloud_factory.http_, std::move(auth_data));
-  }
 };
 
 }  // namespace coro::cloudstorage::util

@@ -55,6 +55,8 @@ class WebDAV {
     };
     struct AuthData {};
 
+    class AuthHandler;
+
     static std::string ToAccessToken(const Credential& credential) {
       return http::ToBase64(credential.username + ":" + credential.password);
     }
@@ -356,6 +358,12 @@ class WebDAV::CloudProvider
   WebDAV::Auth::AuthToken auth_token_;
 };
 
+class WebDAV::Auth::AuthHandler {
+ public:
+  Task<std::variant<http::Response<>, WebDAV::Auth::AuthToken>> operator()(
+      http::Request<> request, stdx::stop_token) const;
+};
+
 namespace util {
 
 template <>
@@ -367,21 +375,6 @@ WebDAV::Auth::AuthToken ToAuthToken<WebDAV::Auth::AuthToken>(
 
 template <>
 WebDAV::Auth::AuthData GetAuthData<WebDAV>();
-
-class WebDAVAuthHandler {
- public:
-  Task<std::variant<http::Response<>, WebDAV::Auth::AuthToken>> operator()(
-      http::Request<> request, stdx::stop_token) const;
-};
-
-template <>
-struct CreateAuthHandler<WebDAV> {
-  template <typename CloudFactory>
-  auto operator()(const CloudFactory& cloud_factory,
-                  WebDAV::Auth::AuthData auth_data) const {
-    return WebDAVAuthHandler();
-  }
-};
 
 }  // namespace util
 

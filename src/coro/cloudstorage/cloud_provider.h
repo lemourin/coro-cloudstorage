@@ -18,6 +18,7 @@
 
 namespace coro::cloudstorage {
 
+class CloudProviderT;
 class HttpT;
 class AuthManagerT;
 class EventLoopT;

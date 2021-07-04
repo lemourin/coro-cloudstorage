@@ -55,6 +55,9 @@ struct PCloud {
       std::string state;
     };
 
+    template <typename Http = HttpT>
+    class AuthHandler;
+
     static std::string GetAuthorizationUrl(const AuthData& data) {
       return "https://my.pcloud.com/oauth2/authorize?" +
              http::FormDataToString({{"response_type", "code"},
@@ -359,27 +362,11 @@ class PCloud::CloudProvider
   PCloud::Auth::AuthToken auth_token_;
 };
 
-namespace util {
-template <>
-inline nlohmann::json ToJson<PCloud::Auth::AuthToken>(
-    PCloud::Auth::AuthToken token) {
-  nlohmann::json json;
-  json["access_token"] = std::move(token.access_token);
-  json["hostname"] = token.hostname;
-  return json;
-}
-
-template <>
-inline PCloud::Auth::AuthToken ToAuthToken<PCloud::Auth::AuthToken>(
-    const nlohmann::json& json) {
-  return {.access_token = std::string(json.at("access_token")),
-          .hostname = std::string(json.at("hostname"))};
-}
-template <coro::http::HttpClient HttpClient>
-class PCloudAuthHandler {
+template <typename HttpClient>
+class PCloud::Auth::AuthHandler {
  public:
-  PCloudAuthHandler(const HttpClient& http, PCloud::Auth::AuthData auth_data)
-      : http_(&http), auth_data_(std::move(auth_data)) {}
+  AuthHandler(const HttpClient* http, PCloud::Auth::AuthData auth_data)
+      : http_(http), auth_data_(std::move(auth_data)) {}
 
   Task<PCloud::Auth::AuthToken> operator()(
       coro::http::Request<> request, coro::stdx::stop_token stop_token) const {
@@ -401,14 +388,23 @@ class PCloudAuthHandler {
   PCloud::Auth::AuthData auth_data_;
 };
 
+namespace util {
 template <>
-struct CreateAuthHandler<PCloud> {
-  template <typename CloudFactory>
-  auto operator()(const CloudFactory& cloud_factory,
-                  PCloud::Auth::AuthData auth_data) const {
-    return PCloudAuthHandler(*cloud_factory.http_, std::move(auth_data));
-  }
-};
+inline nlohmann::json ToJson<PCloud::Auth::AuthToken>(
+    PCloud::Auth::AuthToken token) {
+  nlohmann::json json;
+  json["access_token"] = std::move(token.access_token);
+  json["hostname"] = token.hostname;
+  return json;
+}
+
+template <>
+inline PCloud::Auth::AuthToken ToAuthToken<PCloud::Auth::AuthToken>(
+    const nlohmann::json& json) {
+  return {.access_token = std::string(json.at("access_token")),
+          .hostname = std::string(json.at("hostname"))};
+}
+
 }  // namespace util
 
 namespace util {
