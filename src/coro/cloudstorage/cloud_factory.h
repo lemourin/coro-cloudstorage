@@ -20,8 +20,18 @@ concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
 };
 
 template <typename T>
+concept HasAuthHandlerT = requires {
+  typename T::Auth::template AuthHandler<>;
+};
+
+template <typename T>
 concept HasAuthHandler = requires {
-  T::Auth::AuthHandler;
+  typename T::Auth::AuthHandler;
+};
+
+template <typename T>
+concept HasCloudProviderT = requires {
+  typename T::template CloudProvider<>;
 };
 
 template <typename EventLoopT, coro::http::HttpClient HttpT,
@@ -61,13 +71,20 @@ class CloudFactory {
             .to<AuthManagerT<CloudProvider, OnTokenUpdated>>(),
         GetConfig<CloudProvider>());
 
-    return injector.template create<CloudProvider::template CloudProvider>();
+    if constexpr (HasCloudProviderT<CloudProvider>) {
+      return injector.template create<CloudProvider::template CloudProvider>();
+    } else {
+      return injector.template create<typename CloudProvider::CloudProvider>();
+    }
   }
 
   template <typename CloudProvider>
   auto CreateAuthHandler() const {
     auto injector = GetConfig<CloudProvider>();
     if constexpr (HasAuthHandler<CloudProvider>) {
+      return injector
+          .template create<typename CloudProvider::Auth::AuthHandler>();
+    } else if constexpr (HasAuthHandlerT<CloudProvider>) {
       return injector
           .template create<CloudProvider::Auth::template AuthHandler>();
     } else {
