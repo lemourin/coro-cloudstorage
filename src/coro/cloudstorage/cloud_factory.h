@@ -108,7 +108,8 @@ class CloudFactory {
         di::bind<util::ThumbnailGeneratorF>().to(
             util::ThumbnailGeneratorF(thumbnail_generator_)),
         di::bind<class coro::cloudstorage::ThumbnailGeneratorT>()
-            .to<ThumbnailGeneratorT>(thumbnail_generator_));
+            .to<ThumbnailGeneratorT>(thumbnail_generator_),
+        di::bind<class coro::cloudstorage::MuxerT>().to<MuxerT>(muxer_));
   }
 
   const EventLoop* event_loop_;

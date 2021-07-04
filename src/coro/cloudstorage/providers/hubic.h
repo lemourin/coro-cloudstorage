@@ -203,6 +203,7 @@ class HubiC::CloudProvider
     provider_ = CreateOpenStackProvider();
     auth_manager_.refresh_token().current_openstack_token =
         &provider_.auth_token();
+    return *this;
   }
 
   auto GetRoot(stdx::stop_token stop_token) const {
