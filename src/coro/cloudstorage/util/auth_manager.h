@@ -12,17 +12,22 @@
 namespace coro::cloudstorage::util {
 
 template <http::HttpClient HttpT, typename Auth>
-struct RefreshToken {
+class RefreshToken {
+ public:
   using AuthToken = typename Auth::AuthToken;
   using AuthData = typename Auth::AuthData;
 
+  RefreshToken(const HttpT* http, AuthData auth_data)
+      : http_(http), auth_data_(std::move(auth_data)) {}
+
   Task<AuthToken> operator()(AuthToken auth_token,
                              stdx::stop_token stop_token) const {
-    return Auth::RefreshAccessToken(*http, auth_data, auth_token, stop_token);
+    return Auth::RefreshAccessToken(*http_, auth_data_, auth_token, stop_token);
   }
 
-  const HttpT* http;
-  AuthData auth_data;
+ private:
+  const HttpT* http_;
+  AuthData auth_data_;
 };
 
 struct AuthorizeRequest {

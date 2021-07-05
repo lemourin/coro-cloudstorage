@@ -96,7 +96,7 @@ class CloudFactory {
   std::optional<std::string> GetAuthorizationUrl() const {
     if constexpr (HasGetAuthorizationUrl<CloudProvider>) {
       return CloudProvider::Auth::GetAuthorizationUrl(
-          auth_data_.template operator()<CloudProvider>());
+          GetAuthData<CloudProvider>());
     } else {
       return std::nullopt;
     }
