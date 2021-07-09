@@ -55,7 +55,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/providers/mega.cc
     coro/cloudstorage/providers/webdav.cc
     coro/cloudstorage/providers/amazon_s3.cc)
-target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR} ../contrib/)
 if(WIN32)
     target_precompile_headers(coro-cloudstorage
         PUBLIC
