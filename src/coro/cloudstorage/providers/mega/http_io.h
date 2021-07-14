@@ -63,8 +63,19 @@ class HttpIO : public ::mega::HttpIO {
     }
     if (data && size > 0) {
       request.body = std::string(data, size);
+//      std::cerr << "SENDING " << request.url << " " << request.body.value()
+//                << " " << request.body->size() << " "
+//                << "OTHER\n";
+      for (char c : *request.body) {
+        std::cerr << int(c) << " ";
+      }
+      std::cerr << "\n";
     } else if (!r->out->empty()) {
       request.body = *r->out;
+//      std::cerr << "SENDING " << request.url << " " << request.body.value()
+//                << " " << request.body->size() << "\n";
+    } else {
+      // std::cerr << "SENDING " << request.url << "\n";
     }
     coro::stdx::stop_source stop_source;
     try {

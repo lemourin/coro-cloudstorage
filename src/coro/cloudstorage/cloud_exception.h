@@ -7,7 +7,7 @@ namespace coro::cloudstorage {
 
 class CloudException : public std::exception {
  public:
-  enum class Type { kNotFound, kUnauthorized, kUnknown };
+  enum class Type { kNotFound, kUnauthorized, kRetry, kUnknown };
 
   explicit CloudException(std::string message)
       : type_(Type::kUnknown), message_(std::move(message)) {}
@@ -25,6 +25,8 @@ class CloudException : public std::exception {
         return "NotFound";
       case Type::kUnauthorized:
         return "Unauthorized";
+      case Type::kRetry:
+        return "Retry";
       default:
         return "Unknown";
     }

@@ -101,34 +101,32 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       co_return Response{.status = 400};
     }
     auto path = http::DecodeUri(std::move(*path_opt));
-    for (auto& handler : handlers_) {
-      if (path.starts_with(handler.prefix)) {
-        if (auto account_it = std::find_if(accounts_.begin(), accounts_.end(),
-                                           [&](const auto& account) {
-                                             return account.GetId() ==
-                                                    handler.id;
-                                           });
-            account_it != accounts_.end()) {
-          auto stop_token_or = std::make_unique<coro::util::StopTokenOr>(
-              account_it->stop_token(), std::move(stop_token));
-          auto response = co_await std::visit(
-              [request = std::move(request),
-               stop_token = stop_token_or->GetToken()](auto& d) mutable {
-                return d(std::move(request), std::move(stop_token));
-              },
-              handler.handler);
-          co_return Response{.status = response.status,
-                             .headers = std::move(response.headers),
-                             .body = GetResponse(std::move(response.body),
-                                                 std::move(stop_token_or))};
-        } else {
-          co_return co_await std::visit(
-              [request = std::move(request),
-               stop_token = std::move(stop_token)](auto& d) mutable {
-                return d(std::move(request), std::move(stop_token));
-              },
-              handler.handler);
-        }
+    if (auto* handler = ChooseHandler(path)) {
+      if (auto account_it = std::find_if(accounts_.begin(), accounts_.end(),
+                                         [&](const auto& account) {
+                                           return account.GetId() ==
+                                                  handler->id;
+                                         });
+          account_it != accounts_.end()) {
+        auto stop_token_or = std::make_unique<coro::util::StopTokenOr>(
+            account_it->stop_token(), std::move(stop_token));
+        auto response = co_await std::visit(
+            [request = std::move(request),
+             stop_token = stop_token_or->GetToken()](auto& d) mutable {
+              return d(std::move(request), std::move(stop_token));
+            },
+            handler->handler);
+        co_return Response{.status = response.status,
+                           .headers = std::move(response.headers),
+                           .body = GetResponse(std::move(response.body),
+                                               std::move(stop_token_or))};
+      } else {
+        co_return co_await std::visit(
+            [request = std::move(request),
+             stop_token = std::move(stop_token)](auto& d) mutable {
+              return d(std::move(request), std::move(stop_token));
+            },
+            handler->handler);
       }
     }
     if (path.empty() || path == "/") {
@@ -336,6 +334,17 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         ProxyHandler<CloudProviderT<CloudProviders>, ThumbnailGenerator>...>
         handler;
   };
+
+  Handler* ChooseHandler(std::string_view path) {
+    Handler* best = nullptr;
+    for (auto& handler : handlers_) {
+      if (path.starts_with(handler.prefix) &&
+          (!best || handler.prefix.length() > best->prefix.length())) {
+        best = &handler;
+      }
+    }
+    return best;
+  }
 
   template <typename CloudProvider>
   static void AppendAuthUrl(const CloudFactory& factory,

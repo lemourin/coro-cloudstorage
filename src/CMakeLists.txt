@@ -34,6 +34,8 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/providers/mega.h
     coro/cloudstorage/providers/mega/file_system_access.h
     coro/cloudstorage/providers/mega/http_io.h
+    coro/cloudstorage/providers/mega_v2.h
+    coro/cloudstorage/providers/mega_v2.cc
     coro/cloudstorage/providers/box.h
     coro/cloudstorage/providers/yandex_disk.h
     coro/cloudstorage/providers/pcloud.h

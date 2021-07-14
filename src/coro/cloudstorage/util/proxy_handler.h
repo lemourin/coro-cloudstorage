@@ -75,7 +75,7 @@ class ProxyHandler {
           co_return Response{.status = 404};
         case CloudException::Type::kUnauthorized:
           co_return Response{.status = 401};
-        case CloudException::Type::kUnknown:
+        default:
           throw;
       }
     }
