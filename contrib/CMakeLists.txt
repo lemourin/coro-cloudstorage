@@ -6,7 +6,7 @@ if(BUILD_SHARED_LIBS)
     find_package(nlohmann_json 3.9.1 REQUIRED)
     set_target_properties(nlohmann_json::nlohmann_json PROPERTIES IMPORTED_GLOBAL TRUE)
 
-    find_package(fmt 7.1.3 REQUIRED)
+    find_package(fmt 8.0.0 REQUIRED)
     set_target_properties(fmt::fmt PROPERTIES IMPORTED_GLOBAL TRUE)
     add_library(fmt ALIAS fmt::fmt)
 

@@ -15,6 +15,7 @@
 #include <coro/http/http_parse.h>
 #include <coro/util/type_list.h>
 #include <coro/when_all.h>
+#include <fmt/core.h>
 #include <fmt/format.h>
 
 #include <list>
@@ -344,7 +345,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         factory.template GetAuthorizationUrl<CloudProvider>().value_or(
             util::StrCat("/auth/", id));
     stream << fmt::format(
-        kAssetsHtmlProviderEntryHtml, fmt::arg("provider_url", url),
+        fmt::runtime(kAssetsHtmlProviderEntryHtml),
+        fmt::arg("provider_url", url),
         fmt::arg("image_url", util::StrCat("/static/", id, ".png")));
   }
 
@@ -377,7 +379,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           account.provider());
       std::string provider_size;
       result << fmt::format(
-          kAssetsHtmlAccountEntryHtml,
+          fmt::runtime(kAssetsHtmlAccountEntryHtml),
           fmt::arg("provider_icon",
                    util::StrCat("/static/", provider_id, ".png")),
           fmt::arg("provider_url",

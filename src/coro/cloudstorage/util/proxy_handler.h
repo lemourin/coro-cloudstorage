@@ -83,7 +83,7 @@ class ProxyHandler {
 
  private:
   static Generator<std::string> GetDashPlayer(std::string path) {
-    co_yield fmt::format(kAssetsHtmlDashPlayerHtml,
+    co_yield fmt::format(fmt::runtime(kAssetsHtmlDashPlayerHtml),
                          fmt::arg("video_url", path));
   }
 
@@ -351,7 +351,7 @@ class ProxyHandler {
   std::string GetItemEntry(const Item& item, std::string_view path) const {
     std::string file_link = util::StrCat(path, http::EncodeUri(item.name));
     return fmt::format(
-        kAssetsHtmlItemEntryHtml, fmt::arg("name", item.name),
+        fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", item.name),
         fmt::arg("size", SizeToString(CloudProvider::GetSize(item))),
         fmt::arg("timestamp",
                  TimeStampToString(CloudProvider::GetTimestamp(item))),
@@ -376,8 +376,9 @@ class ProxyHandler {
               "<body>"
               "<table class='content-table'>";
     co_yield fmt::format(
-        kAssetsHtmlItemEntryHtml, fmt::arg("name", ".."), fmt::arg("size", ""),
-        fmt::arg("timestamp", ""), fmt::arg("url", GetDirectoryPath(path)),
+        fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", ".."),
+        fmt::arg("size", ""), fmt::arg("timestamp", ""),
+        fmt::arg("url", GetDirectoryPath(path)),
         fmt::arg("thumbnail_url",
                  util::StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
                               "?thumbnail=true")));
