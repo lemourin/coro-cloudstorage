@@ -188,15 +188,13 @@ class Mega::CloudProvider
       : http_(http),
         event_loop_(event_loop),
         thumbnail_generator_(thumbnail_generator),
-        auth_token_(std::move(auth_token)),
-        init_(DoInit{this}) {}
+        auth_token_(std::move(auth_token)) {}
 
   CloudProvider(CloudProvider&& other) noexcept
       : http_(other.http_),
         event_loop_(other.event_loop_),
         thumbnail_generator_(other.thumbnail_generator_),
         auth_token_(std::move(other.auth_token_)),
-        init_(DoInit{this}),
         id_(other.id_),
         skmap_(std::move(other.skmap_)),
         items_(std::move(other.items_)),
@@ -208,7 +206,6 @@ class Mega::CloudProvider
     event_loop_ = other.event_loop_;
     thumbnail_generator_ = other.thumbnail_generator_;
     auth_token_ = std::move(other.auth_token_);
-    init_ = SharedPromise<DoInit>{this};
     id_ = other.id_;
     skmap_ = std::move(other.skmap_);
     items_ = std::move(other.items_);
@@ -220,7 +217,7 @@ class Mega::CloudProvider
   ~CloudProvider() { stop_source_.request_stop(); }
 
   Task<Root> GetRoot(stdx::stop_token stop_token) {
-    co_await init_.Get(std::move(stop_token));
+    co_await LazyInit(std::move(stop_token));
     for (const auto& [key, value] : items_) {
       if (std::holds_alternative<Root>(value)) {
         co_return std::get<Root>(value);
@@ -249,7 +246,7 @@ class Mega::CloudProvider
   Task<PageData> ListDirectoryPage(DirectoryT directory,
                                    std::optional<std::string>,
                                    coro::stdx::stop_token stop_token) {
-    co_await init_.Get(std::move(stop_token));
+    co_await LazyInit(std::move(stop_token));
     if (!items_.contains(directory.id)) {
       throw CloudException(CloudException::Type::kNotFound);
     }
@@ -271,7 +268,7 @@ class Mega::CloudProvider
     }
     int64_t position = range.start;
     int64_t size = range.end.value_or(file.size - 1) - range.start + 1;
-    co_await init_.Get(stop_token);
+    co_await LazyInit(stop_token);
     auto json = co_await NewDownload(file.id, stop_token);
     DecryptAttribute(file.key, FromBase64(std::string(json["at"])));
     std::string url = json["g"];
@@ -567,6 +564,23 @@ class Mega::CloudProvider
     return ToBase64(BlockEncrypt(auth_token_.pkey, ToStringView(key)));
   }
 
+  Task<> LazyInit(stdx::stop_token stop_token) {
+    if (!init_) {
+      init_.emplace(DoInit{this});
+      co_await init_->Get(std::move(stop_token));
+      co_return;
+    }
+    std::exception_ptr exception;
+    try {
+      co_await init_->Get(std::move(stop_token));
+      co_return;
+    } catch (const CloudException&) {
+    } catch (const http::HttpException&) {
+    }
+    init_.emplace(DoInit{this});
+    co_await init_->Get(std::move(stop_token));
+  }
+
   Task<PreloginData> Prelogin(std::string_view email,
                               stdx::stop_token stop_token) {
     nlohmann::json command;
@@ -822,7 +836,7 @@ class Mega::CloudProvider
       auto stop_token = p->stop_source_.get_token();
       auto json = co_await p->GetFileSystem(stop_token);
       if (stop_token.stop_requested()) {
-        co_return;
+        throw InterruptedException();
       }
       for (const auto& entry : json["ok"]) {
         p->skmap_[entry["h"]] = entry["k"];
@@ -840,7 +854,7 @@ class Mega::CloudProvider
   const EventLoop* event_loop_;
   const ThumbnailGenerator* thumbnail_generator_;
   Auth::AuthToken auth_token_;
-  SharedPromise<DoInit> init_;
+  std::optional<SharedPromise<DoInit>> init_;
   int id_ = 0;
   std::unordered_map<std::string, std::string> skmap_;
   std::unordered_map<uint64_t, Item> items_;
