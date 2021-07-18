@@ -100,7 +100,7 @@ T ToItemImpl(std::span<const uint8_t> master_key, const nlohmann::json& json) {
       item_key = item_key_parts[0];
     }
     result.user = item_user;
-    if (item_user == json["u"]) {
+    if (item_user == std::string(json["u"])) {
       result.compkey = BlockTransform(cipher, Mega::FromBase64(item_key));
       if constexpr (std::is_same_v<T, Mega::File>) {
         if (result.compkey.size() < 8) {
@@ -157,7 +157,7 @@ std::vector<uint8_t> Mega::Auth::GetPasswordKey(std::string_view password) {
   for (size_t i = 0; i < 65536; i++) {
     for (size_t j = 0; j < n; j++) {
       memcpy(key.data(), reinterpret_cast<const char*>(d.data()) + 4 * j,
-             std::min(static_cast<size_t>(4), d.size() - 4 * j) *
+             (std::min)(static_cast<size_t>(4), d.size() - 4 * j) *
                  sizeof(uint32_t));
       std::vector<uint8_t> bkey = ToBytes(key);
       CryptoPP::ECB_Mode<CryptoPP::AES>::Encryption cipher;
@@ -216,8 +216,9 @@ auto Mega::Auth::GetLoginWithSaltData(std::string_view password,
   LoginWithSaltData data;
   data.password_key.insert(data.password_key.begin(), output, output + 16);
   data.handle = ToBase64(ToStringView(std::span(output + 16, output + 32)));
+  data.session_key.resize(16);
   for (int i = 0; i < 16; i++) {
-    data.session_key.push_back(rand());
+    data.session_key[i] = static_cast<uint8_t>(rand());
   }
   data.session_key = ToBase64(data.session_key);
   return data;
@@ -316,27 +317,27 @@ uint64_t Mega::DecodeHandle(std::string_view b64) {
 }
 
 std::string Mega::ToHandle(uint64_t id) {
-  std::vector<uint8_t> output(6);
-  output[0] = (id & ((1ULL << 32) - 1)) >> 24;
-  output[1] = (id & ((1ULL << 24) - 1)) >> 16;
-  output[2] = (id & ((1ULL << 16) - 1)) >> 8;
-  output[3] = id & ((1ULL << 8) - 1);
-  output[4] = id >> 56;
-  output[5] = (id & ((1ULL << 56) - 1)) >> 48;
+  std::vector<uint8_t> output{
+      static_cast<uint8_t>((id & ((1ULL << 32) - 1)) >> 24),
+      static_cast<uint8_t>((id & ((1ULL << 24) - 1)) >> 16),
+      static_cast<uint8_t>((id & ((1ULL << 16) - 1)) >> 8),
+      static_cast<uint8_t>(id & ((1ULL << 8) - 1)),
+      static_cast<uint8_t>(id >> 56),
+      static_cast<uint8_t>((id & ((1ULL << 56) - 1)) >> 48)};
   return ToBase64(std::string_view(reinterpret_cast<const char*>(output.data()),
                                    output.size()));
 }
 
 std::string Mega::ToAttributeHandle(uint64_t id) {
-  std::vector<uint8_t> output(8);
-  output[0] = (id & ((1ULL << 32) - 1)) >> 24;
-  output[1] = (id & ((1ULL << 24) - 1)) >> 16;
-  output[2] = (id & ((1ULL << 16) - 1)) >> 8;
-  output[3] = id & ((1ULL << 8) - 1);
-  output[4] = id >> 56;
-  output[5] = (id & ((1ULL << 56) - 1)) >> 48;
-  output[6] = (id & ((1ULL << 48) - 1)) >> 40;
-  output[7] = (id & ((1ULL << 40) - 1)) >> 32;
+  std::vector<uint8_t> output{
+      static_cast<uint8_t>((id & ((1ULL << 32) - 1)) >> 24),
+      static_cast<uint8_t>((id & ((1ULL << 24) - 1)) >> 16),
+      static_cast<uint8_t>((id & ((1ULL << 16) - 1)) >> 8),
+      static_cast<uint8_t>(id & ((1ULL << 8) - 1)),
+      static_cast<uint8_t>(id >> 56),
+      static_cast<uint8_t>((id & ((1ULL << 56) - 1)) >> 48),
+      static_cast<uint8_t>((id & ((1ULL << 48) - 1)) >> 40),
+      static_cast<uint8_t>((id & ((1ULL << 40) - 1)) >> 32)};
   return ToBase64(std::string_view(reinterpret_cast<const char*>(output.data()),
                                    output.size()));
 }
