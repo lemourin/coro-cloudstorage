@@ -1,825 +1,466 @@
 #include "mega.h"
 
-#include <coro/cloudstorage/providers/mega/file_system_access.h>
-#include <coro/cloudstorage/providers/mega/http_io.h>
-#include <coro/http/http_parse.h>
-#include <coro/util/raii_utils.h>
-#include <mega.h>
+#include <cryptopp/aes.h>
+#include <cryptopp/cryptlib.h>
+#include <cryptopp/modes.h>
+#include <cryptopp/pwdbased.h>
+#include <cryptopp/sha.h>
 
-#include <random>
+#include <span>
 
 namespace coro::cloudstorage {
 
 namespace {
 
-using ::coro::cloudstorage::util::AbstractCloudProvider;
-using ::coro::util::AtScopeExit;
+enum ItemType { kFile = 0, kFolder, kRoot, kInbox, kTrash };
 
-constexpr auto kLogin = static_cast<void (::mega::MegaClient::*)(
-    const char*, const uint8_t*, const char*)>(&::mega::MegaClient::login);
-constexpr auto kLoginWithSalt = static_cast<void (::mega::MegaClient::*)(
-    const char*, const char*, std::string*, const char*)>(
-    &::mega::MegaClient::login2);
-constexpr auto kSessionLogin =
-    static_cast<void (::mega::MegaClient::*)(const uint8_t*, int)>(
-        &::mega::MegaClient::login);
-constexpr auto kPutNodes = static_cast<void (::mega::MegaClient::*)(
-    ::mega::handle, ::mega::NewNode*, int, const char*)>(
-    &::mega::MegaClient::putnodes);
+template <typename T1, typename T2>
+T2 GetPaddingSize(T1 size, T2 padding) {
+  return size % padding == 0 ? 0 : padding - (size % padding);
+}
 
-template <typename Type>
-Type ToItemImpl(::mega::Node* node) {
-  Type type;
-  type.name = node->displayname();
-  type.id = node->nodehandle;
-  type.timestamp = node->mtime ? node->mtime : node->ctime;
-  if constexpr (std::is_same_v<Type, Mega::File>) {
-    type.size = node->size;
+std::vector<uint8_t> PadNull(std::string_view data, int q) {
+  std::vector<uint8_t> result(data.size() + GetPaddingSize(data.size(), q));
+  for (size_t i = 0; i < data.size(); i++) {
+    result[i] = data[i];
   }
-  return type;
+  return result;
 }
 
-Mega::Item ToItem(::mega::Node* node) {
-  if (node->type == ::mega::FILENODE) {
-    return ToItemImpl<Mega::File>(node);
-  } else {
-    return ToItemImpl<Mega::Directory>(node);
+std::span<const uint8_t> ReadNumber(std::span<const uint8_t> data) {
+  int length = (data[0] * 256 + data[1] + 7) >> 3;
+  return data.subspan(2, length);
+}
+
+std::tuple<std::span<const uint8_t>, std::span<const uint8_t>,
+           std::span<const uint8_t>>
+GetRSAKey(std::span<const uint8_t> decrypted_pkey) {
+  auto p = ReadNumber(decrypted_pkey);
+  auto q = ReadNumber(std::span(decrypted_pkey).subspan(p.size() + 2));
+  auto d = ReadNumber(
+      std::span(decrypted_pkey).subspan(p.size() + 2 + q.size() + 2));
+  return std::make_tuple(p, q, d);
+}
+
+std::vector<uint8_t> DecryptRSA(std::span<const uint8_t> m_bytes,
+                                std::span<const uint8_t> p_bytes,
+                                std::span<const uint8_t> q_bytes,
+                                std::span<const uint8_t> d_bytes) {
+  CryptoPP::Integer m(m_bytes.data(), m_bytes.size());
+  CryptoPP::Integer p(p_bytes.data(), p_bytes.size());
+  CryptoPP::Integer q(q_bytes.data(), q_bytes.size());
+  CryptoPP::Integer d(d_bytes.data(), d_bytes.size());
+  CryptoPP::Integer n = p * q;
+  auto r = a_exp_b_mod_c(m, d, p * q);
+  std::vector<uint8_t> output(r.ByteCount());
+  r.Encode(output.data(), output.size());
+  return output;
+}
+
+template <typename Cipher>
+std::vector<uint8_t> BlockTransform(Cipher& cipher, std::string_view message) {
+  if (message.size() % 16 != 0) {
+    throw CloudException(
+        util::StrCat("invalid message length ", message.size()));
   }
+  std::vector<uint8_t> decrypted(message.size());
+  for (int i = 0; i < message.size(); i += 16) {
+    cipher.ProcessData(reinterpret_cast<uint8_t*>(decrypted.data() + i),
+                       reinterpret_cast<const uint8_t*>(message.data() + i),
+                       16);
+  }
+  return decrypted;
 }
 
-Generator<std::string> ToGenerator(std::string string) {
-  co_yield std::move(string);
+std::vector<uint8_t> ToIV(std::span<const uint8_t> compkey) {
+  auto a32 = Mega::ToA32(compkey);
+  return Mega::ToBytes(std::vector<uint32_t>{a32[4], a32[5], 0, 0});
 }
 
-const char* GetErrorDescription(::mega::error e) {
-  if (e <= 0) {
-    using namespace ::mega;
-    switch (e) {
-      case API_OK:
-        return "No error";
-      case API_EINTERNAL:
-        return "Internal error";
-      case API_EARGS:
-        return "Invalid argument";
-      case API_EAGAIN:
-        return "Request failed, retrying";
-      case API_ERATELIMIT:
-        return "Rate limit exceeded";
-      case API_EFAILED:
-        return "Failed permanently";
-      case API_ETOOMANY:
-        return "Too many concurrent connections or transfers";
-      case API_ERANGE:
-        return "Out of range";
-      case API_EEXPIRED:
-        return "Expired";
-      case API_ENOENT:
-        return "Not found";
-      case API_ECIRCULAR:
-        return "Circular linkage detected";
-      case API_EACCESS:
-        return "Access denied";
-      case API_EEXIST:
-        return "Already exists";
-      case API_EINCOMPLETE:
-        return "Incomplete";
-      case API_EKEY:
-        return "Invalid key/Decryption error";
-      case API_ESID:
-        return "Bad session ID";
-      case API_EBLOCKED:
-        return "Blocked";
-      case API_EOVERQUOTA:
-        return "Over quota";
-      case API_ETEMPUNAVAIL:
-        return "Temporarily not available";
-      case API_ETOOMANYCONNECTIONS:
-        return "Connection overflow";
-      case API_EWRITE:
-        return "Write error";
-      case API_EREAD:
-        return "Read error";
-      case API_EAPPKEY:
-        return "Invalid application key";
-      case API_ESSL:
-        return "SSL verification failed";
-      case API_EGOINGOVERQUOTA:
-        return "Not enough quota";
-      case API_EMFAREQUIRED:
-        return "Multi-factor authentication required";
-      default:
-        return "Unknown error";
+std::vector<uint8_t> ToMAC(std::span<const uint8_t> compkey) {
+  auto a32 = Mega::ToA32(compkey);
+  return Mega::ToBytes(std::vector<uint32_t>{a32[6], a32[7]});
+}
+
+template <typename T>
+T ToItemImpl(std::span<const uint8_t> master_key, const nlohmann::json& json) {
+  CryptoPP::ECB_Mode<CryptoPP::AES>::Decryption cipher;
+  cipher.SetKey(master_key.data(), master_key.size());
+  T result = {};
+  if constexpr (std::is_same_v<T, Mega::File> ||
+                std::is_same_v<T, Mega::Directory>) {
+    auto args = util::SplitString(std::string(json["k"]), ':');
+    if (args.size() < 2) {
+      throw CloudException("invalid item");
+    }
+    std::string_view item_user = args[0];
+    std::string_view item_key = args[1];
+    auto item_key_parts = util::SplitString(args[1], '/');
+    if (item_key_parts.size() >= 2) {
+      item_key = item_key_parts[0];
+    }
+    result.user = item_user;
+    if (item_user == json["u"]) {
+      result.compkey = BlockTransform(cipher, Mega::FromBase64(item_key));
+      if constexpr (std::is_same_v<T, Mega::File>) {
+        if (result.compkey.size() < 8) {
+          throw CloudException("invalid file key");
+        }
+        result.key = Mega::ToFileKey(result.compkey);
+      } else {
+        result.key = result.compkey;
+      }
+      try {
+        result.attr = Mega::DecryptAttribute(
+            result.key, Mega::FromBase64(std::string(json["a"])));
+        result.name = result.attr.at("n");
+      } catch (const nlohmann::json::exception&) {
+        result.name = "MALFORMED ATTRIBUTES";
+      } catch (const CloudException&) {
+        result.name = "MALFORMED ATTRIBUTES";
+      }
     }
   }
-  return "HTTP Error";
+  if constexpr (std::is_same_v<T, Mega::File>) {
+    result.size = json["s"];
+    if (json.contains("fa")) {
+      std::string fa = json["fa"];
+      if (auto thumbnail = Mega::GetAttribute(fa, 0)) {
+        result.thumbnail_id = Mega::DecodeHandle(*thumbnail);
+      }
+    }
+  }
+  result.timestamp = json["ts"];
+  if constexpr (std::is_same_v<T, Mega::File> ||
+                std::is_same_v<T, Mega::Directory>) {
+    result.parent = Mega::DecodeHandle(std::string(json["p"]));
+  }
+  result.id = Mega::DecodeHandle(std::string(json["h"]));
+  return result;
 }
 
-void Check(::mega::error e) {
-  if (e != ::mega::API_OK) {
-    throw CloudException(GetErrorDescription(e));
-  }
+std::vector<uint32_t> XorBlocks(std::span<const uint32_t> block,
+                                std::span<const uint32_t> cbc_mac) {
+  return {cbc_mac[0] ^ block[0], cbc_mac[1] ^ block[1], cbc_mac[2] ^ block[2],
+          cbc_mac[3] ^ block[3]};
 }
 
 }  // namespace
 
-enum class Mega::CloudProvider::RequestType { kUpload, kOther };
+std::vector<uint8_t> Mega::Auth::GetPasswordKey(std::string_view password) {
+  auto d = ToA32(PadNull(password, 4));
+  auto pkey = ToBytes(
+      std::vector<uint32_t>{0x93C467E3, 0x7DB0C7A4, 0xD1BE3F81, 0x0152CB56});
 
-struct Mega::CloudProvider::DoLogIn {
-  Task<> operator()();
-  Data* d;
-  std::string session;
-};
-
-struct Mega::CloudProvider::ReadData {
-  std::deque<std::string> buffer;
-  std::exception_ptr exception;
-  Promise<void> semaphore;
-  bool paused = true;
-  int size = 0;
-};
-
-struct Mega::CloudProvider::App : ::mega::MegaApp {
-  static constexpr int kBufferSize = 1 << 20;
-
-  void prelogin_result(int version, std::string* email, std::string* salt,
-                       ::mega::error e) final {
-    SetResult(std::make_tuple(version, *email, *salt, e));
-  }
-
-  void login_result(::mega::error e) final { SetResult(e); }
-
-  void fetchnodes_result(::mega::error e) final { SetResult(::mega::error(e)); }
-
-  void account_details(::mega::AccountDetails* details, bool, bool, bool, bool,
-                       bool, bool) final {
-    SetResult(std::move(*details));
-    delete details;
-  }
-
-  void account_details(::mega::AccountDetails* details, ::mega::error e) final {
-    delete details;
-    SetResult(e);
-  }
-
-  void setattr_result(::mega::handle handle, ::mega::error e) final {
-    SetResult(std::make_tuple(handle, e));
-  }
-
-  void putfa_result(::mega::handle, ::mega::fatype, ::mega::error e) final {
-    SetResult(e);
-  }
-
-  void putfa_result(::mega::handle, ::mega::fatype, const char*) final {
-    SetResult(std::monostate());
-  }
-
-  void putnodes_result(::mega::error e, ::mega::targettype_t,
-                       ::mega::NewNode* nodes) final {
-    auto it = request.find(client->restag);
-    if (it == std::end(request)) {
-      return;
-    }
-    if (it->second->type == RequestType::kUpload) {
-      delete[] nodes;
-    }
-    if (e == ::mega::API_OK) {
-      if (!client->nodenotify.empty()) {
-        if (auto n = client->nodenotify.back()) {
-          n->applykey();
-          n->setattr();
-          last_result = n;
-        } else {
-          last_result = ::mega::ErrorCodes::API_EFAILED;
-        }
-      } else {
-        last_result = ::mega::ErrorCodes::API_EFAILED;
-      }
-    } else {
-      last_result = e;
-    }
-    it->second->semaphore.SetValue();
-  }
-
-  void unlink_result(::mega::handle handle, ::mega::error e) final {
-    SetResult(std::make_tuple(handle, e));
-  }
-
-  void rename_result(::mega::handle handle, ::mega::error e) final {
-    SetResult(std::make_tuple(handle, e));
-  }
-
-  ::mega::dstime pread_failure(::mega::error e, int retry, void* user_data,
-                               ::mega::dstime) final {
-    const int kMaxRetryCount = 14;
-    std::cerr << "[MEGA] PREAD FAILURE " << GetErrorDescription(e) << " "
-              << retry << "\n";
-    auto it = read_data.find(reinterpret_cast<intptr_t>(user_data));
-    if (it == std::end(read_data)) {
-      return ~static_cast<::mega::dstime>(0);
-    }
-    if (retry >= kMaxRetryCount) {
-      it->second->exception =
-          std::make_exception_ptr(CloudException(GetErrorDescription(e)));
-      it->second->semaphore.SetValue();
-      return ~static_cast<::mega::dstime>(0);
-    } else {
-      coro::RunTask(Retry(1 << (retry / 2)));
-      return 1 << (retry / 2);
+  size_t n = (d.size() + 3) / 4;
+  std::vector<uint32_t> key(4);
+  for (size_t i = 0; i < 65536; i++) {
+    for (size_t j = 0; j < n; j++) {
+      memcpy(key.data(), reinterpret_cast<const char*>(d.data()) + 4 * j,
+             std::min(static_cast<size_t>(4), d.size() - 4 * j) *
+                 sizeof(uint32_t));
+      std::vector<uint8_t> bkey = ToBytes(key);
+      CryptoPP::ECB_Mode<CryptoPP::AES>::Encryption cipher;
+      cipher.SetKey(bkey.data(), bkey.size());
+      cipher.ProcessData(pkey.data(), pkey.data(), pkey.size());
     }
   }
+  return pkey;
+}
 
-  bool pread_data(uint8_t* data, m_off_t length, m_off_t, m_off_t, m_off_t,
-                  void* user_data) final {
-    auto it = read_data.find(reinterpret_cast<intptr_t>(user_data));
-    if (it == std::end(read_data)) {
-      return false;
+std::string Mega::Auth::GetHash(std::string_view text,
+                                const std::vector<uint8_t>& key) {
+  auto d = ToA32(PadNull(text, 4));
+  std::vector<uint32_t> h(4);
+  for (size_t i = 0; i < d.size(); i++) {
+    h[i % 4] ^= d[i];
+  }
+  auto hb = ToBytes(h);
+  CryptoPP::ECB_Mode<CryptoPP::AES>::Encryption cipher;
+  cipher.SetKey(key.data(), key.size());
+  for (int i = 0; i < 16384; i++) {
+    cipher.ProcessData(hb.data(), hb.data(), hb.size());
+  }
+  auto ha = ToA32(PadNull(ToStringView(hb), 4));
+  return http::ToBase64(
+      ToStringView(ToBytes(std::vector<uint32_t>{ha[0], ha[2]})));
+}
+
+auto Mega::Auth::DecryptSessionId(const std::vector<uint8_t>& passkey,
+                                  std::string_view key, std::string_view privk,
+                                  std::string_view csid) -> SessionData {
+  CryptoPP::ECB_Mode<CryptoPP::AES>::Decryption cipher;
+  cipher.SetKey(passkey.data(), passkey.size());
+  std::vector<uint8_t> decrypted_key(key.size());
+  cipher.ProcessData(decrypted_key.data(),
+                     reinterpret_cast<const uint8_t*>(key.data()), key.size());
+  cipher.SetKey(decrypted_key.data(), decrypted_key.size());
+  std::vector<uint8_t> decrypted_pkey = BlockTransform(cipher, privk);
+  auto m = ReadNumber(ToBytes(csid));
+  auto [p, q, d] = GetRSAKey(decrypted_pkey);
+  return {
+      .pkey = std::move(decrypted_key),
+      .session_id = ToBase64(ToStringView(
+          std::span<const uint8_t>(DecryptRSA(m, p, q, d)).subspan(0, 43)))};
+}
+
+auto Mega::Auth::GetLoginWithSaltData(std::string_view password,
+                                      std::string_view salt)
+    -> LoginWithSaltData {
+  CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA512> pbkdf;
+  uint8_t output[32] = {};
+  pbkdf.DeriveKey(
+      output, sizeof(output), 0,
+      reinterpret_cast<const uint8_t*>(password.data()), password.size(),
+      reinterpret_cast<const uint8_t*>(salt.data()), salt.size(), 100000);
+  LoginWithSaltData data;
+  data.password_key.insert(data.password_key.begin(), output, output + 16);
+  data.handle = ToBase64(ToStringView(std::span(output + 16, output + 32)));
+  for (int i = 0; i < 16; i++) {
+    data.session_key.push_back(rand());
+  }
+  data.session_key = ToBase64(data.session_key);
+  return data;
+}
+
+std::optional<std::string_view> Mega::GetAttribute(std::string_view attr,
+                                                   int index) {
+  auto search = util::StrCat(":", index, "*");
+  if (auto it = attr.find(search); it != std::string_view::npos) {
+    it += search.length();
+    auto start = it;
+    while (it < attr.length() && attr[it] != '/') {
+      it++;
     }
-    it->second->buffer.emplace_back(reinterpret_cast<const char*>(data),
-                                    static_cast<size_t>(length));
-    it->second->size += static_cast<int>(length);
-    if (it->second->size >= kBufferSize) {
-      it->second->paused = true;
-      it->second->semaphore.SetValue();
-      return false;
-    }
-    it->second->semaphore.SetValue();
-    return true;
+    return attr.substr(start, it - start);
   }
+  return std::nullopt;
+}
 
-  void transfer_failed(::mega::Transfer* d, ::mega::error e,
-                       ::mega::dstime time) final {
-    client->restag = d->tag;
-    SetResult(e);
+std::vector<uint32_t> Mega::ToA32(std::span<const uint8_t> bytes) {
+  std::vector<uint32_t> result(bytes.size() / 4);
+  for (size_t i = 0; 4 * i + 3 < bytes.size(); i++) {
+    result[i] = (bytes[4 * i] << 24) | (bytes[4 * i + 1] << 16) |
+                (bytes[4 * i + 2] << 8) | bytes[4 * i + 3];
   }
+  return result;
+}
 
-  void notify_retry(::mega::dstime time, ::mega::retryreason_t reason) final {
-    coro::RunTask(Retry(time, /*abortbackoff=*/false));
+std::vector<uint8_t> Mega::ToBytes(std::span<const uint32_t> span) {
+  std::vector<uint8_t> result(span.size() * 4, 0);
+  for (size_t i = 0; i < span.size(); i++) {
+    result[4 * i] = span[i] >> 24;
+    result[4 * i + 1] = (span[i] & ((1u << 24) - 1)) >> 16;
+    result[4 * i + 2] = (span[i] & ((1u << 16) - 1)) >> 8;
+    result[4 * i + 3] = (span[i] & ((1u << 8) - 1));
   }
+  return result;
+}
 
-  void fa_complete(::mega::handle, ::mega::fatype, const char* data,
-                   uint32_t size) final {
-    SetResult(std::string(data, size));
+std::string_view Mega::ToStringView(std::span<const uint8_t> d) {
+  return std::string_view(reinterpret_cast<const char*>(d.data()), d.size());
+}
+
+std::span<const uint8_t> Mega::ToBytes(std::string_view d) {
+  return std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(d.data()),
+                                  d.size());
+}
+
+nlohmann::json Mega::DecryptAttribute(std::span<const uint8_t> key,
+                                      std::string_view input) {
+  auto decrypted = DecodeAttributeContent(key, input);
+  if (!decrypted.starts_with("MEGA")) {
+    throw CloudException("attribute decryption error");
   }
+  return nlohmann::json::parse(decrypted.substr(4).c_str());
+}
 
-  int fa_failed(::mega::handle, ::mega::fatype, int retry_count,
-                ::mega::error e) final {
-    if (retry_count < 7) {
-      SetResult(e);
-      return 1;
-    } else {
-      return 0;
-    }
-  }
+std::string Mega::EncryptAttribute(std::span<const uint8_t> key,
+                                   const nlohmann::json& json) {
+  return EncodeAttributeContent(key, util::StrCat("MEGA", json));
+}
 
-  Task<> Retry(::mega::dstime time, bool abortbackoff = true);
-
-  template <typename T>
-  void SetResult(T result) {
-    auto it = request.find(client->restag);
-    if (it != std::end(request)) {
-      last_result = std::move(result);
-      it->second->semaphore.SetValue();
-    }
-  }
-
-  explicit App(Data* d) : d(d) {}
-
-  struct Request {
-    Promise<void> semaphore;
-    RequestType type;
-  };
-
-  std::unordered_map<int, Request*> request;
-  std::any last_result;
-  std::unordered_map<intptr_t, std::shared_ptr<ReadData>> read_data;
-  Data* d;
-};
-
-struct Mega::CloudProvider::Data {
-  stdx::stop_source stop_source;
-  coro::util::WaitF wait_;
-  App mega_app;
-  mega::HttpIO http_io;
-  mega::FileSystemAccess fs;
-  ::mega::MegaClient mega_client;
-  bool exec_pending = false;
-  bool recursive_exec = false;
-  std::optional<SharedPromise<DoLogIn>> current_login;
-  std::default_random_engine random_engine;
-
-  void OnEvent();
-
-  template <auto Method, RequestType Type, typename... Args>
-  Task<std::any> Do(stdx::stop_token stop_token, Args... args) {
-    auto tag = mega_client.nextreqtag();
-    if constexpr (std::is_same_v<bool,
-                                 decltype((mega_client.*Method)(args...))>) {
-      if (!(mega_client.*Method)(args...)) {
-        throw CloudException("unknown mega error");
-      }
-    } else if constexpr (std::is_same_v<::mega::error,
-                                        decltype((mega_client.*
-                                                  Method)(args...))>) {
-      if (auto error = (mega_client.*Method)(args...);
-          error != ::mega::error::API_OK) {
-        throw CloudException(GetErrorDescription(error));
-      }
-    } else {
-      (mega_client.*Method)(args...);
-    }
-    OnEvent();
-    App::Request request{.type = Type};
-    mega_app.request.insert({tag, &request});
-    auto scope_guard = AtScopeExit([&] { mega_app.request.erase(tag); });
-    stdx::stop_callback callback(stop_token, [&] {
-      request.semaphore.SetException(InterruptedException());
-    });
-    co_await request.semaphore;
-    auto result = std::move(mega_app.last_result);
-    co_await wait_(0, std::move(stop_token));
-    co_return result;
-  }
-
-  Task<std::string> GetSession(UserCredential credentials,
-                               stdx::stop_token stop_token);
-  Task<> EnsureLoggedIn(std::string session, stdx::stop_token);
-  Task<> LogIn(std::string session);
-
-  ::mega::Node* GetNode(::mega::handle handle) {
-    auto* node = mega_client.nodebyhandle(handle);
-    if (!node) {
-      throw CloudException(CloudException::Type::kNotFound);
-    } else {
-      return node;
+std::string Mega::ToBase64(std::string_view input) {
+  auto output = http::ToBase64(input);
+  for (char& c : output) {
+    if (c == '+') {
+      c = '-';
+    } else if (c == '/') {
+      c = '_';
     }
   }
-
-  Data(coro::util::WaitF wait, http::FetchF fetch, const AuthData& auth_data)
-      : stop_source(),
-        wait_(std::move(wait)),
-        mega_app(this),
-        http_io(std::move(fetch), [this] { OnEvent(); }),
-        fs([this] { OnEvent(); }),
-        mega_client(&mega_app, /*waiter=*/nullptr, /*http_io=*/&http_io,
-                    /*fs=*/&fs, /*db_access=*/nullptr,
-                    /*gfx_proc=*/nullptr, auth_data.api_key.c_str(),
-                    auth_data.app_name.c_str()),
-        random_engine(std::random_device()()) {}
-
-  ~Data() { stop_source.request_stop(); }
-};
-
-Task<> Mega::CloudProvider::App::Retry(::mega::dstime time, bool abortbackoff) {
-  std::cerr << "[MEGA] RETRYING IN " << time * 100 << "\n";
-  co_await d->wait_(100 * time, d->stop_source.get_token());
-  if (abortbackoff) {
-    d->mega_client.abortbackoff();
+  while (!output.empty() && output.back() == '=') {
+    output.pop_back();
   }
-  std::cerr << "[MEGA] RETRYING NOW\n";
-  d->OnEvent();
+  return output;
 }
 
-Task<> Mega::CloudProvider::DoLogIn::operator()() {
-  co_await d->LogIn(std::move(session));
-}
-
-auto Mega::CloudProvider::CreateDataImpl(coro::util::WaitF wait,
-                                         http::FetchF fetch,
-                                         const AuthData& auth_data)
-    -> std::unique_ptr<Data, DataDeleter> {
-  return std::unique_ptr<Data, DataDeleter>(
-      new Data(std::move(wait), std::move(fetch), auth_data));
-}
-
-Task<std::string> Mega::CloudProvider::GetSession(Data* data,
-                                                  UserCredential credential,
-                                                  stdx::stop_token stop_token) {
-  co_return co_await data->GetSession(std::move(credential),
-                                      std::move(stop_token));
-}
-
-void Mega::CloudProvider::DataDeleter::operator()(Data* d) const { delete d; }
-
-Task<std::string> Mega::CloudProvider::Data::GetSession(
-    UserCredential credentials, stdx::stop_token stop_token) {
-  auto [version, email, salt, prelogin_error] =
-      std::any_cast<std::tuple<int, std::string, std::string, ::mega::error>&&>(
-          co_await Do<&::mega::MegaClient::prelogin, RequestType::kOther>(
-              stop_token, credentials.email.c_str()));
-  Check(prelogin_error);
-  auto twofactor_ptr =
-      credentials.twofactor ? credentials.twofactor->c_str() : nullptr;
-  if (version == 1) {
-    const int kHashLength = 128;
-    uint8_t hashed_password[kHashLength];
-    Check(mega_client.pw_key(credentials.password.c_str(), hashed_password));
-    auto login_error =
-        std::any_cast<::mega::error>(co_await Do<kLogin, RequestType::kOther>(
-            std::move(stop_token), credentials.email.c_str(), hashed_password,
-            twofactor_ptr));
-    if (login_error != ::mega::API_OK) {
-      throw CloudException(CloudException::Type::kUnauthorized);
-    }
-  } else if (version == 2) {
-    auto login_error = std::any_cast<::mega::error>(
-        co_await Do<kLoginWithSalt, RequestType::kOther>(
-            std::move(stop_token), credentials.email.c_str(),
-            credentials.password.c_str(), &salt, twofactor_ptr));
-    if (login_error != ::mega::API_OK) {
-      throw CloudException(CloudException::Type::kUnauthorized);
-    }
-  } else {
-    throw CloudException("Unsupported MEGA login version.");
-  }
-
-  const int kHashBufferSize = 128;
-  uint8_t buffer[kHashBufferSize];
-  int length = mega_client.dumpsession(buffer, kHashBufferSize);
-  co_return std::string(reinterpret_cast<const char*>(buffer), length);
-}
-
-Task<> Mega::CloudProvider::Data::LogIn(std::string session) {
-  auto stop_token = stop_source.get_token();
-  auto login_error = std::any_cast<::mega::error>(
-      co_await Do<kSessionLogin, RequestType::kOther>(
-          stop_token, reinterpret_cast<const uint8_t*>(session.c_str()),
-          static_cast<int>(session.size())));
-  if (login_error != ::mega::API_OK) {
-    throw CloudException(CloudException::Type::kUnauthorized);
-  }
-  auto fetch_error = std::any_cast<::mega::error>(
-      co_await Do<&::mega::MegaClient::fetchnodes, RequestType::kOther>(
-          stop_token, /*nocache=*/false));
-  Check(fetch_error);
-}
-
-Task<> Mega::CloudProvider::Data::EnsureLoggedIn(std::string session,
-                                                 stdx::stop_token stop_token) {
-  if (!current_login) {
-    current_login.emplace(DoLogIn{.d = this, .session = std::move(session)});
-  }
-  co_await current_login->Get(std::move(stop_token));
-}
-
-void Mega::CloudProvider::Data::OnEvent() {
-  if (exec_pending) {
-    recursive_exec = true;
-    return;
-  }
-  exec_pending = true;
-  mega_client.exec();
-  exec_pending = false;
-  if (recursive_exec) {
-    recursive_exec = false;
-    OnEvent();
-  }
-}
-
-Mega::CloudProvider::CloudProvider(
-    coro::util::WaitF wait, http::FetchF fetch,
-    util::ThumbnailGeneratorF thumbnail_generator, AuthToken auth_token,
-    AuthData auth_data)
-    : auth_token_(std::move(auth_token)),
-      thumbnail_generator_(
-          [thumbnail_generator = std::move(thumbnail_generator)](
-              CloudProvider* provider, File file,
-              util::ThumbnailOptions options,
-              stdx::stop_token stop_token) -> Task<std::string> {
-            using Impl =
-                util::AbstractCloudProvider::CloudProviderImpl<CloudProvider>;
-            Impl p(provider);
-            co_return co_await thumbnail_generator(
-                &p, Impl::Convert<util::AbstractCloudProvider::File>(file),
-                options, std::move(stop_token));
-          }),
-      d_(CreateDataImpl(std::move(wait), std::move(fetch),
-                        std::move(auth_data))) {}
-
-Task<> Mega::CloudProvider::SetThumbnail(const File& file,
-                                         std::string thumbnail,
-                                         stdx::stop_token stop_token) {
-  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
-  auto node = d_->GetNode(file.id);
-  std::any result =
-      co_await d_->Do<&::mega::MegaClient::putfa, RequestType::kOther>(
-          stop_token, node->nodehandle, ::mega::GfxProc::THUMBNAIL,
-          node->nodecipher(), new std::string(std::move(thumbnail)),
-          /*checkAccess=*/false);
-  if (result.type() == typeid(::mega::error)) {
-    throw CloudException(
-        GetErrorDescription(std::any_cast<::mega::error>(result)));
-  }
-}
-
-Task<Mega::PageData> Mega::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string>,
-    coro::stdx::stop_token stop_token) {
-  co_await d_->EnsureLoggedIn(auth_token_.session, std::move(stop_token));
-  PageData result;
-  for (auto c : d_->GetNode(directory.id)->children) {
-    result.items.emplace_back(ToItem(c));
-  }
-  co_return result;
-}
-
-Task<Mega::Directory> Mega::CloudProvider::GetRoot(
-    coro::stdx::stop_token stop_token) {
-  co_await d_->EnsureLoggedIn(auth_token_.session, std::move(stop_token));
-  co_return Directory{{.id = d_->mega_client.rootnodes[0]}};
-}
-
-Task<Mega::Item> Mega::CloudProvider::RenameItem(
-    Item item, std::string new_name, coro::stdx::stop_token stop_token) {
-  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
-  auto node = d_->GetNode(
-      std::visit([](const auto& d) { return std::cref(d.id); }, item));
-  node->attrs.map['n'] = std::move(new_name);
-  std::any result =
-      co_await d_->Do<&::mega::MegaClient::setattr, RequestType::kOther>(
-          std::move(stop_token), node, nullptr);
-  const auto& [handle, error] = std::move(
-      std::any_cast<std::tuple<::mega::handle, ::mega::error>>(result));
-  Check(error);
-  co_return ToItem(d_->GetNode(handle));
-}
-
-Task<Mega::Item> Mega::CloudProvider::MoveItem(
-    Item source, Directory destination, coro::stdx::stop_token stop_token) {
-  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
-  auto source_node = d_->GetNode(
-      std::visit([](const auto& d) { return std::cref(d.id); }, source));
-  auto destination_node = d_->GetNode(destination.id);
-  std::any result =
-      co_await d_->Do<&::mega::MegaClient::rename, RequestType::kOther>(
-          std::move(stop_token), source_node, destination_node,
-          ::mega::SYNCDEL_NONE, ::mega::UNDEF);
-  const auto& [handle, error] =
-      std::any_cast<std::tuple<::mega::handle, ::mega::error>&&>(
-          std::move(result));
-  Check(error);
-  co_return ToItem(d_->GetNode(handle));
-}
-
-Task<Mega::Directory> Mega::CloudProvider::CreateDirectory(
-    Directory parent, std::string name, coro::stdx::stop_token stop_token) {
-  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
-
-  ::mega::NewNode folder;
-  folder.source = ::mega::NEW_NODE;
-  folder.type = ::mega::FOLDERNODE;
-  folder.nodehandle = 0;
-  folder.parenthandle = ::mega::UNDEF;
-
-  ::mega::SymmCipher key;
-  uint8_t buf[::mega::FOLDERNODEKEYLENGTH];
-  std::uniform_int_distribution<uint32_t> dist(0, UINT8_MAX);
-  for (int i = 0; i < ::mega::FOLDERNODEKEYLENGTH; i++)
-    buf[i] = static_cast<uint8_t>(dist(d_->random_engine));
-  folder.nodekey.assign(reinterpret_cast<char*>(buf),
-                        ::mega::FOLDERNODEKEYLENGTH);
-  key.setkey(buf);
-
-  ::mega::AttrMap attrs;
-  attrs.map['n'] = name;
-  std::string attr_str;
-  attrs.getjson(&attr_str);
-  folder.attrstring = new std::string;
-  d_->mega_client.makeattr(&key, folder.attrstring, attr_str.c_str());
-
-  std::any result = co_await d_->Do<kPutNodes, RequestType::kOther>(
-      stop_token, parent.id, &folder, 1, nullptr);
-  if (result.type() == typeid(::mega::error)) {
-    throw CloudException(
-        GetErrorDescription(std::any_cast<::mega::error>(result)));
-  }
-  co_return std::get<Directory>(ToItem(std::any_cast<::mega::Node*>(result)));
-}
-
-Task<> Mega::CloudProvider::RemoveItem(Item item,
-                                       coro::stdx::stop_token stop_token) {
-  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
-
-  std::any result =
-      co_await d_->Do<&::mega::MegaClient::unlink, RequestType::kOther>(
-          stop_token,
-          d_->GetNode(std::visit([](const auto& d) { return d.id; }, item)),
-          false);
-  auto [handle, error] =
-      std::any_cast<std::tuple<::mega::handle, ::mega::error>&&>(
-          std::move(result));
-  Check(error);
-}
-
-Task<Mega::GeneralData> Mega::CloudProvider::GetGeneralData(
-    coro::stdx::stop_token stop_token) {
-  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
-  std::any result =
-      co_await d_
-          ->Do<&::mega::MegaClient::getaccountdetails, RequestType::kOther>(
-              stop_token, new ::mega::AccountDetails, true, false, false, false,
-              false, false);
-  if (result.type() == typeid(::mega::error)) {
-    throw CloudException(
-        GetErrorDescription(std::any_cast<::mega::error>(result)));
-  }
-  const auto& account_details =
-      std::any_cast<const ::mega::AccountDetails&>(result);
-  co_return GeneralData{.username = auth_token_.email,
-                        .space_used = account_details.storage_used,
-                        .space_total = account_details.storage_max};
-}
-
-Generator<std::string> Mega::CloudProvider::GetFileContent(
-    File file, http::Range range, coro::stdx::stop_token stop_token) {
-  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
-  auto node = d_->GetNode(file.id);
-  intptr_t tag = d_->mega_client.nextreqtag();
-  auto size = range.end.value_or(node->size - 1) - range.start + 1;
-  auto data = std::make_shared<ReadData>();
-  d_->mega_app.read_data.insert({tag, data});
-  auto guard = AtScopeExit([&] { d_->mega_app.read_data.erase(tag); });
-
-  stdx::stop_callback callback(stop_token, [data] {
-    data->semaphore.SetException(InterruptedException());
-  });
-  while (!stop_token.stop_requested() && size > 0) {
-    if (data->paused && 2 * data->size < App::kBufferSize) {
-      data->paused = false;
-      d_->mega_client.pread(node, range.start + data->size, size - data->size,
-                            reinterpret_cast<void*>(tag));
-      d_->OnEvent();
-    }
-    if (!data->buffer.empty()) {
-      auto chunk = std::move(*data->buffer.begin());
-      data->buffer.pop_front();
-      data->size -= static_cast<int>(chunk.size());
-      size -= chunk.size();
-      range.start += chunk.size();
-      co_yield chunk;
-    } else if (!data->paused) {
-      co_await data->semaphore;
-      if (data->exception) {
-        co_await d_->wait_(0, stop_token);
-        std::rethrow_exception(data->exception);
-      }
-      data->semaphore = Promise<void>();
-      co_await d_->wait_(0, stop_token);
+std::string Mega::FromBase64(std::string_view input_sv) {
+  std::string input(input_sv);
+  for (char& c : input) {
+    if (c == '-') {
+      c = '+';
+    } else if (c == '_') {
+      c = '/';
     }
   }
+  return http::FromBase64(input);
 }
 
-auto Mega::CloudProvider::CreateFile(Directory parent, std::string_view name,
-                                     FileContent content,
-                                     stdx::stop_token stop_token)
-    -> Task<File> {
-  if (content.size < 0) {
-    throw CloudException("negative size");
+uint64_t Mega::DecodeHandle(std::string_view b64) {
+  auto d = ToA32(PadNull(FromBase64(b64), 8));
+  if (d.size() != 2) {
+    throw CloudException("invalid handle");
   }
-  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
+  return d[0] | (static_cast<uint64_t>(d[1]) << 32);
+}
 
-  class FileUpload : public ::mega::File {
-   public:
-    explicit FileUpload(App* app) : app_(app), tag_(app_->client->restag + 1) {}
+std::string Mega::ToHandle(uint64_t id) {
+  std::vector<uint8_t> output(6);
+  output[0] = (id & ((1ULL << 32) - 1)) >> 24;
+  output[1] = (id & ((1ULL << 24) - 1)) >> 16;
+  output[2] = (id & ((1ULL << 16) - 1)) >> 8;
+  output[3] = id & ((1ULL << 8) - 1);
+  output[4] = id >> 56;
+  output[5] = (id & ((1ULL << 56) - 1)) >> 48;
+  return ToBase64(std::string_view(reinterpret_cast<const char*>(output.data()),
+                                   output.size()));
+}
 
-    void terminated() final {
-      app_->client->restag = tag_;
-      app_->SetResult(::mega::error::API_EINTERNAL);
+std::string Mega::ToAttributeHandle(uint64_t id) {
+  std::vector<uint8_t> output(8);
+  output[0] = (id & ((1ULL << 32) - 1)) >> 24;
+  output[1] = (id & ((1ULL << 24) - 1)) >> 16;
+  output[2] = (id & ((1ULL << 16) - 1)) >> 8;
+  output[3] = id & ((1ULL << 8) - 1);
+  output[4] = id >> 56;
+  output[5] = (id & ((1ULL << 56) - 1)) >> 48;
+  output[6] = (id & ((1ULL << 48) - 1)) >> 40;
+  output[7] = (id & ((1ULL << 40) - 1)) >> 32;
+  return ToBase64(std::string_view(reinterpret_cast<const char*>(output.data()),
+                                   output.size()));
+}
+
+std::string Mega::DecodeChunk(std::span<const uint8_t> key,
+                              std::span<const uint8_t> compkey,
+                              int64_t position, std::string_view input) {
+  std::vector<uint8_t> civ = [&] {
+    auto iv = ToA32(ToIV(compkey));
+    iv[2] = uint32_t(uint64_t(position) / 0x1000000000);
+    iv[3] = uint32_t(uint64_t(position) / 0x10);
+    return ToBytes(iv);
+  }();
+  CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption cipher;
+  cipher.SetKeyWithIV(key.data(), key.size(), civ.data(), civ.size());
+  std::string padded_input = util::StrCat(std::string(position % 16, 0), input);
+  std::string decrypted(padded_input.size(), 0);
+  cipher.ProcessData(reinterpret_cast<uint8_t*>(decrypted.data()),
+                     reinterpret_cast<const uint8_t*>(padded_input.data()),
+                     padded_input.size());
+  return decrypted.substr(position % 16);
+}
+
+std::string Mega::DecodeAttributeContent(std::span<const uint8_t> key,
+                                         std::string_view encoded) {
+  uint8_t iv[16] = {};
+  CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption cipher;
+  cipher.SetKeyWithIV(key.data(), key.size(), iv, sizeof(iv));
+  std::string decrypted(encoded.size(), 0);
+  cipher.ProcessData(reinterpret_cast<uint8_t*>(decrypted.data()),
+                     reinterpret_cast<const uint8_t*>(encoded.data()),
+                     encoded.size());
+  return decrypted;
+}
+
+std::string Mega::EncodeChunk(std::span<const uint8_t> key,
+                              std::span<const uint8_t> compkey,
+                              int64_t position, std::string_view input) {
+  std::vector<uint8_t> civ = [&] {
+    auto iv = ToA32(ToIV(compkey));
+    iv[2] = uint32_t(uint64_t(position) / 0x1000000000);
+    iv[3] = uint32_t(uint64_t(position) / 0x10);
+    return ToBytes(iv);
+  }();
+  CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption cipher;
+  cipher.SetKeyWithIV(key.data(), key.size(), civ.data(), civ.size());
+  std::string padded_input = util::StrCat(std::string(position % 16, 0), input);
+  std::string encrypted(padded_input.size(), 0);
+  cipher.ProcessData(reinterpret_cast<uint8_t*>(encrypted.data()),
+                     reinterpret_cast<const uint8_t*>(padded_input.data()),
+                     padded_input.size());
+  return encrypted.substr(position % 16);
+}
+
+std::vector<uint8_t> Mega::ToFileKey(std::span<const uint8_t> compkey) {
+  auto a32 = ToA32(compkey);
+  return ToBytes(XorBlocks(std::span<const uint32_t>(a32).subspan(0, 4),
+                           std::span<const uint32_t>(a32).subspan(4, 4)));
+}
+
+std::string Mega::EncodeAttributeContent(std::span<const uint8_t> key,
+                                         std::string_view content) {
+  uint8_t iv[16] = {};
+  CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption cipher;
+  cipher.SetKeyWithIV(key.data(), key.size(), iv, sizeof(iv));
+  std::string padded_input =
+      util::StrCat(content, std::string(GetPaddingSize(content.size(), 16), 0));
+  std::string encrypted(padded_input.size(), 0);
+  cipher.ProcessData(reinterpret_cast<uint8_t*>(encrypted.data()),
+                     reinterpret_cast<const uint8_t*>(padded_input.data()),
+                     padded_input.size());
+  return encrypted;
+}
+
+std::string Mega::BlockEncrypt(std::span<const uint8_t> key,
+                               std::string_view message) {
+  CryptoPP::ECB_Mode<CryptoPP::AES>::Encryption cipher;
+  cipher.SetKey(key.data(), key.size());
+  return std::string(ToStringView(BlockTransform(cipher, message)));
+}
+
+Generator<std::string> Mega::GetEncodedStream(
+    std::span<const uint8_t> key, std::span<const uint8_t> compkey,
+    Generator<std::string> decoded, std::vector<uint32_t>& cbc_mac_a32) {
+  uint8_t iv[16] = {};
+  CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption cipher;
+  cipher.SetKeyWithIV(key.data(), key.size(), iv, sizeof(iv));
+  int64_t position = 0;
+  std::string carry_over;
+  std::vector<uint8_t> cbc_mac = ToBytes(cbc_mac_a32);
+  FOR_CO_AWAIT(std::string & chunk, decoded) {
+    co_yield EncodeChunk(key, compkey, position, chunk);
+    position += chunk.size();
+    chunk = util::StrCat(carry_over, chunk);
+    for (int i = 0; i + 16 < chunk.size(); i += 16) {
+      cipher.ProcessData(cbc_mac.data(),
+                         reinterpret_cast<const uint8_t*>(chunk.data() + i),
+                         16);
     }
-
-   private:
-    App* app_;
-    int tag_;
-  } file(&d_->mega_app);
-
-  file.name = name;
-  file.h = parent.id;
-  file.localname = std::to_string(reinterpret_cast<intptr_t>(&content));
-  file.size = content.size;
-  std::any result =
-      co_await d_->Do<&::mega::MegaClient::startxfer, RequestType::kUpload>(
-          stop_token, ::mega::PUT, &file, /*skipdupes=*/false,
-          /*startfirst=*/false);
-  if (result.type() == typeid(::mega::error)) {
-    throw CloudException(
-        GetErrorDescription(std::any_cast<::mega::error>(result)));
+    carry_over = chunk.substr(chunk.size() - (chunk.size() % 16));
   }
-  auto n = std::any_cast<::mega::Node*>(result);
-  ::mega::handle h = n->nodehandle;
-  ::mega::Node* ntmp;
-  for (ntmp = n;
-       ((ntmp->parent != nullptr) && (ntmp->parent->nodehandle != parent.id));
-       ntmp = ntmp->parent)
-    ;
-  if ((ntmp->parent != nullptr) && (ntmp->parent->nodehandle == parent.id)) {
-    h = ntmp->nodehandle;
+  if (!carry_over.empty()) {
+    carry_over.resize(16);
+    cipher.ProcessData(cbc_mac.data(),
+                       reinterpret_cast<const uint8_t*>(carry_over.data()), 16);
   }
-  auto node = d_->GetNode(h);
-  auto new_file = ToItemImpl<Mega::File>(node);
+  cipher.ProcessData(cbc_mac.data(), cbc_mac.data(), 16);
+}
 
-  switch (GetFileType(new_file)) {
-    case FileType::kImage:
-    case FileType::kVideo: {
-      try {
-        auto thumbnail = co_await thumbnail_generator_(
-            this, new_file,
-            util::ThumbnailOptions{
-                .size = 120, .codec = util::ThumbnailOptions::Codec::JPEG},
-            stop_token);
-        co_await SetThumbnail(new_file, std::move(thumbnail), stop_token);
-      } catch (...) {
-      }
-      break;
-    }
+auto Mega::ToItem(const nlohmann::json& json,
+                  std::span<const uint8_t> master_key) -> Item {
+  switch (int(json["t"])) {
+    case kFile:
+      return ToItemImpl<File>(master_key, json);
+    case kFolder:
+      return ToItemImpl<Directory>(master_key, json);
+    case kInbox:
+      return ToItemImpl<Inbox>(master_key, json);
+    case kRoot:
+      return ToItemImpl<Root>(master_key, json);
+    case kTrash:
+      return ToItemImpl<Trash>(master_key, json);
     default:
-      break;
-  }
-
-  co_return new_file;
-}
-
-auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
-                                           stdx::stop_token stop_token)
-    -> Task<Thumbnail> {
-  co_await d_->EnsureLoggedIn(auth_token_.session, stop_token);
-  auto node = d_->GetNode(item.id);
-  std::any result;
-  try {
-    result = co_await d_->Do<&::mega::MegaClient::getfa, RequestType::kOther>(
-        stop_token, node->nodehandle, &node->fileattrstring, &node->nodekey,
-        ::mega::GfxProc::THUMBNAIL, /*cancel=*/false);
-  } catch (...) {
-    result = ::mega::error::API_ENOENT;
-  }
-  std::string data;
-  if (result.type() == typeid(::mega::error)) {
-    switch (GetFileType(item)) {
-      case FileType::kImage:
-      case FileType::kVideo: {
-        try {
-          auto thumbnail = co_await thumbnail_generator_(
-              this, item,
-              util::ThumbnailOptions{
-                  .size = 120, .codec = util::ThumbnailOptions::Codec::JPEG},
-              stop_token);
-          co_await SetThumbnail(item, thumbnail, stop_token);
-          data = std::move(thumbnail);
-        } catch (...) {
-        }
-        break;
-      }
-      default:
-        throw CloudException(
-            GetErrorDescription(std::any_cast<::mega::error>(result)));
-    }
-  } else {
-    data = std::any_cast<std::string&&>(std::move(result));
-  }
-  if (!range.end) {
-    range.end = data.length() - 1;
-  }
-  if (*range.end >= static_cast<int64_t>(data.size())) {
-    throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
-  }
-  Thumbnail thumbnail;
-  thumbnail.size = *range.end - range.start + 1;
-  thumbnail.data = ToGenerator(std::move(data).substr(
-      static_cast<size_t>(range.start),
-      static_cast<size_t>(*range.end - range.start + 1)));
-  co_return thumbnail;
-}
-
-Mega::Auth::AuthHandler::AuthHandler(coro::util::WaitF wait, http::FetchF fetch,
-                                     Mega::Auth::AuthData auth_data)
-    : wait_(std::move(wait)),
-      fetch_(std::move(fetch)),
-      auth_data_(std::move(auth_data)) {}
-
-Task<std::variant<http::Response<>, Mega::Auth::AuthToken>>
-Mega::Auth::AuthHandler::operator()(coro::http::Request<> request,
-                                    coro::stdx::stop_token stop_token) const {
-  if (request.method == http::Method::kPost) {
-    auto query =
-        http::ParseQuery(co_await http::GetBody(std::move(*request.body)));
-    auto it1 = query.find("email");
-    auto it2 = query.find("password");
-    if (it1 != std::end(query) && it2 != std::end(query)) {
-      auto it3 = query.find("twofactor");
-      Mega::Auth::UserCredential credential = {
-          .email = it1->second,
-          .password = it2->second,
-          .twofactor = it3 != std::end(query) ? std::make_optional(it3->second)
-                                              : std::nullopt};
-      std::string session = co_await Mega::CloudProvider::GetSession(
-          wait_, fetch_, std::move(credential), auth_data_, stop_token);
-      co_return Mega::Auth::AuthToken{.email = it1->second,
-                                      .session = std::move(session)};
-    } else {
-      throw http::HttpException(http::HttpException::kBadRequest);
-    }
-  } else {
-    co_return http::Response<>{
-        .status = 200,
-        .body = http::CreateBody(std::string(util::kAssetsHtmlMegaLoginHtml))};
+      throw CloudException("unknown file type");
   }
 }
 

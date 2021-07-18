@@ -1,6 +1,5 @@
 #include <coro/cloudstorage/cloud_factory.h>
 #include <coro/cloudstorage/providers/mega.h>
-#include <coro/cloudstorage/providers/mega_v2.h>
 #include <coro/cloudstorage/util/account_manager_handler.h>
 #include <coro/cloudstorage/util/muxer.h>
 #include <coro/cloudstorage/util/thumbnail_generator.h>
@@ -28,8 +27,7 @@ using ::coro::util::EventLoop;
 using ::coro::util::ThreadPool;
 using ::coro::util::TypeList;
 
-using CloudProviders =
-    TypeList<coro::cloudstorage::MegaV2, coro::cloudstorage::Mega>;
+using CloudProviders = TypeList<coro::cloudstorage::Mega>;
 
 template <typename CloudFactory, typename ThumbnailGenerator>
 class HttpHandler {

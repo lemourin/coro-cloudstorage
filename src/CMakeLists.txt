@@ -32,10 +32,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/providers/one_drive.h
     coro/cloudstorage/providers/dropbox.h
     coro/cloudstorage/providers/mega.h
-    coro/cloudstorage/providers/mega/file_system_access.h
-    coro/cloudstorage/providers/mega/http_io.h
-    coro/cloudstorage/providers/mega_v2.h
-    coro/cloudstorage/providers/mega_v2.cc
+    coro/cloudstorage/providers/mega.cc
     coro/cloudstorage/providers/box.h
     coro/cloudstorage/providers/yandex_disk.h
     coro/cloudstorage/providers/pcloud.h
@@ -54,7 +51,6 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/crypto_utils.h
     coro/cloudstorage/util/crypto_utils.cc
     coro/cloudstorage/util/recursive_visit.h
-    coro/cloudstorage/providers/mega.cc
     coro/cloudstorage/providers/webdav.cc
     coro/cloudstorage/providers/amazon_s3.cc)
 target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR} ../contrib/)
@@ -68,7 +64,6 @@ endif()
 target_link_libraries(coro-cloudstorage PUBLIC
     coro-http
     nlohmann_json::nlohmann_json
-    Mega
     pugixml::pugixml
     avcodec
     avutil
