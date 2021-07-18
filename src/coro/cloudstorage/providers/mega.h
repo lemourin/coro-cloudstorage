@@ -378,7 +378,7 @@ class Mega::CloudProvider
     auto decoded = DecodeAttributeContent(
         std::span<const uint8_t>(item.key).subspan(0, 16), content);
     int64_t end = range.end.value_or(decoded.size() - 1);
-    if (end >= decoded.size()) {
+    if (end >= static_cast<int64_t>(decoded.size())) {
       throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
     }
     std::string output(end - range.start + 1, 0);
@@ -388,7 +388,8 @@ class Mega::CloudProvider
   }
 
   template <typename DirectoryT,
-            typename = std::enable_if_t<std::is_same_v<DirectoryT, Root>>>
+            typename = std::enable_if_t<std::is_same_v<DirectoryT, Root> ||
+                                        std::is_same_v<DirectoryT, Directory>>>
   Task<File> CreateFile(DirectoryT parent, std::string_view name,
                         FileContent content, stdx::stop_token stop_token) {
     nlohmann::json upload_response =
