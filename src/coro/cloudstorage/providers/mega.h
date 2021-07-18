@@ -440,10 +440,14 @@ class Mega::CloudProvider
     entry["k"] = ToBase64(encoded_key);
     commit_command["n"].emplace_back(std::move(entry));
 
+    std::optional<File> previous_file = FindByName(parent.id, name);
     nlohmann::json commit_command_response =
         co_await DoCommand(std::move(commit_command), stop_token);
     auto new_item = ToItem(commit_command_response["f"][0], auth_token_.pkey);
     AddItem(new_item);
+    if (previous_file) {
+      co_await RemoveItem(std::move(*previous_file), stop_token);
+    }
     co_return co_await TrySetThumbnail(std::get<File>(new_item),
                                        std::move(stop_token));
   }
@@ -558,6 +562,23 @@ class Mega::CloudProvider
       c = rand();
     }
     return key;
+  }
+
+  std::optional<File> FindByName(uint64_t parent, std::string_view name) const {
+    auto nodes = file_tree_.find(parent);
+    if (nodes == file_tree_.end()) {
+      return std::nullopt;
+    }
+    for (uint64_t handle : nodes->second) {
+      auto it = items_.find(handle);
+      if (it != items_.end()) {
+        const File* file = std::get_if<File>(&it->second);
+        if (file && file->name == name) {
+          return *file;
+        }
+      }
+    }
+    return std::nullopt;
   }
 
   std::string GetEncryptedItemKey(std::span<const uint8_t> key) const {
