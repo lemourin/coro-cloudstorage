@@ -53,8 +53,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   }
 
   AccountManagerHandler(
-      const CloudFactory& factory,
-      const ThumbnailGenerator& thumbnail_generator,
+      const CloudFactory* factory,
+      const ThumbnailGenerator* thumbnail_generator,
       AccountListener account_listener,
       AuthTokenManagerT auth_token_manager = AuthTokenManagerT{})
       : factory_(factory),
@@ -201,7 +201,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     Task<Response> operator()(Request request,
                               stdx::stop_token stop_token) const {
       auto result =
-          co_await d->factory_.template CreateAuthHandler<CloudProvider>()(
+          co_await d->factory_->template CreateAuthHandler<CloudProvider>()(
               std::move(request), stop_token);
       AuthToken auth_token;
       if constexpr (std::is_same_v<decltype(result), AuthToken>) {
@@ -276,7 +276,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       std::shared_ptr<std::optional<std::string>> username) {
     return &accounts_.emplace_back(
         username->value_or(""), version_++,
-        factory_.template Create<CloudProvider>(
+        factory_->template Create<CloudProvider>(
             std::move(auth_token),
             OnAuthTokenChanged<CloudProvider>{&auth_token_manager_, username}));
   }
@@ -347,11 +347,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   }
 
   template <typename CloudProvider>
-  static void AppendAuthUrl(const CloudFactory& factory,
+  static void AppendAuthUrl(const CloudFactory* factory,
                             std::stringstream& stream) {
     std::string id(GetCloudProviderId<CloudProvider>());
     std::string url =
-        factory.template GetAuthorizationUrl<CloudProvider>().value_or(
+        factory->template GetAuthorizationUrl<CloudProvider>().value_or(
             util::StrCat("/auth/", id));
     stream << fmt::format(
         fmt::runtime(kAssetsHtmlProviderEntryHtml),
@@ -405,8 +405,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     co_yield std::move(result).str();
   }
 
-  const CloudFactory& factory_;
-  const ThumbnailGenerator& thumbnail_generator_;
+  const CloudFactory* factory_;
+  const ThumbnailGenerator* thumbnail_generator_;
   std::vector<Handler> handlers_;
   AccountListener account_listener_;
   AuthTokenManagerT auth_token_manager_;

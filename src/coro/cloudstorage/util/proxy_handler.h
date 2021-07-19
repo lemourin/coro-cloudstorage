@@ -19,9 +19,9 @@ class ProxyHandler {
   using Request = http::Request<>;
   using Response = http::Response<>;
 
-  ProxyHandler(const ThumbnailGenerator& thumbnail_generator,
+  ProxyHandler(const ThumbnailGenerator* thumbnail_generator,
                CloudProvider* provider)
-      : thumbnail_generator_(&thumbnail_generator), provider_(provider) {}
+      : thumbnail_generator_(thumbnail_generator), provider_(provider) {}
 
   Task<Response> operator()(Request request, stdx::stop_token stop_token) {
     auto uri = http::ParseUri(request.url);
