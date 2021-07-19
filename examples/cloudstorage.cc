@@ -1,6 +1,6 @@
-#include <coro/cloudstorage/cloud_factory.h>
 #include <coro/cloudstorage/providers/mega.h>
 #include <coro/cloudstorage/util/account_manager_handler.h>
+#include <coro/cloudstorage/util/cloud_factory_context.h>
 #include <coro/cloudstorage/util/muxer.h>
 #include <coro/cloudstorage/util/random_number_generator.h>
 #include <coro/cloudstorage/util/thumbnail_generator.h>
@@ -18,6 +18,7 @@ using ::coro::Promise;
 using ::coro::Task;
 using ::coro::cloudstorage::CloudFactory;
 using ::coro::cloudstorage::util::AccountManagerHandler;
+using ::coro::cloudstorage::util::CloudFactoryContext;
 using ::coro::cloudstorage::util::Muxer;
 using ::coro::cloudstorage::util::RandomNumberGenerator;
 using ::coro::cloudstorage::util::ThumbnailGenerator;
@@ -81,21 +82,13 @@ class HttpHandler {
 
 Task<> CoMain(event_base* event_base) noexcept {
   try {
-    CacheHttp<CurlHttp> http{CacheHttpConfig{}, event_base};
-    EventLoop event_loop(event_base);
-    ThreadPool thread_pool(&event_loop);
-    ThumbnailGenerator thumbnail_generator(&thread_pool, &event_loop);
-    Muxer muxer(&event_loop, &thread_pool);
-    std::default_random_engine random_engine{std::random_device()()};
-    RandomNumberGenerator random_number_generator(&random_engine);
-    CloudFactory cloud_factory(&event_loop, &http, &thumbnail_generator, &muxer,
-                               &random_number_generator);
-
+    CloudFactoryContext factory_context(event_base);
     Promise<void> quit;
-    HttpServer<
-        HttpHandler<decltype(cloud_factory), decltype(thumbnail_generator)>>
+    HttpServer<HttpHandler<CloudFactoryContext<>::CloudFactoryT,
+                           CloudFactoryContext<>::ThumbnailGeneratorT>>
         http_server(event_base, {.address = "127.0.0.1", .port = 12345},
-                    &cloud_factory, &thumbnail_generator, &quit);
+                    factory_context.factory(),
+                    factory_context.thumbnail_generator(), &quit);
     co_await quit;
     co_await http_server.Quit();
   } catch (const std::exception& exception) {
