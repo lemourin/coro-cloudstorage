@@ -83,7 +83,7 @@ Task<> CoMain(event_base* event_base) noexcept {
   try {
     CacheHttp<CurlHttp> http{CacheHttpConfig{}, event_base};
     EventLoop event_loop(event_base);
-    ThreadPool thread_pool(event_loop);
+    ThreadPool thread_pool(&event_loop);
     ThumbnailGenerator thumbnail_generator(&thread_pool, &event_loop);
     Muxer muxer(&event_loop, &thread_pool);
     std::default_random_engine random_engine{std::random_device()()};
