@@ -216,11 +216,6 @@ auto Mega::Auth::GetLoginWithSaltData(std::string_view password,
   LoginWithSaltData data;
   data.password_key.insert(data.password_key.begin(), output, output + 16);
   data.handle = ToBase64(ToStringView(std::span(output + 16, output + 32)));
-  data.session_key.resize(16);
-  for (int i = 0; i < 16; i++) {
-    data.session_key[i] = static_cast<uint8_t>(rand());
-  }
-  data.session_key = ToBase64(data.session_key);
   return data;
 }
 

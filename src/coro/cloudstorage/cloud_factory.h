@@ -10,7 +10,7 @@
 #include <coro/util/type_list.h>
 
 #include <boost/di.hpp>
-#include <iostream>
+#include <random>
 
 namespace coro::cloudstorage {
 
@@ -34,28 +34,26 @@ concept HasCloudProviderT = requires {
   typename T::template CloudProvider<>;
 };
 
-template <typename EventLoopT, coro::http::HttpClient HttpT,
-          typename ThumbnailGeneratorT, typename MuxerT,
-          typename AuthDataT = coro::cloudstorage::util::AuthData>
+template <typename EventLoop, coro::http::HttpClient Http,
+          typename ThumbnailGenerator, typename Muxer,
+          typename RandomNumberGenerator,
+          typename AuthData = coro::cloudstorage::util::AuthData>
 class CloudFactory {
  public:
-  using EventLoop = EventLoopT;
-  using Http = HttpT;
-  using AuthData = AuthDataT;
-  using ThumbnailGenerator = ThumbnailGeneratorT;
-  using Muxer = MuxerT;
-
   template <typename CloudProvider, typename OnTokenUpdated>
   using AuthManagerT =
       util::AuthManager<Http, typename CloudProvider::Auth, OnTokenUpdated>;
 
-  CloudFactory(const EventLoop& event_loop, const Http& http,
-               const ThumbnailGenerator& thumbnail_generator,
-               const Muxer& muxer, AuthData auth_data = AuthData{})
-      : event_loop_(&event_loop),
-        http_(&http),
-        thumbnail_generator_(&thumbnail_generator),
-        muxer_(&muxer),
+  CloudFactory(const EventLoop* event_loop, const Http* http,
+               const ThumbnailGenerator* thumbnail_generator,
+               const Muxer* muxer,
+               RandomNumberGenerator* random_number_generator,
+               AuthData auth_data = AuthData{})
+      : event_loop_(event_loop),
+        http_(http),
+        thumbnail_generator_(thumbnail_generator),
+        muxer_(muxer),
+        random_number_generator_(random_number_generator),
         auth_data_(std::move(auth_data)) {}
 
   template <typename CloudProvider, typename OnTokenUpdated>
@@ -118,22 +116,24 @@ class CloudFactory {
         di::bind<typename CloudProvider::Auth::AuthData>().to(
             GetAuthData<CloudProvider>()),
         di::bind<http::FetchF>().to(http::FetchF(http_)),
-        di::bind<class coro::cloudstorage::HttpT>().template to<HttpT>(http_),
+        di::bind<class coro::cloudstorage::HttpT>().template to<Http>(http_),
         di::bind<coro::util::WaitF>().to(coro::util::WaitF(event_loop_)),
-        di::bind<class coro::cloudstorage::EventLoopT>()
-            .template to<EventLoopT>(event_loop_),
+        di::bind<class coro::cloudstorage::EventLoopT>().template to<EventLoop>(
+            event_loop_),
         di::bind<util::ThumbnailGeneratorF>().to(
             util::ThumbnailGeneratorF(thumbnail_generator_)),
         di::bind<class coro::cloudstorage::ThumbnailGeneratorT>()
-            .template to<ThumbnailGeneratorT>(thumbnail_generator_),
-        di::bind<class coro::cloudstorage::MuxerT>().template to<MuxerT>(
-            muxer_));
+            .template to<ThumbnailGenerator>(thumbnail_generator_),
+        di::bind<class coro::cloudstorage::MuxerT>().template to<Muxer>(muxer_),
+        di::bind<class coro::cloudstorage::RandomNumberGeneratorT>()
+            .template to<RandomNumberGenerator>(random_number_generator_));
   }
 
   const EventLoop* event_loop_;
   const Http* http_;
   const ThumbnailGenerator* thumbnail_generator_;
   const Muxer* muxer_;
+  RandomNumberGenerator* random_number_generator_;
   AuthData auth_data_;
 };
 

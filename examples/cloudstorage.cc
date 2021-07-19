@@ -2,6 +2,7 @@
 #include <coro/cloudstorage/providers/mega.h>
 #include <coro/cloudstorage/util/account_manager_handler.h>
 #include <coro/cloudstorage/util/muxer.h>
+#include <coro/cloudstorage/util/random_number_generator.h>
 #include <coro/cloudstorage/util/thumbnail_generator.h>
 #include <coro/http/cache_http.h>
 #include <coro/http/curl_http.h>
@@ -18,6 +19,7 @@ using ::coro::Task;
 using ::coro::cloudstorage::CloudFactory;
 using ::coro::cloudstorage::util::AccountManagerHandler;
 using ::coro::cloudstorage::util::Muxer;
+using ::coro::cloudstorage::util::RandomNumberGenerator;
 using ::coro::cloudstorage::util::ThumbnailGenerator;
 using ::coro::http::CacheHttp;
 using ::coro::http::CacheHttpConfig;
@@ -84,7 +86,10 @@ Task<> CoMain(event_base* event_base) noexcept {
     ThreadPool thread_pool(event_loop);
     ThumbnailGenerator thumbnail_generator(&thread_pool, &event_loop);
     Muxer muxer(&event_loop, &thread_pool);
-    CloudFactory cloud_factory(event_loop, http, thumbnail_generator, muxer);
+    std::default_random_engine random_engine{std::random_device()()};
+    RandomNumberGenerator random_number_generator(&random_engine);
+    CloudFactory cloud_factory(&event_loop, &http, &thumbnail_generator, &muxer,
+                               &random_number_generator);
 
     Promise<void> quit;
     HttpServer<

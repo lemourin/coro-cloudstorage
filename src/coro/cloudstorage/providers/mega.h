@@ -40,7 +40,9 @@ struct Mega {
     };
 
     template <typename Http = class HttpT,
-              typename EventLoop = class EventLoopT>
+              typename EventLoop = class EventLoopT,
+              typename RandomNumberGenerator = class RandomNumberGeneratorT,
+              typename ThumbnailGenerator = class ThumbnailGeneratorT>
     class AuthHandler;
 
     static std::vector<uint8_t> GetPasswordKey(std::string_view password);
@@ -59,7 +61,6 @@ struct Mega {
 
     struct LoginWithSaltData {
       std::string handle;
-      std::string session_key;
       std::vector<uint8_t> password_key;
     };
     static LoginWithSaltData GetLoginWithSaltData(std::string_view password,
@@ -128,6 +129,7 @@ struct Mega {
   };
 
   template <typename Http = class HttpT, typename EventLoop = class EventLoopT,
+            typename RandomNumberGenerator = class RandomNumberGeneratorT,
             typename ThumbnailGenerator = class ThumbnailGeneratorT>
   class CloudProvider;
 
@@ -177,22 +179,27 @@ struct Mega {
   static inline const auto& kIcon = util::kAssetsProvidersMegaPng;
 };
 
-template <typename Http, typename EventLoop, typename ThumbnailGenerator>
+template <typename Http, typename EventLoop, typename RandomNumberGenerator,
+          typename ThumbnailGenerator>
 class Mega::CloudProvider
     : public coro::cloudstorage::CloudProvider<
-          Mega, CloudProvider<Http, EventLoop, ThumbnailGenerator>> {
+          Mega, CloudProvider<Http, EventLoop, RandomNumberGenerator,
+                              ThumbnailGenerator>> {
  public:
   CloudProvider(const Http* http, const EventLoop* event_loop,
+                RandomNumberGenerator* random_number_generator,
                 const ThumbnailGenerator* thumbnail_generator,
                 Auth::AuthToken auth_token)
       : http_(http),
         event_loop_(event_loop),
+        random_number_generator_(random_number_generator),
         thumbnail_generator_(thumbnail_generator),
         auth_token_(std::move(auth_token)) {}
 
   CloudProvider(CloudProvider&& other) noexcept
       : http_(other.http_),
         event_loop_(other.event_loop_),
+        random_number_generator_(other.random_number_generator_),
         thumbnail_generator_(other.thumbnail_generator_),
         auth_token_(std::move(other.auth_token_)),
         id_(other.id_),
@@ -204,6 +211,7 @@ class Mega::CloudProvider
   CloudProvider& operator=(CloudProvider&& other) noexcept {
     http_ = other.http_;
     event_loop_ = other.event_loop_;
+    random_number_generator_ = other.random_number_generator_;
     thumbnail_generator_ = other.thumbnail_generator_;
     auth_token_ = std::move(other.auth_token_);
     id_ = other.id_;
@@ -510,14 +518,9 @@ class Mega::CloudProvider
     }
   }
 
-  static Task<Auth::AuthToken> GetSession(const Http* http,
-                                          const EventLoop* event_loop,
-                                          Auth::UserCredential credential,
-                                          Auth::AuthData auth_data,
-                                          stdx::stop_token stop_token) {
-    CloudProvider provider(http, event_loop, nullptr, Auth::AuthToken());
-    auto prelogin_data =
-        co_await provider.Prelogin(credential.email, stop_token);
+  Task<Auth::AuthToken> GetSession(Auth::UserCredential credential,
+                                   stdx::stop_token stop_token) {
+    auto prelogin_data = co_await Prelogin(credential.email, stop_token);
     nlohmann::json command;
     command["a"] = "us";
     command["user"] = http::ToLowerCase(std::string(credential.email));
@@ -533,11 +536,11 @@ class Mega::CloudProvider
           Auth::GetLoginWithSaltData(credential.password, *prelogin_data.salt);
       password_key = std::move(data.password_key);
       command["uh"] = std::move(data.handle);
-      command["sek"] = std::move(data.session_key);
+      command["sek"] = ToBase64(ToStringView(GenerateKey<uint8_t>(16)));
     } else {
       throw CloudException("not supported account version");
     }
-    auto response = co_await provider.DoCommand(std::move(command), stop_token);
+    auto response = co_await DoCommand(std::move(command), stop_token);
     auto session_data = Auth::DecryptSessionId(
         password_key, FromBase64(std::string(response["k"])),
         FromBase64(std::string(response["privk"])),
@@ -560,7 +563,7 @@ class Mega::CloudProvider
   std::vector<T> GenerateKey(int length) const {
     std::vector<T> key(length, 0);
     for (T& c : key) {
-      c = rand();
+      c = random_number_generator_->template Get<T>();
     }
     return key;
   }
@@ -874,6 +877,7 @@ class Mega::CloudProvider
 
   const Http* http_;
   const EventLoop* event_loop_;
+  RandomNumberGenerator* random_number_generator_;
   const ThumbnailGenerator* thumbnail_generator_;
   Auth::AuthToken auth_token_;
   std::optional<SharedPromise<DoInit>> init_;
@@ -884,17 +888,18 @@ class Mega::CloudProvider
   stdx::stop_source stop_source_;
 };
 
-template <typename Http, typename EventLoop>
+template <typename Http, typename EventLoop, typename RandomNumberGenerator,
+          typename ThumbnailGenerator>
 class Mega::Auth::AuthHandler {
  public:
-  AuthHandler(const Http* http, const EventLoop* event_loop,
-              Auth::AuthData auth_data)
-      : http_(http),
-        event_loop_(event_loop),
-        auth_data_(std::move(auth_data)) {}
+  using CloudProviderT =
+      CloudProvider<Http, EventLoop, RandomNumberGenerator, ThumbnailGenerator>;
+
+  explicit AuthHandler(CloudProviderT provider)
+      : provider_(std::move(provider)) {}
 
   Task<std::variant<http::Response<>, Auth::AuthToken>> operator()(
-      http::Request<> request, stdx::stop_token stop_token) const {
+      http::Request<> request, stdx::stop_token stop_token) {
     if (request.method == http::Method::kPost) {
       auto query =
           http::ParseQuery(co_await http::GetBody(std::move(*request.body)));
@@ -908,8 +913,8 @@ class Mega::Auth::AuthHandler {
             .twofactor = it3 != std::end(query)
                              ? std::make_optional(it3->second)
                              : std::nullopt};
-        co_return co_await CloudProvider<Http, EventLoop>::GetSession(
-            http_, event_loop_, std::move(credential), auth_data_, stop_token);
+        co_return co_await provider_.GetSession(std::move(credential),
+                                                stop_token);
       } else {
         throw http::HttpException(http::HttpException::kBadRequest);
       }
@@ -922,9 +927,7 @@ class Mega::Auth::AuthHandler {
   }
 
  private:
-  const Http* http_;
-  const EventLoop* event_loop_;
-  Auth::AuthData auth_data_;
+  CloudProviderT provider_;
 };
 
 namespace util {

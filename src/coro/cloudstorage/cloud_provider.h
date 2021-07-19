@@ -25,6 +25,7 @@ class EventLoopT;
 class OnAuthTokenUpdatedT;
 class ThumbnailGeneratorT;
 class MuxerT;
+class RandomNumberGeneratorT;
 
 template <typename T>
 concept HasTimestamp = requires(T v) {
