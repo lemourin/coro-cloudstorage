@@ -18,6 +18,7 @@ inline std::string_view ToString(Theme theme) {
     case Theme::kLight:
       return "light";
   }
+  throw std::runtime_error("invalid theme");
 }
 
 inline Theme GetTheme(
