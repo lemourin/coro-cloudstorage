@@ -360,26 +360,9 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   }
 
   Generator<std::string> GetHomePage(stdx::stop_token stop_token) {
-    std::stringstream result;
-    result << "<html>"
-              "<head>"
-              "  <title>coro-cloudstorage</title>"
-              "  <meta name='viewport' "
-              "        content='width=device-width, initial-scale=1'>"
-              "  <link rel=stylesheet href='/static/default.css'>"
-              "  <script src='/static/account_list_main.js'></script>"
-              "</head>"
-              "<body>"
-              "<table class='content-table'>"
-              "<tr><td>"
-              "<h3 class='table-header'>ADD CLOUD PROVIDERS</h3>"
-              "</td></tr>"
-              "<tr><td><div class='supported-providers'>";
-    (AppendAuthUrl<CloudProviders>(factory_, result), ...);
-    result << "</div></td></tr>"
-              "</table>"
-              "<h3 class='table-header'>ACCOUNT LIST</h3>"
-              "<table class='content-table'>";
+    std::stringstream supported_providers;
+    (AppendAuthUrl<CloudProviders>(factory_, supported_providers), ...);
+    std::stringstream content_table;
     for (const auto& account : accounts_) {
       auto provider_id = std::visit(
           []<typename CloudProvider>(const CloudProvider&) {
@@ -387,7 +370,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           },
           account.provider());
       std::string provider_size;
-      result << fmt::format(
+      content_table << fmt::format(
           fmt::runtime(kAssetsHtmlAccountEntryHtml),
           fmt::arg("provider_icon",
                    util::StrCat("/static/", provider_id, ".png")),
@@ -398,11 +381,10 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
                    util::StrCat("/remove/", http::EncodeUri(account.GetId()))),
           fmt::arg("provider_id", http::EncodeUri(account.GetId())));
     }
-
-    result << "</table>"
-              "</body>"
-              "</html>";
-    co_yield std::move(result).str();
+    co_yield fmt::format(
+        fmt::runtime(kAssetsHtmlHomePageHtml),
+        fmt::arg("supported_providers", std::move(supported_providers).str()),
+        fmt::arg("content_table", std::move(content_table).str()));
   }
 
   const CloudFactory* factory_;

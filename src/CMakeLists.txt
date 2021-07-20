@@ -102,6 +102,7 @@ embed_resource(
         ../assets/html/item_entry.html
         ../assets/html/provider_entry.html
         ../assets/html/account_entry.html
+        ../assets/html/home_page.html
         ../assets/providers/box.png
         ../assets/providers/yandex.png
         ../assets/providers/dropbox.png
