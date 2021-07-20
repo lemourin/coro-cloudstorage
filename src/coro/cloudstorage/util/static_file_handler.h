@@ -34,7 +34,10 @@ struct StaticFileHandler {
       content = util::kAssetsStylesDefaultCss;
       mime_type = "text/css";
     } else if (request.url == "/static/user-trash.svg") {
-      content = util::kAssetsIconsUserTrashSvg;
+      content = util::kAssetsIconsPlaces64UserTrashSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/user-trash-dark.svg") {
+      content = util::kAssetsIconsDarkPlaces64UserTrashSvg;
       mime_type = "image/svg+xml";
     } else if (request.url == "/static/account_list_main.js") {
       content = util::kAssetsJsAccountListMainJs;

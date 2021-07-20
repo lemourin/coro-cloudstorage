@@ -83,12 +83,18 @@ embed_resource(
     NAMESPACE coro::cloudstorage::util
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets
     INPUT
-        ../assets/icons/folder.svg
-        ../assets/icons/gtk-file.svg
-        ../assets/icons/audio-x-generic.svg
-        ../assets/icons/image.svg
-        ../assets/icons/video.svg
-        ../assets/icons/user-trash.svg
+        ../assets/icons/mimetypes/64/audio-x-generic.svg
+        ../assets/icons/mimetypes/64/image-x-generic.svg
+        ../assets/icons/mimetypes/64/unknown.svg
+        ../assets/icons/mimetypes/64/video-x-generic.svg
+        ../assets/icons/places/64/folder.svg
+        ../assets/icons/places/64/user-trash.svg
+        ../assets/icons-dark/mimetypes/64/audio-x-generic.svg
+        ../assets/icons-dark/mimetypes/64/image-x-generic.svg
+        ../assets/icons-dark/mimetypes/64/unknown.svg
+        ../assets/icons-dark/mimetypes/64/video-x-generic.svg
+        ../assets/icons-dark/places/64/folder.svg
+        ../assets/icons-dark/places/64/user-trash.svg
         ../assets/html/mega_login.html
         ../assets/html/webdav_login.html
         ../assets/html/amazons3_login.html

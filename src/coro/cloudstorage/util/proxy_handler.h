@@ -114,19 +114,19 @@ class ProxyHandler {
         content = [&] {
           switch (CloudProvider::GetFileType(item)) {
             case FileType::kUnknown:
-              return kAssetsIconsGtkFileSvg;
+              return kAssetsIconsMimetypes64UnknownSvg;
             case FileType::kImage:
-              return kAssetsIconsImageSvg;
+              return kAssetsIconsMimetypes64ImageXGenericSvg;
             case FileType::kAudio:
-              return kAssetsIconsAudioXGenericSvg;
+              return kAssetsIconsMimetypes64AudioXGenericSvg;
             case FileType::kVideo:
-              return kAssetsIconsVideoSvg;
+              return kAssetsIconsMimetypes64AudioXGenericSvg;
           }
           throw std::runtime_error("invalid file type");
         }();
       }
     } else {
-      content = kAssetsIconsFolderSvg;
+      content = kAssetsIconsPlaces64FolderSvg;
     }
     co_return Response{
         .status = 200,
