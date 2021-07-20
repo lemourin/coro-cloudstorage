@@ -4,16 +4,20 @@
     <meta name='viewport'
           content='width=device-width, initial-scale=1'>
     <link rel=stylesheet href='/static/layout.css'>
+    <link rel=stylesheet href='/static/colors_{theme}.css'>
     <script src='/static/account_list_main.js'></script>
 </head>
 <body>
 <table class='content-table'>
     <tr>
-        <td><h3 class='table-header'>ADD CLOUD PROVIDERS</h3></td>
-        <td>THEME SWITCH</td>
+        <td class='theme-switch'><a href="/theme-toggle">TOGGLE THEME</a>
+        <td>
     </tr>
     <tr>
-        <td colspan="2">
+        <td><h3 class='table-header'>ADD CLOUD PROVIDERS</h3></td>
+    </tr>
+    <tr>
+        <td>
             <div class='supported-providers'>
                 {supported_providers}
             </div>

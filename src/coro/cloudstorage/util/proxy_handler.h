@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_PROXY_HANDLER_H
 
 #include <coro/cloudstorage/util/assets.h>
+#include <coro/cloudstorage/util/theme_handler.h>
 #include <coro/cloudstorage/util/thumbnail_options.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http_parse.h>
@@ -103,38 +104,50 @@ class ProxyHandler {
   }
 
   template <typename Item>
-  Task<Response> GetIcon(const Item& item, stdx::stop_token stop_token) const {
-    std::string content;
-    std::string mime_type = "image/svg+xml";
+  Response GetStaticIcon(Theme theme, const Item& item) const {
+    std::string_view icon_name = [&] {
+      if constexpr (IsFile<Item, CloudProvider>) {
+        switch (CloudProvider::GetFileType(item)) {
+          case FileType::kUnknown:
+            return "unknown";
+          case FileType::kImage:
+            return "image-x-generic";
+          case FileType::kAudio:
+            return "audio-x-generic";
+          case FileType::kVideo:
+            return "video-x-generic";
+        }
+        throw std::runtime_error("invalid file type");
+      } else {
+        return "folder";
+      }
+    }();
+    return Response{
+        .status = 302,
+        .headers = {{"Location", util::StrCat("/static/", icon_name, "-",
+                                              ToString(theme), ".svg")}}};
+  }
+
+  template <typename Item>
+  Task<Response> GetIcon(Theme theme, const Item& item,
+                         stdx::stop_token stop_token) const {
     if constexpr (IsFile<Item, CloudProvider>) {
       try {
-        content = co_await GenerateThumbnail(item, std::move(stop_token));
-        mime_type = "image/png";
+        std::string content =
+            co_await GenerateThumbnail(item, std::move(stop_token));
+        co_return Response{
+            .status = 200,
+            .headers = {{"Cache-Control", "private"},
+                        {"Cache-Control", "max-age=604800"},
+                        {"Content-Type", "image/png"},
+                        {"Content-Length", std::to_string(content.size())}},
+            .body = http::CreateBody(std::move(content))};
       } catch (...) {
-        content = [&] {
-          switch (CloudProvider::GetFileType(item)) {
-            case FileType::kUnknown:
-              return kAssetsIconsMimetypes64UnknownSvg;
-            case FileType::kImage:
-              return kAssetsIconsMimetypes64ImageXGenericSvg;
-            case FileType::kAudio:
-              return kAssetsIconsMimetypes64AudioXGenericSvg;
-            case FileType::kVideo:
-              return kAssetsIconsMimetypes64AudioXGenericSvg;
-          }
-          throw std::runtime_error("invalid file type");
-        }();
+        co_return GetStaticIcon(theme, item);
       }
     } else {
-      content = kAssetsIconsPlaces64FolderSvg;
+      co_return GetStaticIcon(theme, item);
     }
-    co_return Response{
-        .status = 200,
-        .headers = {{"Cache-Control", "private"},
-                    {"Cache-Control", "max-age=604800"},
-                    {"Content-Type", std::move(mime_type)},
-                    {"Content-Length", std::to_string(content.size())}},
-        .body = http::CreateBody(std::string(content))};
   }
 
   template <typename Item>
@@ -154,7 +167,8 @@ class ProxyHandler {
       } catch (...) {
       }
     }
-    co_return co_await GetIcon(d, std::move(stop_token));
+    co_return co_await GetIcon(util::GetTheme(request.headers), d,
+                               std::move(stop_token));
   }
 
   std::string GetPath(const Request& request) const {
@@ -242,6 +256,7 @@ class ProxyHandler {
             .status = 200,
             .headers = {{"Content-Type", "text/html"}},
             .body = GetDirectoryContent(
+                GetTheme(request.headers),
                 provider_->ListDirectory(d, std::move(stop_token)),
                 directory_path)};
       }
@@ -348,7 +363,8 @@ class ProxyHandler {
   }
 
   template <typename Item>
-  std::string GetItemEntry(const Item& item, std::string_view path) const {
+  std::string GetItemEntry(Theme theme, const Item& item,
+                           std::string_view path) const {
     std::string file_link = util::StrCat(path, http::EncodeUri(item.name));
     return fmt::format(
         fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", item.name),
@@ -358,11 +374,13 @@ class ProxyHandler {
         fmt::arg("url", util::StrCat(file_link, item.name.ends_with(".mpd")
                                                     ? "?dash_player=true"
                                                     : "")),
-        fmt::arg("thumbnail_url", util::StrCat(file_link, "?thumbnail=true")));
+        fmt::arg("thumbnail_url",
+                 util::StrCat(file_link,
+                              "?thumbnail=true&theme=", ToString(theme))));
   }
 
   Generator<std::string> GetDirectoryContent(
-      Generator<typename CloudProvider::PageData> page_data,
+      Theme theme, Generator<typename CloudProvider::PageData> page_data,
       std::string path) const {
     co_yield "<!DOCTYPE html>"
               "<html>"
@@ -371,7 +389,11 @@ class ProxyHandler {
               "  <meta charset='UTF-8'>"
               "  <meta name='viewport' "
               "        content='width=device-width, initial-scale=1'>"
-              "  <link rel=stylesheet href='/static/default.css'>"
+              "  <link rel=stylesheet href='/static/layout.css'>";
+    co_yield fmt::format(
+        "<link rel=stylesheet href='/static/colors_{theme}.css'>",
+        fmt::arg("theme", ToString(theme)));
+    co_yield
               "</head>"
               "<body>"
               "<table class='content-table'>";
@@ -381,11 +403,12 @@ class ProxyHandler {
         fmt::arg("url", GetDirectoryPath(path)),
         fmt::arg("thumbnail_url",
                  util::StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
-                              "?thumbnail=true")));
+                              "?thumbnail=true&theme=", ToString(theme))));
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
         co_yield std::visit(
-            [&](const auto& item) { return GetItemEntry(item, path); }, item);
+            [&](const auto& item) { return GetItemEntry(theme, item, path); },
+            item);
       }
     }
     co_yield "</table>"

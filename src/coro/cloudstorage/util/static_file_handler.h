@@ -29,11 +29,41 @@ class StaticFileHandler {
     } else if (request.url == "/static/colors_dark.css") {
       content = util::kAssetsStylesColorsDarkCss;
       mime_type = "text/css";
-    } else if (request.url == "/static/user-trash.svg") {
+    } else if (request.url == "/static/user-trash-light.svg") {
       content = util::kAssetsIconsPlaces64UserTrashSvg;
       mime_type = "image/svg+xml";
     } else if (request.url == "/static/user-trash-dark.svg") {
       content = util::kAssetsIconsDarkPlaces64UserTrashSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/audio-x-generic-light.svg") {
+      content = util::kAssetsIconsMimetypes64AudioXGenericSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/audio-x-generic-dark.svg") {
+      content = util::kAssetsIconsDarkMimetypes64AudioXGenericSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/image-x-generic-light.svg") {
+      content = util::kAssetsIconsMimetypes64ImageXGenericSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/image-x-generic-dark.svg") {
+      content = util::kAssetsIconsDarkMimetypes64ImageXGenericSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/unknown-light.svg") {
+      content = util::kAssetsIconsMimetypes64UnknownSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/unknown-dark.svg") {
+      content = util::kAssetsIconsDarkMimetypes64UnknownSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/video-x-generic-light.svg") {
+      content = util::kAssetsIconsMimetypes64VideoXGenericSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/video-x-generic-dark.svg") {
+      content = util::kAssetsIconsDarkMimetypes64VideoXGenericSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/folder-light.svg") {
+      content = util::kAssetsIconsPlaces64FolderSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/folder-dark.svg") {
+      content = util::kAssetsIconsDarkPlaces64FolderSvg;
       mime_type = "image/svg+xml";
     } else if (request.url == "/static/account_list_main.js") {
       content = util::kAssetsJsAccountListMainJs;

@@ -6,6 +6,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/static_file_handler.h
     coro/cloudstorage/util/cloud_provider_account.h
     coro/cloudstorage/util/get_size_handler.h
+    coro/cloudstorage/util/theme_handler.h
     coro/cloudstorage/util/auth_token_manager.h
     coro/cloudstorage/util/auth_manager.h
     coro/cloudstorage/util/auth_handler.h

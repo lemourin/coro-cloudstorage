@@ -3,6 +3,7 @@
     <title>coro-cloudstorage</title>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
     <link rel=stylesheet href='/static/layout.css'>
+    <link rel=stylesheet href='/static/colors_{theme}.css'>
 </head>
 <body>
 <form method="post">
@@ -13,13 +14,15 @@
         </tr>
         <tr>
             <td><label for="access_key_id">access key id:</label></td>
-            <td><input type="text" id="access_key_id" name="access_key_id" /></td>
+            <td><input type="text" id="access_key_id" name="access_key_id"/></td>
         </tr>
         <tr>
             <td><label for="secret_key">secret key:</label></td>
-            <td><input type="password" id="secret_key" name="secret_key" /></td>
+            <td><input type="password" id="secret_key" name="secret_key"/></td>
         </tr>
-        <tr><td><input type="submit" value="Submit" /></td></tr>
+        <tr>
+            <td><input type="submit" value="Submit"/></td>
+        </tr>
     </table>
 </form>
 </body>
