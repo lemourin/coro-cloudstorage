@@ -45,7 +45,7 @@ struct ThemeHandler {
                                   ToString(current_theme == Theme::kLight
                                                ? Theme::kDark
                                                : Theme::kLight),
-                                  "; Expires=2038-01-19 04:14:07")}},
+                                  "; Expires=Mon, 01 Jan 9999 00:00:00 GMT")}},
     };
   }
 };
