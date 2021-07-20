@@ -9,20 +9,10 @@
 namespace coro::cloudstorage::util {
 
 template <typename... CloudProviders>
-struct StaticFileHandler {
+class StaticFileHandler {
+ public:
   using Request = coro::http::Request<>;
   using Response = coro::http::Response<>;
-
-  template <typename CloudProvider>
-  static bool GetIcon(std::string_view name,
-                      std::optional<std::string_view>& output) {
-    if (name == StrCat("/static/", CloudProvider::kId, ".png")) {
-      output = CloudProvider::kIcon;
-      return true;
-    } else {
-      return false;
-    }
-  }
 
   Task<Response> operator()(Request request, stdx::stop_token) const {
     std::optional<std::string_view> content;
@@ -30,8 +20,14 @@ struct StaticFileHandler {
     (GetIcon<CloudProviders>(request.url, content) || ...);
     if (content) {
       mime_type = "image/png";
-    } else if (request.url == "/static/default.css") {
-      content = util::kAssetsStylesDefaultCss;
+    } else if (request.url == "/static/layout.css") {
+      content = util::kAssetsStylesLayoutCss;
+      mime_type = "text/css";
+    } else if (request.url == "/static/colors_light.css") {
+      content = util::kAssetsStylesColorsLightCss;
+      mime_type = "text/css";
+    } else if (request.url == "/static/colors_dark.css") {
+      content = util::kAssetsStylesColorsDarkCss;
       mime_type = "text/css";
     } else if (request.url == "/static/user-trash.svg") {
       content = util::kAssetsIconsPlaces64UserTrashSvg;
@@ -53,6 +49,18 @@ struct StaticFileHandler {
                     {"Cache-Control", "public"},
                     {"Cache-Control", "max-age=604800"}},
         .body = http::CreateBody(std::string(*content))};
+  }
+
+ private:
+  template <typename CloudProvider>
+  static bool GetIcon(std::string_view name,
+                      std::optional<std::string_view>& output) {
+    if (name == StrCat("/static/", CloudProvider::kId, ".png")) {
+      output = CloudProvider::kIcon;
+      return true;
+    } else {
+      return false;
+    }
   }
 };
 

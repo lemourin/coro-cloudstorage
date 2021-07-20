@@ -113,6 +113,8 @@ embed_resource(
         ../assets/providers/mega.png
         ../assets/providers/amazons3.png
         ../assets/providers/hubic.png
-        ../assets/styles/default.css
+        ../assets/styles/layout.css
+        ../assets/styles/colors_light.css
+        ../assets/styles/colors_dark.css
         ../assets/js/account_list_main.js
 )
