@@ -1,7 +1,9 @@
 #ifndef CORO_CLOUDSTORAGE_UTIL_STATIC_FILE_HANDLER_H
 #define CORO_CLOUDSTORAGE_UTIL_STATIC_FILE_HANDLER_H
 
+#include <coro/cloudstorage/util/theme_handler.h>
 #include <coro/http/http.h>
+#include <fmt/format.h>
 
 #include <optional>
 #include <string_view>
@@ -17,16 +19,25 @@ class StaticFileHandler {
   Task<Response> operator()(Request request, stdx::stop_token) const {
     std::optional<std::string_view> content;
     std::string mime_type;
+    Theme theme = GetTheme(request.headers);
     (GetIcon<CloudProviders>(request.url, content) || ...);
     if (content) {
       mime_type = "image/png";
     } else if (request.url == "/static/layout.css") {
       content = util::kAssetsStylesLayoutCss;
       mime_type = "text/css";
-    } else if (request.url == "/static/colors_light.css") {
+    } else if (request.url == "/static/colors.css" ||
+               request.url == "/static/user-trash.svg" ||
+               request.url == "/static/audio-x-generic.svg" ||
+               request.url == "/static/image-x-generic.svg" ||
+               request.url == "/static/unknown.svg" ||
+               request.url == "/static/video-x-generic.svg" ||
+               request.url == "/static/folder.svg") {
+      co_return Resolve(theme, request.url);
+    } else if (request.url == "/static/colors-light.css") {
       content = util::kAssetsStylesColorsLightCss;
       mime_type = "text/css";
-    } else if (request.url == "/static/colors_dark.css") {
+    } else if (request.url == "/static/colors-dark.css") {
       content = util::kAssetsStylesColorsDarkCss;
       mime_type = "text/css";
     } else if (request.url == "/static/user-trash-light.svg") {
@@ -91,6 +102,14 @@ class StaticFileHandler {
     } else {
       return false;
     }
+  }
+
+  static Response Resolve(Theme theme, std::string_view url) {
+    auto it = url.find_last_of('.');
+    return Response{.status = 302,
+                    .headers = {{"Location", util::StrCat(url.substr(0, it),
+                                                          "-", ToString(theme),
+                                                          url.substr(it))}}};
   }
 };
 

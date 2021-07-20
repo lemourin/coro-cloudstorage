@@ -7,7 +7,6 @@
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/fetch_json.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
-#include <coro/cloudstorage/util/theme_handler.h>
 #include <coro/cloudstorage/util/thumbnail_generator.h>
 #include <coro/cloudstorage/util/thumbnail_options.h>
 #include <coro/http/http_parse.h>
@@ -16,7 +15,6 @@
 #include <coro/util/function_traits.h>
 #include <coro/util/raii_utils.h>
 #include <coro/util/type_list.h>
-#include <fmt/format.h>
 
 #include <array>
 
@@ -923,10 +921,8 @@ class Mega::Auth::AuthHandler {
     } else {
       co_return http::Response<>{
           .status = 200,
-          .body = http::CreateBody(fmt::format(
-              fmt::runtime(util::kAssetsHtmlMegaLoginHtml),
-              fmt::arg("theme",
-                       util::ToString(util::GetTheme(request.headers)))))};
+          .body =
+              http::CreateBody(std::string(util::kAssetsHtmlMegaLoginHtml))};
     }
   }
 

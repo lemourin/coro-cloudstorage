@@ -9,11 +9,9 @@
 #include <coro/cloudstorage/util/file_utils.h>
 #include <coro/cloudstorage/util/recursive_visit.h>
 #include <coro/cloudstorage/util/string_utils.h>
-#include <coro/cloudstorage/util/theme_handler.h>
 #include <coro/http/http.h>
 #include <coro/http/http_parse.h>
 #include <coro/when_all.h>
-#include <fmt/format.h>
 
 #include <chrono>
 #include <nlohmann/json.hpp>
@@ -375,16 +373,13 @@ class AmazonS3::Auth::AuthHandler {
           *http_, std::move(access_key_id), std::move(secret_key),
           std::move(endpoint), std::move(stop_token));
     } else {
-      co_return http::Response<>{
-          .status = 200,
-          .body = GenerateLoginPage(util::GetTheme(request.headers))};
+      co_return http::Response<>{.status = 200, .body = GenerateLoginPage()};
     }
   }
 
  private:
-  static Generator<std::string> GenerateLoginPage(util::Theme theme) {
-    co_yield fmt::format(fmt::runtime(util::kAssetsHtmlAmazons3LoginHtml),
-                         fmt::arg("theme", util::ToString(theme)));
+  static Generator<std::string> GenerateLoginPage() {
+    co_yield std::string(util::kAssetsHtmlAmazons3LoginHtml);
   }
 
   const HttpT* http_;

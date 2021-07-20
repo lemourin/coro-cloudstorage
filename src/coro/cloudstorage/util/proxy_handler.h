@@ -2,7 +2,6 @@
 #define CORO_CLOUDSTORAGE_PROXY_HANDLER_H
 
 #include <coro/cloudstorage/util/assets.h>
-#include <coro/cloudstorage/util/theme_handler.h>
 #include <coro/cloudstorage/util/thumbnail_options.h>
 #include <coro/cloudstorage/util/webdav_utils.h>
 #include <coro/http/http_parse.h>
@@ -104,7 +103,7 @@ class ProxyHandler {
   }
 
   template <typename Item>
-  Response GetStaticIcon(Theme theme, const Item& item) const {
+  Response GetStaticIcon(const Item& item) const {
     std::string_view icon_name = [&] {
       if constexpr (IsFile<Item, CloudProvider>) {
         switch (CloudProvider::GetFileType(item)) {
@@ -124,13 +123,11 @@ class ProxyHandler {
     }();
     return Response{
         .status = 302,
-        .headers = {{"Location", util::StrCat("/static/", icon_name, "-",
-                                              ToString(theme), ".svg")}}};
+        .headers = {{"Location", util::StrCat("/static/", icon_name, ".svg")}}};
   }
 
   template <typename Item>
-  Task<Response> GetIcon(Theme theme, const Item& item,
-                         stdx::stop_token stop_token) const {
+  Task<Response> GetIcon(const Item& item, stdx::stop_token stop_token) const {
     if constexpr (IsFile<Item, CloudProvider>) {
       try {
         std::string content =
@@ -143,10 +140,10 @@ class ProxyHandler {
                         {"Content-Length", std::to_string(content.size())}},
             .body = http::CreateBody(std::move(content))};
       } catch (...) {
-        co_return GetStaticIcon(theme, item);
+        co_return GetStaticIcon(item);
       }
     } else {
-      co_return GetStaticIcon(theme, item);
+      co_return GetStaticIcon(item);
     }
   }
 
@@ -167,8 +164,7 @@ class ProxyHandler {
       } catch (...) {
       }
     }
-    co_return co_await GetIcon(util::GetTheme(request.headers), d,
-                               std::move(stop_token));
+    co_return co_await GetIcon(d, std::move(stop_token));
   }
 
   std::string GetPath(const Request& request) const {
@@ -256,7 +252,6 @@ class ProxyHandler {
             .status = 200,
             .headers = {{"Content-Type", "text/html"}},
             .body = GetDirectoryContent(
-                GetTheme(request.headers),
                 provider_->ListDirectory(d, std::move(stop_token)),
                 directory_path)};
       }
@@ -363,8 +358,7 @@ class ProxyHandler {
   }
 
   template <typename Item>
-  std::string GetItemEntry(Theme theme, const Item& item,
-                           std::string_view path) const {
+  std::string GetItemEntry(const Item& item, std::string_view path) const {
     std::string file_link = util::StrCat(path, http::EncodeUri(item.name));
     return fmt::format(
         fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", item.name),
@@ -374,13 +368,11 @@ class ProxyHandler {
         fmt::arg("url", util::StrCat(file_link, item.name.ends_with(".mpd")
                                                     ? "?dash_player=true"
                                                     : "")),
-        fmt::arg("thumbnail_url",
-                 util::StrCat(file_link,
-                              "?thumbnail=true&theme=", ToString(theme))));
+        fmt::arg("thumbnail_url", util::StrCat(file_link, "?thumbnail=true")));
   }
 
   Generator<std::string> GetDirectoryContent(
-      Theme theme, Generator<typename CloudProvider::PageData> page_data,
+      Generator<typename CloudProvider::PageData> page_data,
       std::string path) const {
     co_yield "<!DOCTYPE html>"
               "<html>"
@@ -389,11 +381,8 @@ class ProxyHandler {
               "  <meta charset='UTF-8'>"
               "  <meta name='viewport' "
               "        content='width=device-width, initial-scale=1'>"
-              "  <link rel=stylesheet href='/static/layout.css'>";
-    co_yield fmt::format(
-        "<link rel=stylesheet href='/static/colors_{theme}.css'>",
-        fmt::arg("theme", ToString(theme)));
-    co_yield
+              "  <link rel=stylesheet href='/static/layout.css'>"
+              "  <link rel=stylesheet href='/static/colors.css'>"
               "</head>"
               "<body>"
               "<table class='content-table'>";
@@ -403,11 +392,11 @@ class ProxyHandler {
         fmt::arg("url", GetDirectoryPath(path)),
         fmt::arg("thumbnail_url",
                  util::StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
-                              "?thumbnail=true&theme=", ToString(theme))));
+                              "?thumbnail=true")));
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
         co_yield std::visit(
-            [&](const auto& item) { return GetItemEntry(theme, item, path); },
+            [&](const auto& item) { return GetItemEntry(item, path); },
             item);
       }
     }

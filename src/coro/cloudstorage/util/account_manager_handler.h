@@ -150,8 +150,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
             .body = http::CreateBody(GetMultiStatusResponse(responses))};
       } else {
         co_return Response{.status = 200,
-                           .body = GetHomePage(GetTheme(request.headers),
-                                               std::move(stop_token))};
+                           .body = GetHomePage(std::move(stop_token))};
       }
     } else {
       co_return Response{.status = 302, .headers = {{"Location", "/"}}};
@@ -363,7 +362,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         fmt::arg("image_url", util::StrCat("/static/", id, ".png")));
   }
 
-  Generator<std::string> GetHomePage(Theme theme, stdx::stop_token stop_token) {
+  Generator<std::string> GetHomePage(stdx::stop_token stop_token) {
     std::stringstream supported_providers;
     (AppendAuthUrl<CloudProviders>(factory_, supported_providers), ...);
     std::stringstream content_table;
@@ -383,12 +382,10 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
           fmt::arg("provider_name", account.username()),
           fmt::arg("provider_remove_url",
                    util::StrCat("/remove/", http::EncodeUri(account.GetId()))),
-          fmt::arg("provider_id", http::EncodeUri(account.GetId())),
-          fmt::arg("theme", ToString(theme)));
+          fmt::arg("provider_id", http::EncodeUri(account.GetId())));
     }
     co_yield fmt::format(
         fmt::runtime(kAssetsHtmlHomePageHtml),
-        fmt::arg("theme", ToString(theme)),
         fmt::arg("supported_providers", std::move(supported_providers).str()),
         fmt::arg("content_table", std::move(content_table).str()));
   }

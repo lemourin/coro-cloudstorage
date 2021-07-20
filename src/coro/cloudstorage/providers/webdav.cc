@@ -1,8 +1,5 @@
 #include "webdav.h"
 
-#include <coro/cloudstorage/util/theme_handler.h>
-#include <fmt/format.h>
-
 #include <iomanip>
 #include <regex>
 
@@ -21,9 +18,8 @@ int64_t ParseTime(std::string str) {
   }
 }
 
-Generator<std::string> GenerateLoginPage(util::Theme theme) {
-  co_yield fmt::format(fmt::runtime(util::kAssetsHtmlWebdavLoginHtml),
-                       fmt::arg("theme", util::ToString(theme)));
+Generator<std::string> GenerateLoginPage() {
+  co_yield std::string(util::kAssetsHtmlWebdavLoginHtml);
 }
 
 }  // namespace
@@ -91,9 +87,7 @@ WebDAV::Auth::AuthHandler::operator()(http::Request<> request,
     }
     co_return auth_token;
   } else {
-    co_return http::Response<>{
-        .status = 200,
-        .body = GenerateLoginPage(util::GetTheme(request.headers))};
+    co_return http::Response<>{.status = 200, .body = GenerateLoginPage()};
   }
 }
 
