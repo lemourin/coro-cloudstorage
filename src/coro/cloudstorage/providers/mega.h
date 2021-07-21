@@ -77,7 +77,6 @@ struct Mega {
     std::string name;
     std::string user;
     nlohmann::json attr;
-    std::vector<uint8_t> key;
     std::vector<uint8_t> compkey;
   };
 
@@ -87,7 +86,6 @@ struct Mega {
     std::string name;
     std::string user;
     nlohmann::json attr;
-    std::vector<uint8_t> key;
     std::vector<uint8_t> compkey;
     std::optional<uint64_t> thumbnail_id;
   };
@@ -158,6 +156,18 @@ struct Mega {
                                             std::string_view content);
 
   static std::vector<uint8_t> ToFileKey(std::span<const uint8_t> compkey);
+
+  template <typename Item>
+  static decltype(auto) GetItemKey(const Item& item) {
+    if constexpr (std::is_same_v<Item, Mega::File>) {
+      if (item.compkey.size() < 8) {
+        throw CloudException("invalid file key");
+      }
+      return Mega::ToFileKey(item.compkey);
+    } else {
+      return item.compkey;
+    }
+  }
 
   static std::string ToHandle(uint64_t id);
   static std::string ToAttributeHandle(uint64_t id);
@@ -278,7 +288,8 @@ class Mega::CloudProvider
     int64_t size = range.end.value_or(file.size - 1) - range.start + 1;
     co_await LazyInit(stop_token);
     auto json = co_await NewDownload(file.id, stop_token);
-    DecryptAttribute(file.key, FromBase64(std::string(json["at"])));
+    std::vector<uint8_t> key = ToFileKey(file.compkey);
+    DecryptAttribute(key, FromBase64(std::string(json["at"])));
     std::string url = json["g"];
     auto chunk_url = util::StrCat(url, "/", position, "-", position + size - 1);
     auto chunk_response = co_await http_->Fetch(chunk_url, stop_token);
@@ -286,7 +297,7 @@ class Mega::CloudProvider
       throw http::HttpException(chunk_response.status);
     }
     FOR_CO_AWAIT(std::string_view chunk, chunk_response.body) {
-      co_yield DecodeChunk(file.key, file.compkey, position, chunk);
+      co_yield DecodeChunk(key, file.compkey, position, chunk);
       position += static_cast<int64_t>(chunk.size());
     }
   }
@@ -300,7 +311,7 @@ class Mega::CloudProvider
     command["a"] = "a";
     item.name = new_name;
     item.attr["n"] = new_name;
-    command["attr"] = ToBase64(EncryptAttribute(item.key, item.attr));
+    command["attr"] = ToBase64(EncryptAttribute(GetItemKey(item), item.attr));
     command["n"] = ToHandle(item.id);
     command["key"] = GetEncryptedItemKey(item.compkey);
     co_await DoCommand(std::move(command), std::move(stop_token));
@@ -383,8 +394,9 @@ class Mega::CloudProvider
     auto content = co_await http::GetBody(std::move(thumbnail_response.body));
     content = content.substr(12);
     Thumbnail thumbnail{.size = static_cast<int64_t>(content.size())};
+    auto key = ToFileKey(item.compkey);
     auto decoded = DecodeAttributeContent(
-        std::span<const uint8_t>(item.key).subspan(0, 16), content);
+        std::span<const uint8_t>(key).subspan(0, 16), content);
     int64_t end = range.end.value_or(decoded.size() - 1);
     if (end >= static_cast<int64_t>(decoded.size())) {
       throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
@@ -485,7 +497,8 @@ class Mega::CloudProvider
 
   Task<File> SetThumbnail(File file, std::string thumbnail,
                           stdx::stop_token stop_token) {
-    std::string encoded = EncodeAttributeContent(file.key, thumbnail);
+    std::string encoded =
+        EncodeAttributeContent(ToFileKey(file.compkey), thumbnail);
     nlohmann::json command;
     command["a"] = "ufa";
     command["s"] = encoded.size();
@@ -822,9 +835,10 @@ class Mega::CloudProvider
             if constexpr (std::is_same_v<T, File> ||
                           std::is_same_v<T, Directory>) {
               try {
-                item.name = DecryptAttribute(
-                                item.key, FromBase64(std::string(json["at"])))
-                                .at("n");
+                item.name =
+                    DecryptAttribute(GetItemKey(item),
+                                     FromBase64(std::string(json["at"])))
+                        .at("n");
               } catch (const nlohmann::json::exception&) {
                 item.name = "MALFORMED ATTRIBUTES";
               } catch (const CloudException&) {

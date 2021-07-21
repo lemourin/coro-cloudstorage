@@ -102,17 +102,9 @@ T ToItemImpl(std::span<const uint8_t> master_key, const nlohmann::json& json) {
     result.user = item_user;
     if (item_user == std::string(json["u"])) {
       result.compkey = BlockTransform(cipher, Mega::FromBase64(item_key));
-      if constexpr (std::is_same_v<T, Mega::File>) {
-        if (result.compkey.size() < 8) {
-          throw CloudException("invalid file key");
-        }
-        result.key = Mega::ToFileKey(result.compkey);
-      } else {
-        result.key = result.compkey;
-      }
       try {
         result.attr = Mega::DecryptAttribute(
-            result.key, Mega::FromBase64(std::string(json["a"])));
+            Mega::GetItemKey(result), Mega::FromBase64(std::string(json["a"])));
         result.name = result.attr.at("n");
       } catch (const nlohmann::json::exception&) {
         result.name = "MALFORMED ATTRIBUTES";
@@ -312,7 +304,7 @@ uint64_t Mega::DecodeHandle(std::string_view b64) {
 }
 
 std::string Mega::ToHandle(uint64_t id) {
-  std::vector<uint8_t> output{
+  std::array<uint8_t, 6> output{
       static_cast<uint8_t>((id & ((1ULL << 32) - 1)) >> 24),
       static_cast<uint8_t>((id & ((1ULL << 24) - 1)) >> 16),
       static_cast<uint8_t>((id & ((1ULL << 16) - 1)) >> 8),
@@ -324,7 +316,7 @@ std::string Mega::ToHandle(uint64_t id) {
 }
 
 std::string Mega::ToAttributeHandle(uint64_t id) {
-  std::vector<uint8_t> output{
+  std::array<uint8_t, 8> output{
       static_cast<uint8_t>((id & ((1ULL << 32) - 1)) >> 24),
       static_cast<uint8_t>((id & ((1ULL << 24) - 1)) >> 16),
       static_cast<uint8_t>((id & ((1ULL << 16) - 1)) >> 8),
