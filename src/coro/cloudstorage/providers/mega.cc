@@ -101,7 +101,18 @@ T ToItemImpl(std::span<const uint8_t> master_key, const nlohmann::json& json) {
     }
     result.user = item_user;
     if (item_user == std::string(json["u"])) {
-      result.compkey = BlockTransform(cipher, Mega::FromBase64(item_key));
+      result.compkey = [&] {
+        std::vector<uint8_t> decoded =
+            BlockTransform(cipher, Mega::FromBase64(item_key));
+        constexpr size_t key_length = std::is_same_v<T, Mega::File> ? 32 : 16;
+        if (decoded.size() != key_length) {
+          throw CloudException(
+              util::StrCat("invalid key length ", decoded.size()));
+        }
+        std::array<uint8_t, key_length> result;
+        memcpy(result.data(), decoded.data(), key_length);
+        return result;
+      }();
       try {
         result.attr = Mega::DecryptAttribute(
             Mega::GetItemKey(result), Mega::FromBase64(std::string(json["a"])));
@@ -131,8 +142,31 @@ T ToItemImpl(std::span<const uint8_t> master_key, const nlohmann::json& json) {
   return result;
 }
 
-std::vector<uint32_t> XorBlocks(std::span<const uint32_t> block,
-                                std::span<const uint32_t> cbc_mac) {
+template <size_t Size>
+std::array<uint32_t, Size / 4> ToA32(std::span<const uint8_t, Size> bytes) {
+  static_assert(Size % 4 == 0);
+  std::array<uint32_t, Size / 4> result;
+  for (size_t i = 0; 4 * i + 3 < bytes.size(); i++) {
+    result[i] = (bytes[4 * i] << 24) | (bytes[4 * i + 1] << 16) |
+                (bytes[4 * i + 2] << 8) | bytes[4 * i + 3];
+  }
+  return result;
+}
+
+template <size_t Size>
+std::array<uint8_t, Size * 4> ToBytes(std::span<const uint32_t, Size> span) {
+  std::array<uint8_t, Size * 4> result;
+  for (size_t i = 0; i < span.size(); i++) {
+    result[4 * i] = span[i] >> 24;
+    result[4 * i + 1] = (span[i] & ((1u << 24) - 1)) >> 16;
+    result[4 * i + 2] = (span[i] & ((1u << 16) - 1)) >> 8;
+    result[4 * i + 3] = (span[i] & ((1u << 8) - 1));
+  }
+  return result;
+}
+
+std::array<uint32_t, 4> XorBlocks(std::span<const uint32_t, 4> block,
+                                  std::span<const uint32_t, 4> cbc_mac) {
   return {cbc_mac[0] ^ block[0], cbc_mac[1] ^ block[1], cbc_mac[2] ^ block[2],
           cbc_mac[3] ^ block[3]};
 }
@@ -379,10 +413,10 @@ std::string Mega::EncodeChunk(std::span<const uint8_t> key,
   return encrypted.substr(position % 16);
 }
 
-std::vector<uint8_t> Mega::ToFileKey(std::span<const uint8_t> compkey) {
-  auto a32 = ToA32(compkey);
-  return ToBytes(XorBlocks(std::span<const uint32_t>(a32).subspan(0, 4),
-                           std::span<const uint32_t>(a32).subspan(4, 4)));
+std::array<uint8_t, 16> Mega::ToFileKey(std::span<const uint8_t, 32> compkey) {
+  auto a32 = coro::cloudstorage::ToA32(compkey);
+  return coro::cloudstorage::ToBytes(std::span<const uint32_t, 4>(XorBlocks(
+      std::span(a32).subspan<0, 4>(), std::span(a32).subspan<4, 4>())));
 }
 
 std::string Mega::EncodeAttributeContent(std::span<const uint8_t> key,
@@ -408,7 +442,7 @@ std::string Mega::BlockEncrypt(std::span<const uint8_t> key,
 
 Generator<std::string> Mega::GetEncodedStream(
     std::span<const uint8_t> key, std::span<const uint8_t> compkey,
-    Generator<std::string> decoded, std::vector<uint32_t>& cbc_mac_a32) {
+    Generator<std::string> decoded, std::array<uint32_t, 4>& cbc_mac_a32) {
   uint8_t iv[16] = {};
   CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption cipher;
   cipher.SetKeyWithIV(key.data(), key.size(), iv, sizeof(iv));

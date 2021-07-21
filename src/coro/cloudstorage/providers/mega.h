@@ -77,7 +77,7 @@ struct Mega {
     std::string name;
     std::string user;
     nlohmann::json attr;
-    std::vector<uint8_t> compkey;
+    std::array<uint8_t, 16> compkey;
   };
 
   struct File : ItemData {
@@ -86,7 +86,7 @@ struct Mega {
     std::string name;
     std::string user;
     nlohmann::json attr;
-    std::vector<uint8_t> compkey;
+    std::array<uint8_t, 32> compkey;
     std::optional<uint64_t> thumbnail_id;
   };
 
@@ -155,17 +155,15 @@ struct Mega {
   static std::string EncodeAttributeContent(std::span<const uint8_t> key,
                                             std::string_view content);
 
-  static std::vector<uint8_t> ToFileKey(std::span<const uint8_t> compkey);
+  static std::array<uint8_t, 16> ToFileKey(
+      std::span<const uint8_t, 32> compkey);
 
   template <typename Item>
   static decltype(auto) GetItemKey(const Item& item) {
     if constexpr (std::is_same_v<Item, Mega::File>) {
-      if (item.compkey.size() < 8) {
-        throw CloudException("invalid file key");
-      }
       return Mega::ToFileKey(item.compkey);
     } else {
-      return item.compkey;
+      return static_cast<const decltype(item.compkey)&>(item.compkey);
     }
   }
 
@@ -183,7 +181,7 @@ struct Mega {
 
   static Generator<std::string> GetEncodedStream(
       std::span<const uint8_t> key, std::span<const uint8_t> compkey,
-      Generator<std::string> decoded, std::vector<uint32_t>& cbc_mac);
+      Generator<std::string> decoded, std::array<uint32_t, 4>& cbc_mac);
 
   static constexpr std::string_view kId = "mega";
   static inline const auto& kIcon = util::kAssetsProvidersMegaPng;
@@ -288,7 +286,7 @@ class Mega::CloudProvider
     int64_t size = range.end.value_or(file.size - 1) - range.start + 1;
     co_await LazyInit(stop_token);
     auto json = co_await NewDownload(file.id, stop_token);
-    std::vector<uint8_t> key = ToFileKey(file.compkey);
+    std::array<uint8_t, 16> key = ToFileKey(file.compkey);
     DecryptAttribute(key, FromBase64(std::string(json["at"])));
     std::string url = json["g"];
     auto chunk_url = util::StrCat(url, "/", position, "-", position + size - 1);
@@ -350,9 +348,8 @@ class Mega::CloudProvider
                                         std::is_same_v<DirectoryT, Directory>>>
   Task<Directory> CreateDirectory(DirectoryT parent, std::string name,
                                   stdx::stop_token stop_token) {
-    std::vector<uint8_t> compkey = GenerateKey<uint8_t>(16);
     Directory directory{};
-    directory.compkey = std::move(compkey);
+    directory.compkey = GenerateKey<uint8_t, 16>();
     directory.parent = parent.id;
     nlohmann::json command;
     command["a"] = "p";
@@ -415,9 +412,9 @@ class Mega::CloudProvider
     nlohmann::json upload_response =
         co_await CreateUpload(content.size, stop_token);
     std::string upload_url = upload_response["p"];
-    std::vector<uint32_t> compkey = GenerateKey<uint32_t>(6);
+    std::array<uint32_t, 6> compkey = GenerateKey<uint32_t, 6>();
     std::span<const uint32_t> key(compkey.data(), 4);
-    std::vector<uint32_t> cbc_mac(4, 0);
+    std::array<uint32_t, 4> cbc_mac{};
     auto response = co_await http_->Fetch(
         http::Request<>{
             .url = util::StrCat(upload_url, "/0"),
@@ -549,7 +546,7 @@ class Mega::CloudProvider
           Auth::GetLoginWithSaltData(credential.password, *prelogin_data.salt);
       password_key = std::move(data.password_key);
       command["uh"] = std::move(data.handle);
-      command["sek"] = ToBase64(ToStringView(GenerateKey<uint8_t>(16)));
+      command["sek"] = ToBase64(ToStringView(GenerateKey<uint8_t, 16>()));
     } else {
       throw CloudException("not supported account version");
     }
@@ -572,9 +569,9 @@ class Mega::CloudProvider
     std::optional<std::string> salt;
   };
 
-  template <typename T>
-  std::vector<T> GenerateKey(int length) const {
-    std::vector<T> key(length, 0);
+  template <typename T, size_t Size>
+  std::array<T, Size> GenerateKey() const {
+    std::array<T, Size> key{};
     for (T& c : key) {
       c = random_number_generator_->template Get<T>();
     }
