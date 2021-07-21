@@ -25,7 +25,7 @@ struct Mega {
     struct AuthToken {
       std::string email;
       std::string session;
-      std::vector<uint8_t> pkey;
+      std::array<uint8_t, 16> pkey;
     };
 
     struct AuthData {
@@ -45,23 +45,23 @@ struct Mega {
               typename ThumbnailGenerator = class ThumbnailGeneratorT>
     class AuthHandler;
 
-    static std::vector<uint8_t> GetPasswordKey(std::string_view password);
+    static std::array<uint8_t, 16> GetPasswordKey(std::string_view password);
     static std::string GetHash(std::string_view text,
-                               const std::vector<uint8_t>& key);
+                               std::span<const uint8_t, 16> key);
 
     struct SessionData {
-      std::vector<uint8_t> pkey;
+      std::array<uint8_t, 16> pkey;
       std::string session_id;
     };
 
-    static SessionData DecryptSessionId(const std::vector<uint8_t>& passkey,
+    static SessionData DecryptSessionId(std::span<const uint8_t, 16> passkey,
                                         std::string_view key,
                                         std::string_view privk,
                                         std::string_view csid);
 
     struct LoginWithSaltData {
-      std::string handle;
-      std::vector<uint8_t> password_key;
+      std::array<uint8_t, 16> handle;
+      std::array<uint8_t, 16> password_key;
     };
     static LoginWithSaltData GetLoginWithSaltData(std::string_view password,
                                                   std::string_view salt);
@@ -139,18 +139,15 @@ struct Mega {
   static std::optional<std::string_view> GetAttribute(std::string_view attr,
                                                       int index);
 
-  static std::string DecodeChunk(std::span<const uint8_t> key,
-                                 std::span<const uint8_t> compkey,
+  static std::string DecodeChunk(std::span<const uint8_t, 16> key,
+                                 std::span<const uint8_t, 32> compkey,
                                  int64_t position, std::string_view encoded);
-  static nlohmann::json DecryptAttribute(std::span<const uint8_t> key,
+  static nlohmann::json DecryptAttribute(std::span<const uint8_t, 16> key,
                                          std::string_view input);
-  static std::string DecodeAttributeContent(std::span<const uint8_t> key,
+  static std::string DecodeAttributeContent(std::span<const uint8_t, 16> key,
                                             std::string_view encoded);
 
-  static std::string EncodeChunk(std::span<const uint8_t> key,
-                                 std::span<const uint8_t> compkey,
-                                 int64_t position, std::string_view text);
-  static std::string EncryptAttribute(std::span<const uint8_t> key,
+  static std::string EncryptAttribute(std::span<const uint8_t, 16> key,
                                       const nlohmann::json& json);
   static std::string EncodeAttributeContent(std::span<const uint8_t> key,
                                             std::string_view content);
@@ -174,13 +171,40 @@ struct Mega {
   static std::string BlockEncrypt(std::span<const uint8_t> key,
                                   std::string_view message);
 
-  static std::vector<uint8_t> ToBytes(std::span<const uint32_t> span);
+  template <size_t Size>
+  static auto ToBytes(std::span<const uint32_t, Size> span) {
+    if constexpr (Size == std::dynamic_extent) {
+      std::vector<uint8_t> result(span.size() * 4, 0);
+      for (size_t i = 0; i < span.size(); i++) {
+        result[4 * i] = span[i] >> 24;
+        result[4 * i + 1] = (span[i] & ((1u << 24) - 1)) >> 16;
+        result[4 * i + 2] = (span[i] & ((1u << 16) - 1)) >> 8;
+        result[4 * i + 3] = (span[i] & ((1u << 8) - 1));
+      }
+      return result;
+    } else {
+      std::array<uint8_t, Size * 4> result;
+      for (size_t i = 0; i < span.size(); i++) {
+        result[4 * i] = span[i] >> 24;
+        result[4 * i + 1] = (span[i] & ((1u << 24) - 1)) >> 16;
+        result[4 * i + 2] = (span[i] & ((1u << 16) - 1)) >> 8;
+        result[4 * i + 3] = (span[i] & ((1u << 8) - 1));
+      }
+      return result;
+    }
+  }
+
+  template <typename T, std::size_t Size>
+  static std::span<const T, Size> MakeConstSpan(
+      const std::array<T, Size>& array) {
+    return std::span<const T, Size>(array);
+  }
+
   static std::span<const uint8_t> ToBytes(std::string_view d);
   static std::string_view ToStringView(std::span<const uint8_t> d);
-  static std::vector<uint32_t> ToA32(std::span<const uint8_t> bytes);
 
   static Generator<std::string> GetEncodedStream(
-      std::span<const uint8_t> key, std::span<const uint8_t> compkey,
+      std::span<const uint8_t, 16> key, std::span<const uint8_t, 32> compkey,
       Generator<std::string> decoded, std::array<uint32_t, 4>& cbc_mac);
 
   static constexpr std::string_view kId = "mega";
@@ -391,9 +415,7 @@ class Mega::CloudProvider
     auto content = co_await http::GetBody(std::move(thumbnail_response.body));
     content = content.substr(12);
     Thumbnail thumbnail{.size = static_cast<int64_t>(content.size())};
-    auto key = ToFileKey(item.compkey);
-    auto decoded = DecodeAttributeContent(
-        std::span<const uint8_t>(key).subspan(0, 16), content);
+    auto decoded = DecodeAttributeContent(ToFileKey(item.compkey), content);
     int64_t end = range.end.value_or(decoded.size() - 1);
     if (end >= static_cast<int64_t>(decoded.size())) {
       throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
@@ -412,16 +434,17 @@ class Mega::CloudProvider
     nlohmann::json upload_response =
         co_await CreateUpload(content.size, stop_token);
     std::string upload_url = upload_response["p"];
-    std::array<uint32_t, 6> compkey = GenerateKey<uint32_t, 6>();
-    std::span<const uint32_t> key(compkey.data(), 4);
+    std::array<uint32_t, 8> compkey = GenerateKey<uint32_t, 8>();
+    std::span<const uint32_t, 4> key(std::span(compkey).subspan<0, 4>());
     std::array<uint32_t, 4> cbc_mac{};
     auto response = co_await http_->Fetch(
         http::Request<>{
             .url = util::StrCat(upload_url, "/0"),
             .method = http::Method::kPost,
             .headers = {{"Content-Length", std::to_string(content.size)}},
-            .body = GetEncodedStream(ToBytes(key), ToBytes(compkey),
-                                     std::move(content.data), cbc_mac)},
+            .body =
+                GetEncodedStream(ToBytes(key), ToBytes(MakeConstSpan(compkey)),
+                                 std::move(content.data), cbc_mac)},
         stop_token);
     if (response.status / 100 != 2) {
       throw http::HttpException(response.status);
@@ -438,11 +461,14 @@ class Mega::CloudProvider
                                          meta_mac[0],
                                          meta_mac[1]};
 
-    std::string item_key_bytes(ToStringView(ToBytes(item_key)));
+    auto item_key_bytes = ToBytes(MakeConstSpan(item_key));
     std::string encoded_key = util::StrCat(
-        EncodeAttributeContent(auth_token_.pkey, item_key_bytes.substr(0, 16)),
-        EncodeAttributeContent(auth_token_.pkey,
-                               item_key_bytes.substr(16, 16)));
+        EncodeAttributeContent(
+            auth_token_.pkey,
+            ToStringView(MakeConstSpan(item_key_bytes).subspan<0, 16>())),
+        EncodeAttributeContent(
+            auth_token_.pkey,
+            ToStringView(MakeConstSpan(item_key_bytes).subspan<16, 16>())));
 
     std::string completion_handle =
         co_await http::GetBody(std::move(response.body));
@@ -537,7 +563,7 @@ class Mega::CloudProvider
     if (credential.twofactor) {
       command["mfa"] = std::move(*credential.twofactor);
     }
-    std::vector<uint8_t> password_key;
+    std::array<uint8_t, 16> password_key;
     if (prelogin_data.version == 1) {
       password_key = Auth::GetPasswordKey(credential.password);
       command["uh"] = Auth::GetHash(credential.email, password_key);
@@ -545,7 +571,7 @@ class Mega::CloudProvider
       auto data =
           Auth::GetLoginWithSaltData(credential.password, *prelogin_data.salt);
       password_key = std::move(data.password_key);
-      command["uh"] = std::move(data.handle);
+      command["uh"] = ToBase64(ToStringView(std::move(data.handle)));
       command["sek"] = ToBase64(ToStringView(GenerateKey<uint8_t, 16>()));
     } else {
       throw CloudException("not supported account version");
@@ -949,9 +975,7 @@ inline nlohmann::json ToJson<Mega::Auth::AuthToken>(
   nlohmann::json json;
   json["email"] = std::move(token.email);
   json["session"] = std::move(token.session);
-  for (uint8_t c : token.pkey) {
-    json["pkey"].emplace_back(c);
-  }
+  json["pkey"] = token.pkey;
   return json;
 }
 
@@ -959,10 +983,9 @@ template <>
 inline Mega::Auth::AuthToken ToAuthToken<Mega::Auth::AuthToken>(
     const nlohmann::json& json) {
   Mega::Auth::AuthToken auth_token = {
-      .email = json.at("email"), .session = std::string(json.at("session"))};
-  for (uint8_t c : json.at("pkey")) {
-    auth_token.pkey.emplace_back(c);
-  }
+      .email = json.at("email"),
+      .session = std::string(json.at("session")),
+      .pkey = json.at("pkey")};
   return auth_token;
 }
 

@@ -72,14 +72,36 @@ std::vector<uint8_t> BlockTransform(Cipher& cipher, std::string_view message) {
   return decrypted;
 }
 
-std::vector<uint8_t> ToIV(std::span<const uint8_t> compkey) {
-  auto a32 = Mega::ToA32(compkey);
-  return Mega::ToBytes(std::vector<uint32_t>{a32[4], a32[5], 0, 0});
+template <size_t Size>
+auto ToA32(std::span<const uint8_t, Size> bytes) {
+  if constexpr (Size == std::dynamic_extent) {
+    std::vector<uint32_t> result(bytes.size() / 4);
+    for (size_t i = 0; 4 * i + 3 < bytes.size(); i++) {
+      result[i] = (bytes[4 * i] << 24) | (bytes[4 * i + 1] << 16) |
+                  (bytes[4 * i + 2] << 8) | bytes[4 * i + 3];
+    }
+    return result;
+  } else {
+    static_assert(Size % 4 == 0);
+    std::array<uint32_t, Size / 4> result;
+    for (size_t i = 0; 4 * i + 3 < bytes.size(); i++) {
+      result[i] = (bytes[4 * i] << 24) | (bytes[4 * i + 1] << 16) |
+                  (bytes[4 * i + 2] << 8) | bytes[4 * i + 3];
+    }
+    return result;
+  }
 }
 
-std::vector<uint8_t> ToMAC(std::span<const uint8_t> compkey) {
-  auto a32 = Mega::ToA32(compkey);
-  return Mega::ToBytes(std::vector<uint32_t>{a32[6], a32[7]});
+auto ToIV(std::span<const uint8_t, 32> compkey) {
+  auto a32 = ToA32(compkey);
+  return Mega::ToBytes(
+      Mega::MakeConstSpan(std::array<uint32_t, 4>{a32[4], a32[5], 0, 0}));
+}
+
+auto ToMAC(std::span<const uint8_t, 32> compkey) {
+  auto a32 = ToA32(compkey);
+  return Mega::ToBytes(
+      Mega::MakeConstSpan(std::array<uint32_t, 2>{a32[6], a32[7]}));
 }
 
 template <typename T>
@@ -142,50 +164,46 @@ T ToItemImpl(std::span<const uint8_t> master_key, const nlohmann::json& json) {
   return result;
 }
 
-template <size_t Size>
-std::array<uint32_t, Size / 4> ToA32(std::span<const uint8_t, Size> bytes) {
-  static_assert(Size % 4 == 0);
-  std::array<uint32_t, Size / 4> result;
-  for (size_t i = 0; 4 * i + 3 < bytes.size(); i++) {
-    result[i] = (bytes[4 * i] << 24) | (bytes[4 * i + 1] << 16) |
-                (bytes[4 * i + 2] << 8) | bytes[4 * i + 3];
-  }
-  return result;
-}
-
-template <size_t Size>
-std::array<uint8_t, Size * 4> ToBytes(std::span<const uint32_t, Size> span) {
-  std::array<uint8_t, Size * 4> result;
-  for (size_t i = 0; i < span.size(); i++) {
-    result[4 * i] = span[i] >> 24;
-    result[4 * i + 1] = (span[i] & ((1u << 24) - 1)) >> 16;
-    result[4 * i + 2] = (span[i] & ((1u << 16) - 1)) >> 8;
-    result[4 * i + 3] = (span[i] & ((1u << 8) - 1));
-  }
-  return result;
-}
-
 std::array<uint32_t, 4> XorBlocks(std::span<const uint32_t, 4> block,
                                   std::span<const uint32_t, 4> cbc_mac) {
   return {cbc_mac[0] ^ block[0], cbc_mac[1] ^ block[1], cbc_mac[2] ^ block[2],
           cbc_mac[3] ^ block[3]};
 }
 
+std::string EncodeChunk(std::span<const uint8_t, 16> key,
+                        std::span<const uint8_t, 32> compkey, int64_t position,
+                        std::string_view input) {
+  auto civ = [&] {
+    auto iv = ToA32(Mega::MakeConstSpan(ToIV(compkey)));
+    iv[2] = uint32_t(uint64_t(position) / 0x1000000000);
+    iv[3] = uint32_t(uint64_t(position) / 0x10);
+    return Mega::ToBytes(std::span<const uint32_t, 4>(iv));
+  }();
+  CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption cipher;
+  cipher.SetKeyWithIV(key.data(), key.size(), civ.data(), civ.size());
+  std::string padded_input = util::StrCat(std::string(position % 16, 0), input);
+  std::string encrypted(padded_input.size(), 0);
+  cipher.ProcessData(reinterpret_cast<uint8_t*>(encrypted.data()),
+                     reinterpret_cast<const uint8_t*>(padded_input.data()),
+                     padded_input.size());
+  return encrypted.substr(position % 16);
+}
+
 }  // namespace
 
-std::vector<uint8_t> Mega::Auth::GetPasswordKey(std::string_view password) {
-  auto d = ToA32(PadNull(password, 4));
-  auto pkey = ToBytes(
-      std::vector<uint32_t>{0x93C467E3, 0x7DB0C7A4, 0xD1BE3F81, 0x0152CB56});
+std::array<uint8_t, 16> Mega::Auth::GetPasswordKey(std::string_view password) {
+  auto d = ToA32(std::span<const uint8_t>(PadNull(password, 4)));
+  auto pkey = ToBytes(std::span<const uint32_t, 4>(
+      std::array<uint32_t, 4>{0x93C467E3, 0x7DB0C7A4, 0xD1BE3F81, 0x0152CB56}));
 
   size_t n = (d.size() + 3) / 4;
-  std::vector<uint32_t> key(4);
+  std::array<uint32_t, 4> key{};
   for (size_t i = 0; i < 65536; i++) {
     for (size_t j = 0; j < n; j++) {
       memcpy(key.data(), reinterpret_cast<const char*>(d.data()) + 4 * j,
              (std::min)(static_cast<size_t>(4), d.size() - 4 * j) *
                  sizeof(uint32_t));
-      std::vector<uint8_t> bkey = ToBytes(key);
+      auto bkey = ToBytes(std::span<const uint32_t, 4>(key));
       CryptoPP::ECB_Mode<CryptoPP::AES>::Encryption cipher;
       cipher.SetKey(bkey.data(), bkey.size());
       cipher.ProcessData(pkey.data(), pkey.data(), pkey.size());
@@ -195,29 +213,33 @@ std::vector<uint8_t> Mega::Auth::GetPasswordKey(std::string_view password) {
 }
 
 std::string Mega::Auth::GetHash(std::string_view text,
-                                const std::vector<uint8_t>& key) {
-  auto d = ToA32(PadNull(text, 4));
-  std::vector<uint32_t> h(4);
+                                std::span<const uint8_t, 16> key) {
+  auto d = ToA32(std::span<const uint8_t>(PadNull(text, 4)));
+  std::array<uint32_t, 4> h{};
   for (size_t i = 0; i < d.size(); i++) {
     h[i % 4] ^= d[i];
   }
-  auto hb = ToBytes(h);
+  auto hb = ToBytes(std::span<const uint32_t, 4>(h));
   CryptoPP::ECB_Mode<CryptoPP::AES>::Encryption cipher;
   cipher.SetKey(key.data(), key.size());
   for (int i = 0; i < 16384; i++) {
     cipher.ProcessData(hb.data(), hb.data(), hb.size());
   }
-  auto ha = ToA32(PadNull(ToStringView(hb), 4));
-  return http::ToBase64(
-      ToStringView(ToBytes(std::vector<uint32_t>{ha[0], ha[2]})));
+  auto ha = ToA32(std::span<const uint8_t, 16>(hb));
+  return http::ToBase64(ToStringView(ToBytes(
+      std::span<const uint32_t, 2>(std::array<uint32_t, 2>{ha[0], ha[2]}))));
 }
 
-auto Mega::Auth::DecryptSessionId(const std::vector<uint8_t>& passkey,
+auto Mega::Auth::DecryptSessionId(std::span<const uint8_t, 16> passkey,
                                   std::string_view key, std::string_view privk,
                                   std::string_view csid) -> SessionData {
   CryptoPP::ECB_Mode<CryptoPP::AES>::Decryption cipher;
   cipher.SetKey(passkey.data(), passkey.size());
-  std::vector<uint8_t> decrypted_key(key.size());
+  if (key.size() != 16) {
+    throw CloudException(util::StrCat("invalid key length ", key.size()));
+  }
+  std::array<uint8_t, 16> decrypted_key;
+  memcpy(decrypted_key.data(), key.data(), key.size());
   cipher.ProcessData(decrypted_key.data(),
                      reinterpret_cast<const uint8_t*>(key.data()), key.size());
   cipher.SetKey(decrypted_key.data(), decrypted_key.size());
@@ -225,7 +247,7 @@ auto Mega::Auth::DecryptSessionId(const std::vector<uint8_t>& passkey,
   auto m = ReadNumber(ToBytes(csid));
   auto [p, q, d] = GetRSAKey(decrypted_pkey);
   return {
-      .pkey = std::move(decrypted_key),
+      .pkey = decrypted_key,
       .session_id = ToBase64(ToStringView(
           std::span<const uint8_t>(DecryptRSA(m, p, q, d)).subspan(0, 43)))};
 }
@@ -240,8 +262,8 @@ auto Mega::Auth::GetLoginWithSaltData(std::string_view password,
       reinterpret_cast<const uint8_t*>(password.data()), password.size(),
       reinterpret_cast<const uint8_t*>(salt.data()), salt.size(), 100000);
   LoginWithSaltData data;
-  data.password_key.insert(data.password_key.begin(), output, output + 16);
-  data.handle = ToBase64(ToStringView(std::span(output + 16, output + 32)));
+  memcpy(data.password_key.data(), output, 16);
+  memcpy(data.handle.data(), output + 16, 16);
   return data;
 }
 
@@ -259,26 +281,6 @@ std::optional<std::string_view> Mega::GetAttribute(std::string_view attr,
   return std::nullopt;
 }
 
-std::vector<uint32_t> Mega::ToA32(std::span<const uint8_t> bytes) {
-  std::vector<uint32_t> result(bytes.size() / 4);
-  for (size_t i = 0; 4 * i + 3 < bytes.size(); i++) {
-    result[i] = (bytes[4 * i] << 24) | (bytes[4 * i + 1] << 16) |
-                (bytes[4 * i + 2] << 8) | bytes[4 * i + 3];
-  }
-  return result;
-}
-
-std::vector<uint8_t> Mega::ToBytes(std::span<const uint32_t> span) {
-  std::vector<uint8_t> result(span.size() * 4, 0);
-  for (size_t i = 0; i < span.size(); i++) {
-    result[4 * i] = span[i] >> 24;
-    result[4 * i + 1] = (span[i] & ((1u << 24) - 1)) >> 16;
-    result[4 * i + 2] = (span[i] & ((1u << 16) - 1)) >> 8;
-    result[4 * i + 3] = (span[i] & ((1u << 8) - 1));
-  }
-  return result;
-}
-
 std::string_view Mega::ToStringView(std::span<const uint8_t> d) {
   return std::string_view(reinterpret_cast<const char*>(d.data()), d.size());
 }
@@ -288,7 +290,7 @@ std::span<const uint8_t> Mega::ToBytes(std::string_view d) {
                                   d.size());
 }
 
-nlohmann::json Mega::DecryptAttribute(std::span<const uint8_t> key,
+nlohmann::json Mega::DecryptAttribute(std::span<const uint8_t, 16> key,
                                       std::string_view input) {
   auto decrypted = DecodeAttributeContent(key, input);
   if (!decrypted.starts_with("MEGA")) {
@@ -297,7 +299,7 @@ nlohmann::json Mega::DecryptAttribute(std::span<const uint8_t> key,
   return nlohmann::json::parse(decrypted.substr(4).c_str());
 }
 
-std::string Mega::EncryptAttribute(std::span<const uint8_t> key,
+std::string Mega::EncryptAttribute(std::span<const uint8_t, 16> key,
                                    const nlohmann::json& json) {
   return EncodeAttributeContent(key, util::StrCat("MEGA", json));
 }
@@ -330,7 +332,7 @@ std::string Mega::FromBase64(std::string_view input_sv) {
 }
 
 uint64_t Mega::DecodeHandle(std::string_view b64) {
-  auto d = ToA32(PadNull(FromBase64(b64), 8));
+  auto d = ToA32(std::span<const uint8_t>(PadNull(FromBase64(b64), 8)));
   if (d.size() != 2) {
     throw CloudException("invalid handle");
   }
@@ -363,14 +365,14 @@ std::string Mega::ToAttributeHandle(uint64_t id) {
                                    output.size()));
 }
 
-std::string Mega::DecodeChunk(std::span<const uint8_t> key,
-                              std::span<const uint8_t> compkey,
+std::string Mega::DecodeChunk(std::span<const uint8_t, 16> key,
+                              std::span<const uint8_t, 32> compkey,
                               int64_t position, std::string_view input) {
-  std::vector<uint8_t> civ = [&] {
-    auto iv = ToA32(ToIV(compkey));
+  auto civ = [&] {
+    auto iv = ToA32(MakeConstSpan(ToIV(compkey)));
     iv[2] = uint32_t(uint64_t(position) / 0x1000000000);
     iv[3] = uint32_t(uint64_t(position) / 0x10);
-    return ToBytes(iv);
+    return ToBytes(MakeConstSpan(iv));
   }();
   CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption cipher;
   cipher.SetKeyWithIV(key.data(), key.size(), civ.data(), civ.size());
@@ -382,7 +384,7 @@ std::string Mega::DecodeChunk(std::span<const uint8_t> key,
   return decrypted.substr(position % 16);
 }
 
-std::string Mega::DecodeAttributeContent(std::span<const uint8_t> key,
+std::string Mega::DecodeAttributeContent(std::span<const uint8_t, 16> key,
                                          std::string_view encoded) {
   uint8_t iv[16] = {};
   CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption cipher;
@@ -394,29 +396,10 @@ std::string Mega::DecodeAttributeContent(std::span<const uint8_t> key,
   return decrypted;
 }
 
-std::string Mega::EncodeChunk(std::span<const uint8_t> key,
-                              std::span<const uint8_t> compkey,
-                              int64_t position, std::string_view input) {
-  std::vector<uint8_t> civ = [&] {
-    auto iv = ToA32(ToIV(compkey));
-    iv[2] = uint32_t(uint64_t(position) / 0x1000000000);
-    iv[3] = uint32_t(uint64_t(position) / 0x10);
-    return ToBytes(iv);
-  }();
-  CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption cipher;
-  cipher.SetKeyWithIV(key.data(), key.size(), civ.data(), civ.size());
-  std::string padded_input = util::StrCat(std::string(position % 16, 0), input);
-  std::string encrypted(padded_input.size(), 0);
-  cipher.ProcessData(reinterpret_cast<uint8_t*>(encrypted.data()),
-                     reinterpret_cast<const uint8_t*>(padded_input.data()),
-                     padded_input.size());
-  return encrypted.substr(position % 16);
-}
-
 std::array<uint8_t, 16> Mega::ToFileKey(std::span<const uint8_t, 32> compkey) {
   auto a32 = coro::cloudstorage::ToA32(compkey);
-  return coro::cloudstorage::ToBytes(std::span<const uint32_t, 4>(XorBlocks(
-      std::span(a32).subspan<0, 4>(), std::span(a32).subspan<4, 4>())));
+  return ToBytes(MakeConstSpan(XorBlocks(std::span(a32).subspan<0, 4>(),
+                                         std::span(a32).subspan<4, 4>())));
 }
 
 std::string Mega::EncodeAttributeContent(std::span<const uint8_t> key,
@@ -441,17 +424,17 @@ std::string Mega::BlockEncrypt(std::span<const uint8_t> key,
 }
 
 Generator<std::string> Mega::GetEncodedStream(
-    std::span<const uint8_t> key, std::span<const uint8_t> compkey,
+    std::span<const uint8_t, 16> key, std::span<const uint8_t, 32> compkey,
     Generator<std::string> decoded, std::array<uint32_t, 4>& cbc_mac_a32) {
   uint8_t iv[16] = {};
   CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption cipher;
   cipher.SetKeyWithIV(key.data(), key.size(), iv, sizeof(iv));
   int64_t position = 0;
   std::string carry_over;
-  std::vector<uint8_t> cbc_mac = ToBytes(cbc_mac_a32);
+  auto cbc_mac = ToBytes(MakeConstSpan(cbc_mac_a32));
   FOR_CO_AWAIT(std::string & chunk, decoded) {
     co_yield EncodeChunk(key, compkey, position, chunk);
-    position += chunk.size();
+    position += static_cast<int64_t>(chunk.size());
     chunk = util::StrCat(carry_over, chunk);
     for (int i = 0; i + 16 < chunk.size(); i += 16) {
       cipher.ProcessData(cbc_mac.data(),
