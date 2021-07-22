@@ -192,7 +192,7 @@ class MergedCloudProvider<
     T item;
     item.account_id = std::move(account_id);
     item.id = util::StrCat(item.account_id, "|", entry.id);
-    item.name = std::move(entry.name);
+    item.name = entry.name;
     item.timestamp = CloudProviderT::GetTimestamp(entry);
     item.size = CloudProviderT::GetSize(entry);
     item.item = std::move(entry);
