@@ -583,7 +583,7 @@ class Mega::CloudProvider
         FromBase64(std::string(response["csid"])));
     co_return Auth::AuthToken{credential.email,
                               std::move(session_data.session_id),
-                              std::move(session_data.pkey)};
+                              session_data.pkey};
   }
 
  private:
