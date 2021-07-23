@@ -113,7 +113,7 @@ class AuthTokenManager {
       json["auth_token"].emplace_back(std::move(token_json));
     }
     internal::CreateDirectory(internal::GetDirectoryPath(token_file));
-    std::ofstream{token_file} << json;
+    std::ofstream{token_file} << json.dump(2);
   }
 
   template <typename CloudProvider>

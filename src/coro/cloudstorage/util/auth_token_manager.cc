@@ -106,7 +106,7 @@ void AuthTokenManager::RemoveToken(std::string_view id,
     remove(token_file.c_str());
     rmdir(internal::GetDirectoryPath(token_file).c_str());
   } else {
-    std::ofstream{token_file} << result;
+    std::ofstream{token_file} << result.dump(2);
   }
 }
 
