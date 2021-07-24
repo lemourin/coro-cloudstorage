@@ -42,8 +42,8 @@ class ProxyHandler {
         if (auto it = query.find("thumbnail");
             it != query.end() && it->second == "true") {
           co_return co_await std::visit(
-              [&](const auto& d) {
-                return GetItemThumbnail(std::move(request), d, stop_token);
+              [&]<typename T>(T&& d) {
+                return GetItemThumbnail(std::forward<T>(d), stop_token);
               },
               co_await provider_->GetItemByPathComponents(path, stop_token));
         }
@@ -56,8 +56,9 @@ class ProxyHandler {
         }
       }
       co_return co_await std::visit(
-          [&](const auto& d) {
-            return HandleExistingItem(std::move(request), path, d, stop_token);
+          [&]<typename T>(T&& d) {
+            return HandleExistingItem(std::move(request), std::forward<T>(d),
+                                      stop_token);
           },
           co_await provider_->GetItemByPathComponents(path, stop_token));
     } catch (const CloudException& e) {
@@ -143,8 +144,7 @@ class ProxyHandler {
   }
 
   template <typename Item>
-  Task<Response> GetItemThumbnail(Request request, Item d,
-                                  stdx::stop_token stop_token) const {
+  Task<Response> GetItemThumbnail(Item d, stdx::stop_token stop_token) const {
     if constexpr (HasThumbnail<Item, CloudProvider>) {
       try {
         auto thumbnail =
@@ -163,8 +163,7 @@ class ProxyHandler {
   }
 
   template <typename Item>
-  Task<Response> HandleExistingItem(Request request,
-                                    std::span<const std::string> path, Item d,
+  Task<Response> HandleExistingItem(Request request, Item d,
                                     stdx::stop_token stop_token) {
     if constexpr (IsDirectory<Item, CloudProvider>) {
       std::string directory_path = GetPath(request);
@@ -177,33 +176,16 @@ class ProxyHandler {
                              provider_->ListDirectory(d, std::move(stop_token)),
                              directory_path)};
     } else {
-      std::vector<std::pair<std::string, std::string>> headers = {
-          {"Content-Type", CloudProvider::GetMimeType(d)},
-          {"Content-Disposition", "inline; filename=\"" + d.name + "\""},
-          {"Access-Control-Allow-Origin", "*"},
-          {"Access-Control-Allow-Headers", "*"}};
-      auto range_str = coro::http::GetHeader(request.headers, "Range");
-      coro::http::Range range =
-          coro::http::ParseRange(range_str.value_or("bytes=0-"));
-      auto size = CloudProvider::GetSize(d);
-      if (size) {
-        if (!range.end) {
-          range.end = *size - 1;
-        }
-        headers.emplace_back("Accept-Ranges", "bytes");
-        headers.emplace_back("Content-Length",
-                             std::to_string(*range.end - range.start + 1));
-        if (range_str) {
-          std::stringstream stream;
-          stream << "bytes " << range.start << "-" << *range.end << "/"
-                 << *size;
-          headers.emplace_back("Content-Range", std::move(stream).str());
-        }
-      }
-      co_return Response{
-          .status = !range_str || !size ? 200 : 206,
-          .headers = std::move(headers),
-          .body = provider_->GetFileContent(d, range, std::move(stop_token))};
+      co_return GetFileContentResponse(
+          provider_, std::move(d),
+          [&]() -> std::optional<http::Range> {
+            if (auto header = http::GetHeader(request.headers, "Range")) {
+              return http::ParseRange(std::move(*header));
+            } else {
+              return std::nullopt;
+            }
+          }(),
+          std::move(stop_token));
     }
   }
 

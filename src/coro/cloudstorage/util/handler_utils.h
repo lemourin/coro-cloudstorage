@@ -5,6 +5,7 @@
 #include <coro/http/http_parse.h>
 
 #include <span>
+#include <sstream>
 #include <string_view>
 #include <vector>
 
@@ -23,7 +24,7 @@ std::string GetPath(const Request& request) {
 std::vector<std::string> GetEffectivePath(std::string_view uri_path);
 
 template <typename CloudProvider, typename Request>
-static auto ToFileContent(Request request) {
+auto ToFileContent(Request request) {
   if (!request.body) {
     throw http::HttpException(http::HttpException::kBadRequest);
   }
@@ -36,6 +37,37 @@ static auto ToFileContent(Request request) {
     content.size = std::stoll(*header);
   }
   return content;
+}
+
+template <typename CloudProvider, typename Item>
+http::Response<> GetFileContentResponse(CloudProvider* provider, Item d,
+                                        std::optional<http::Range> range,
+                                        stdx::stop_token stop_token) {
+  std::vector<std::pair<std::string, std::string>> headers = {
+      {"Content-Type", CloudProvider::GetMimeType(d)},
+      {"Content-Disposition", "inline; filename=\"" + d.name + "\""},
+      {"Access-Control-Allow-Origin", "*"},
+      {"Access-Control-Allow-Headers", "*"}};
+  auto size = CloudProvider::GetSize(d);
+  if (size) {
+    http::Range drange = range.value_or(http::Range{});
+    if (!drange.end) {
+      drange.end = *size - 1;
+    }
+    headers.emplace_back("Accept-Ranges", "bytes");
+    headers.emplace_back("Content-Length",
+                         std::to_string(*drange.end - drange.start + 1));
+    if (range) {
+      std::stringstream stream;
+      stream << "bytes " << drange.start << "-" << *drange.end << "/" << *size;
+      headers.emplace_back("Content-Range", std::move(stream).str());
+    }
+  }
+  return http::Response<>{
+      .status = !range || !size ? 200 : 206,
+      .headers = std::move(headers),
+      .body = provider->GetFileContent(d, range.value_or(http::Range{}),
+                                       std::move(stop_token))};
 }
 
 }  // namespace coro::cloudstorage::util

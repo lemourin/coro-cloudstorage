@@ -134,20 +134,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
     if (path.empty() || path == "/") {
       if (request.method == coro::http::Method::kPropfind) {
-        std::vector<std::string> responses = {GetElement(
-            ElementData{.path = "/", .name = "root", .is_directory = true})};
-        if (coro::http::GetHeader(request.headers, "Depth") == "1") {
-          for (const auto& account : accounts_) {
-            responses.push_back(
-                GetElement(ElementData{.path = "/" + account.GetId() + "/",
-                                       .name = account.GetId(),
-                                       .is_directory = true}));
-          }
-        }
-        co_return Response{
-            .status = 207,
-            .headers = {{"Content-Type", "text/xml"}},
-            .body = http::CreateBody(GetMultiStatusResponse(responses))};
+        co_return GetWebDAVRootResponse(request.headers);
       } else {
         co_return Response{.status = 200,
                            .body = GetHomePage(std::move(stop_token))};
@@ -165,6 +152,24 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   template <typename CloudProvider>
   using OnAuthTokenChanged =
       internal::OnAuthTokenChanged<AuthTokenManagerT, CloudProvider>;
+
+  Response GetWebDAVRootResponse(
+      std::span<const std::pair<std::string, std::string>> headers) const {
+    std::vector<std::string> responses = {GetElement(
+        ElementData{.path = "/", .name = "root", .is_directory = true})};
+    if (coro::http::GetHeader(headers, "Depth") == "1") {
+      for (const auto& account : accounts_) {
+        responses.push_back(
+            GetElement(ElementData{.path = "/" + account.GetId() + "/",
+                                   .name = account.GetId(),
+                                   .is_directory = true}));
+      }
+    }
+    return Response{
+        .status = 207,
+        .headers = {{"Content-Type", "text/xml"}},
+        .body = http::CreateBody(GetMultiStatusResponse(responses))};
+  }
 
   Generator<std::string> GetResponse(
       Generator<std::string> body,
