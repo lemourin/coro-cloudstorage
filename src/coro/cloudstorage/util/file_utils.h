@@ -5,6 +5,7 @@
 #include <coro/util/thread_pool.h>
 
 #include <cstdio>
+#include <span>
 #include <string>
 
 namespace coro::cloudstorage::util {
@@ -22,6 +23,8 @@ int Fseek(std::FILE* file, int64_t offset, int origin);
 std::unique_ptr<std::FILE, FileDeleter> CreateTmpFile();
 std::string GetFileName(std::string path);
 std::string GetDirectoryPath(std::string path);
+std::span<const std::string> GetDirectoryPath(
+    std::span<const std::string> path);
 
 template <typename ThreadPool>
 Task<int64_t> GetFileSize(ThreadPool* thread_pool, std::FILE* file) {

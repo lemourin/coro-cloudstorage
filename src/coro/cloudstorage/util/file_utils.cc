@@ -71,15 +71,25 @@ std::string GetFileName(std::string path) {
 }
 
 std::string GetDirectoryPath(std::string path) {
-  if (!path.empty() && path.back() == '/') {
+  if (path.empty()) {
+    throw std::runtime_error("invalid path");
+  }
+  if (path.back() == '/') {
     path.pop_back();
   }
   auto it = path.find_last_of('/');
-  if (it == std::string::npos) {
-    return "";
-  } else {
-    return path.substr(0, it);
+  if (it == std::string_view::npos) {
+    throw std::runtime_error("root has no parent");
   }
+  return path.substr(0, it + 1);
+}
+
+std::span<const std::string> GetDirectoryPath(
+    std::span<const std::string> path) {
+  if (path.empty()) {
+    throw std::runtime_error("root has no parent");
+  }
+  return path.subspan(0, path.size() - 1);
 }
 
 }  // namespace coro::cloudstorage::util
