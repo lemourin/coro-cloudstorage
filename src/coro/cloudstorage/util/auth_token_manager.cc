@@ -46,7 +46,9 @@ void CreateDirectory(std::string_view path) {
                                             : path.begin() + it)
                   .c_str()) != 0) {
       if (errno != EEXIST) {
-        throw std::runtime_error("cannot initialize config file");
+        std::string error = strerror(errno);
+        throw std::runtime_error(
+            util::StrCat("cannot initialize config file ", path, " ", error));
       }
     }
   }
@@ -106,7 +108,9 @@ void AuthTokenManager::RemoveToken(std::string_view id,
     remove(token_file.c_str());
     rmdir(internal::GetDirectoryPath(token_file).c_str());
   } else {
-    std::ofstream{token_file} << result.dump(2);
+    std::ofstream stream{token_file};
+    stream.exceptions(std::ofstream::failbit | std::ofstream::badbit);
+    stream << result.dump(2);
   }
 }
 
