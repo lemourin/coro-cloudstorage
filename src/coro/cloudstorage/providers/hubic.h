@@ -4,6 +4,7 @@
 #include <coro/cloudstorage/cloud_provider.h>
 #include <coro/cloudstorage/providers/open_stack.h>
 #include <coro/cloudstorage/util/assets.h>
+#include <coro/cloudstorage/util/auth_data.h>
 #include <coro/cloudstorage/util/auth_manager.h>
 #include <coro/cloudstorage/util/fetch_json.h>
 #include <coro/cloudstorage/util/string_utils.h>
