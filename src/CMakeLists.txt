@@ -10,7 +10,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/auth_token_manager.h
     coro/cloudstorage/util/auth_manager.h
     coro/cloudstorage/util/auth_handler.h
-    coro/cloudstorage/util/proxy_handler.h
+    coro/cloudstorage/util/cloud_provider_handler.h
     coro/cloudstorage/util/webdav_handler.h
     coro/cloudstorage/util/handler_utils.h
     coro/cloudstorage/util/handler_utils.cc

@@ -1,5 +1,5 @@
-#ifndef CORO_CLOUDSTORAGE_PROXY_HANDLER_H
-#define CORO_CLOUDSTORAGE_PROXY_HANDLER_H
+#ifndef CORO_CLOUDSTORAGE_CLOUD_PROVIDER_HANDLER_H
+#define CORO_CLOUDSTORAGE_CLOUD_PROVIDER_HANDLER_H
 
 #include <coro/cloudstorage/util/assets.h>
 #include <coro/cloudstorage/util/handler_utils.h>
@@ -15,13 +15,13 @@
 namespace coro::cloudstorage::util {
 
 template <typename CloudProvider, typename ThumbnailGenerator>
-class ProxyHandler {
+class CloudProviderHandler {
  public:
   using Request = http::Request<>;
   using Response = http::Response<>;
 
-  ProxyHandler(const ThumbnailGenerator* thumbnail_generator,
-               CloudProvider* provider)
+  CloudProviderHandler(const ThumbnailGenerator* thumbnail_generator,
+                       CloudProvider* provider)
       : thumbnail_generator_(thumbnail_generator), provider_(provider) {}
 
   Task<Response> operator()(Request request, stdx::stop_token stop_token) {
@@ -244,4 +244,4 @@ class ProxyHandler {
 
 }  // namespace coro::cloudstorage::util
 
-#endif  // CORO_CLOUDSTORAGE_PROXY_HANDLER_H
+#endif  // CORO_CLOUDSTORAGE_CLOUD_PROVIDER_HANDLER_H

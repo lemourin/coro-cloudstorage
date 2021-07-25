@@ -5,8 +5,8 @@
 #include <coro/cloudstorage/util/auth_handler.h>
 #include <coro/cloudstorage/util/auth_token_manager.h>
 #include <coro/cloudstorage/util/cloud_provider_account.h>
+#include <coro/cloudstorage/util/cloud_provider_handler.h>
 #include <coro/cloudstorage/util/get_size_handler.h>
-#include <coro/cloudstorage/util/proxy_handler.h>
 #include <coro/cloudstorage/util/serialize_utils.h>
 #include <coro/cloudstorage/util/static_file_handler.h>
 #include <coro/cloudstorage/util/string_utils.h>
@@ -269,10 +269,10 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
       auto& provider =
           std::get<CloudProviderT<CloudProvider>>(account->provider());
-      handlers_.emplace_back(
-          Handler{.id = std::string(account_id),
-                  .prefix = StrCat("/", account_id),
-                  .handler = ProxyHandler(thumbnail_generator_, &provider)});
+      handlers_.emplace_back(Handler{
+          .id = std::string(account_id),
+          .prefix = StrCat("/", account_id),
+          .handler = CloudProviderHandler(thumbnail_generator_, &provider)});
 
       account_listener_.OnCreate(account);
     } catch (...) {
@@ -339,10 +339,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   struct Handler {
     std::string id;
     std::string prefix;
-    std::variant<
-        ThemeHandler, StaticFileHandler, GetSizeHandler,
-        AuthHandler<CloudProviders>..., OnRemoveHandler<CloudProviders>...,
-        ProxyHandler<CloudProviderT<CloudProviders>, ThumbnailGenerator>...>
+    std::variant<ThemeHandler, StaticFileHandler, GetSizeHandler,
+                 AuthHandler<CloudProviders>...,
+                 OnRemoveHandler<CloudProviders>...,
+                 CloudProviderHandler<CloudProviderT<CloudProviders>,
+                                      ThumbnailGenerator>...>
         handler;
   };
 
