@@ -111,18 +111,19 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
                                                   handler->id;
                                          });
           account_it != accounts_.end()) {
-        auto stop_token_or = std::make_unique<coro::util::StopTokenOr>(
-            account_it->stop_token(), std::move(stop_token));
+        coro::util::StopTokenOr stop_token_or(account_it->stop_token(),
+                                              stop_token);
         auto response = co_await std::visit(
             [request = std::move(request),
-             stop_token = stop_token_or->GetToken()](auto& d) mutable {
+             stop_token = stop_token_or.GetToken()](auto& d) mutable {
               return d(std::move(request), std::move(stop_token));
             },
             handler->handler);
         co_return Response{.status = response.status,
                            .headers = std::move(response.headers),
                            .body = GetResponse(std::move(response.body),
-                                               std::move(stop_token_or))};
+                                               account_it->stop_token(),
+                                               std::move(stop_token))};
       } else {
         co_return co_await std::visit(
             [request = std::move(request),
@@ -171,9 +172,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         .body = http::CreateBody(GetMultiStatusResponse(responses))};
   }
 
-  Generator<std::string> GetResponse(
-      Generator<std::string> body,
-      std::unique_ptr<coro::util::StopTokenOr>) const {
+  Generator<std::string> GetResponse(Generator<std::string> body,
+                                     stdx::stop_token account_token,
+                                     stdx::stop_token request_token) const {
+    coro::util::StopTokenOr stop_token_or(std::move(account_token),
+                                          std::move(request_token));
     FOR_CO_AWAIT(std::string & chunk, body) { co_yield std::move(chunk); }
   }
 
