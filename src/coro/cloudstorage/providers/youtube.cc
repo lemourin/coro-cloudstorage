@@ -42,11 +42,12 @@ std::string Find(std::string_view text,
 
 }  // namespace
 
-nlohmann::json YouTube::StreamData::GetBestVideo() const {
+nlohmann::json YouTube::StreamData::GetBestVideo(
+    std::string_view mime_type) const {
   std::optional<json> json;
   for (const auto& d : adaptive_formats) {
-    std::string mime_type = d["mimeType"];
-    if (mime_type.find("video/webm") != std::string::npos &&
+    std::string current_mime_type = d["mimeType"];
+    if (current_mime_type.find(mime_type) != std::string::npos &&
         (!json || d["bitrate"] > (*json)["bitrate"])) {
       json = d;
     }
@@ -57,11 +58,12 @@ nlohmann::json YouTube::StreamData::GetBestVideo() const {
   return *json;
 }
 
-nlohmann::json YouTube::StreamData::GetBestAudio() const {
+nlohmann::json YouTube::StreamData::GetBestAudio(
+    std::string_view mime_type) const {
   std::optional<json> json;
   for (const auto& d : adaptive_formats) {
-    std::string mime_type = d["mimeType"];
-    if (mime_type.find("audio/webm") != std::string::npos &&
+    std::string current_mime_type = d["mimeType"];
+    if (current_mime_type.find(mime_type) != std::string::npos &&
         (!json || d["bitrate"] > (*json)["bitrate"])) {
       json = d;
     }
