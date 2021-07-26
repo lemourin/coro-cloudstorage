@@ -63,3 +63,6 @@ table {
   width: 100%;
   text-align: right;
 }
+.root-container {
+  margin: auto;
+}

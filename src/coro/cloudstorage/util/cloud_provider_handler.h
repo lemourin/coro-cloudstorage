@@ -216,7 +216,7 @@ class CloudProviderHandler {
               "  <link rel=stylesheet href='/static/layout.css'>"
               "  <link rel=stylesheet href='/static/colors.css'>"
               "</head>"
-              "<body>"
+              "<body class='root-container'>"
               "<table class='content-table'>";
     co_yield fmt::format(
         fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", ".."),
