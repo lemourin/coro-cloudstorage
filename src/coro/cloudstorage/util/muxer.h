@@ -11,9 +11,12 @@
 
 namespace coro::cloudstorage::util {
 
+enum class MediaContainer { kMp4, kWebm };
+
 class MuxerContext {
  public:
-  MuxerContext(AVIOContext* video, AVIOContext* audio);
+  MuxerContext(AVIOContext* video, AVIOContext* audio,
+               MediaContainer container);
 
   template <typename ThreadPool>
   Generator<std::string> GetContent(ThreadPool* thread_pool);
@@ -59,7 +62,7 @@ class Muxer {
   Generator<std::string> operator()(VideoCloudProvider* video_cloud_provider,
                                     Video video_track,
                                     AudioCloudProvider* audio_cloud_provider,
-                                    Audio audio_track,
+                                    Audio audio_track, MediaContainer container,
                                     stdx::stop_token stop_token) const {
     decltype(CreateIOContext(video_cloud_provider, video_track,
                              stop_token)) video_io_context;
@@ -75,7 +78,8 @@ class Muxer {
             return CreateIOContext(audio_cloud_provider, std::move(audio_track),
                                    stop_token);
           });
-      return MuxerContext(video_io_context.get(), audio_io_context.get());
+      return MuxerContext(video_io_context.get(), audio_io_context.get(),
+                          container);
     });
     FOR_CO_AWAIT(std::string & chunk, muxer_context.GetContent(thread_pool_)) {
       if (!chunk.empty()) {

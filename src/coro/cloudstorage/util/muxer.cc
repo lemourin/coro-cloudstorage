@@ -28,14 +28,24 @@ auto CreateMuxerIOContext(std::FILE* file) {
 
 }  // namespace
 
-MuxerContext::MuxerContext(AVIOContext* video, AVIOContext* audio)
+MuxerContext::MuxerContext(AVIOContext* video, AVIOContext* audio,
+                           MediaContainer container)
     : file_(CreateTmpFile()),
       io_context_(CreateMuxerIOContext(file_.get())),
       format_context_([&] {
         AVFormatContext* format_context;
-        CheckAVError(avformat_alloc_output_context2(&format_context,
-                                                    /*oformat=*/nullptr, "webm",
-                                                    /*filename=*/nullptr),
+        CheckAVError(avformat_alloc_output_context2(
+                         &format_context,
+                         /*oformat=*/nullptr,
+                         [&] {
+                           switch (container) {
+                             case MediaContainer::kMp4:
+                               return "mp4";
+                             case MediaContainer::kWebm:
+                               return "webm";
+                           }
+                         }(),
+                         /*filename=*/nullptr),
                      "avformat_alloc_output_context");
         format_context->pb = io_context_.get();
         return format_context;
