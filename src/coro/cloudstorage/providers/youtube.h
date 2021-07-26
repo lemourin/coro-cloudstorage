@@ -59,7 +59,7 @@ struct YouTube {
             typename Muxer = class MuxerT>
   struct CloudProvider;
 
-  enum class Presentation { kDash, kStream, kMuxedStream };
+  enum class Presentation { kDash, kStream, kMuxedStreamWebm, kMuxedStreamMp4 };
 
   struct ItemData {
     std::string id;
@@ -80,12 +80,14 @@ struct YouTube {
     Presentation presentation;
   };
 
-  struct MuxedStream : ItemData {
+  struct MuxedStreamWebm : ItemData {
     static constexpr std::string_view mime_type = "application/octet-stream";
     std::string video_id;
     int64_t timestamp;
     std::optional<std::string> thumbnail_url;
   };
+
+  struct MuxedStreamMp4 : MuxedStreamWebm {};
 
   struct Stream : ItemData {
     std::string video_id;
@@ -107,12 +109,13 @@ struct YouTube {
     json formats;
     std::optional<std::function<std::string(std::string_view)>> descrambler;
 
-    json GetBestVideo() const;
-    json GetBestAudio() const;
+    json GetBestVideo(std::string_view mime_type) const;
+    json GetBestAudio(std::string_view mime_type) const;
   };
 
-  using Item = std::variant<DashManifest, RootDirectory, Stream, MuxedStream,
-                            StreamDirectory, Playlist>;
+  using Item =
+      std::variant<DashManifest, RootDirectory, Stream, MuxedStreamWebm,
+                   MuxedStreamMp4, StreamDirectory, Playlist>;
 
   struct PageData {
     std::vector<Item> items;
@@ -200,18 +203,14 @@ struct YouTube::CloudProvider
                                                      std::move(stop_token));
     for (const auto& item : response["items"]) {
       switch (directory.presentation) {
-        case Presentation::kMuxedStream: {
-          MuxedStream stream;
-          stream.video_id = item["snippet"]["resourceId"]["videoId"];
-          stream.timestamp =
-              http::ParseTime(std::string(item["snippet"]["publishedAt"]));
-          stream.name = std::string(item["snippet"]["title"]) + ".webm";
-          stream.id = directory.id + http::EncodeUri(stream.name);
-          if (item["snippet"]["thumbnails"].contains("default")) {
-            stream.thumbnail_url =
-                item["snippet"]["thumbnails"]["default"]["url"];
-          }
-          result.items.emplace_back(std::move(stream));
+        case Presentation::kMuxedStreamMp4: {
+          result.items.emplace_back(
+              ToMuxedStream<MuxedStreamMp4>(directory.id, item));
+          break;
+        }
+        case Presentation::kMuxedStreamWebm: {
+          result.items.emplace_back(
+              ToMuxedStream<MuxedStreamWebm>(directory.id, item));
           break;
         }
         case Presentation::kStream: {
@@ -267,8 +266,12 @@ struct YouTube::CloudProvider
     if (directory.presentation == Presentation::kDash) {
       result.items.emplace_back(RootDirectory{
           {.id = "/streams/", .name = "streams"}, Presentation::kStream});
-      result.items.emplace_back(RootDirectory{
-          {.id = "/muxed/", .name = "muxed"}, Presentation::kMuxedStream});
+      result.items.emplace_back(
+          RootDirectory{{.id = "/muxed-webm/", .name = "muxed-webm"},
+                        Presentation::kMuxedStreamWebm});
+      result.items.emplace_back(
+          RootDirectory{{.id = "/muxed-mp4/", .name = "muxed-mp4"},
+                        Presentation::kMuxedStreamMp4});
     }
     co_return result;
   }
@@ -289,24 +292,16 @@ struct YouTube::CloudProvider
     }
   }
 
-  Generator<std::string> GetFileContent(MuxedStream file, http::Range range,
+  Generator<std::string> GetFileContent(MuxedStreamWebm file, http::Range range,
                                         stdx::stop_token stop_token) {
-    StreamData data = co_await stream_cache_.Get(file.video_id, stop_token);
-    Stream video_stream{};
-    video_stream.video_id = file.video_id;
-    auto best_video = data.GetBestVideo();
-    video_stream.itag = best_video["itag"];
-    video_stream.size = std::stoll(std::string(best_video["contentLength"]));
-    Stream audio_stream{};
-    audio_stream.video_id = std::move(file.video_id);
-    auto best_audio = data.GetBestAudio();
-    audio_stream.itag = best_audio["itag"];
-    audio_stream.size = std::stoll(std::string(best_audio["contentLength"]));
-    FOR_CO_AWAIT(std::string & chunk,
-                 (*muxer_)(this, std::move(video_stream), this,
-                           std::move(audio_stream), std::move(stop_token))) {
-      co_yield std::move(chunk);
-    }
+    return GetMuxedFileContent(std::move(file), range, "webm",
+                               std::move(stop_token));
+  }
+
+  Generator<std::string> GetFileContent(MuxedStreamMp4 file, http::Range range,
+                                        stdx::stop_token stop_token) {
+    return GetMuxedFileContent(std::move(file), range, "mp4",
+                               std::move(stop_token));
   }
 
   Generator<std::string> GetFileContent(DashManifest file, http::Range range,
@@ -335,7 +330,12 @@ struct YouTube::CloudProvider
     return GetItemThumbnailImpl(std::move(item), range, std::move(stop_token));
   }
 
-  Task<Thumbnail> GetItemThumbnail(MuxedStream item, http::Range range,
+  Task<Thumbnail> GetItemThumbnail(MuxedStreamMp4 item, http::Range range,
+                                   stdx::stop_token stop_token) {
+    return GetItemThumbnailImpl(std::move(item), range, std::move(stop_token));
+  }
+
+  Task<Thumbnail> GetItemThumbnail(MuxedStreamWebm item, http::Range range,
                                    stdx::stop_token stop_token) {
     return GetItemThumbnailImpl(std::move(item), range, std::move(stop_token));
   }
@@ -346,6 +346,35 @@ struct YouTube::CloudProvider
 
   static std::string GetEndpoint(std::string_view path) {
     return std::string(kEndpoint) + std::string(path);
+  }
+
+  template <typename MuxedStream>
+  Generator<std::string> GetMuxedFileContent(MuxedStream file,
+                                             http::Range range,
+                                             std::string_view type,
+                                             stdx::stop_token stop_token) {
+    if (range.start != 0 || range.end) {
+      throw CloudException("partial read unsupported");
+    }
+    StreamData data = co_await stream_cache_.Get(file.video_id, stop_token);
+    Stream video_stream{};
+    video_stream.video_id = file.video_id;
+    auto best_video = data.GetBestVideo(util::StrCat("video/", type));
+    video_stream.itag = best_video["itag"];
+    video_stream.size = std::stoll(std::string(best_video["contentLength"]));
+    Stream audio_stream{};
+    audio_stream.video_id = std::move(file.video_id);
+    auto best_audio = data.GetBestAudio(util::StrCat("audio/", type));
+    audio_stream.itag = best_audio["itag"];
+    audio_stream.size = std::stoll(std::string(best_audio["contentLength"]));
+    FOR_CO_AWAIT(
+        std::string & chunk,
+        (*muxer_)(this, std::move(video_stream), this, std::move(audio_stream),
+                  type == "webm" ? util::MediaContainer::kWebm
+                                 : util::MediaContainer::kMp4,
+                  std::move(stop_token))) {
+      co_yield std::move(chunk);
+    }
   }
 
   Generator<std::string> GetFileContentImpl(Stream file, http::Range range,
@@ -399,6 +428,27 @@ struct YouTube::CloudProvider
         std::stoll(http::GetHeader(response.headers, "Content-Length").value());
     result.data = std::move(response.body);
     co_return result;
+  }
+
+  template <typename MuxedStreamT>
+  static MuxedStreamT ToMuxedStream(std::string_view directory_id,
+                                    nlohmann::json item) {
+    MuxedStreamT stream;
+    stream.video_id = item["snippet"]["resourceId"]["videoId"];
+    stream.timestamp =
+        http::ParseTime(std::string(item["snippet"]["publishedAt"]));
+    stream.name = util::StrCat(std::string(item["snippet"]["title"]), [] {
+      if constexpr (std::is_same_v<MuxedStreamT, MuxedStreamMp4>) {
+        return ".mp4";
+      } else {
+        return ".webm";
+      }
+    }());
+    stream.id = util::StrCat(directory_id, http::EncodeUri(stream.name));
+    if (item["snippet"]["thumbnails"].contains("default")) {
+      stream.thumbnail_url = item["snippet"]["thumbnails"]["default"]["url"];
+    }
+    return stream;
   }
 
   Task<std::string> GetVideoUrl(std::string video_id, int64_t itag,
