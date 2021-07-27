@@ -45,9 +45,11 @@ struct GetSizeHandler {
     }
     for (CloudProviderAccount& account : *accounts) {
       if (account.GetId() == account_id->second) {
+        coro::util::StopTokenOr stop_token_or(std::move(stop_token),
+                                              account.stop_token());
         VolumeData volume_data = co_await std::visit(
             [&](auto& provider) {
-              return GetVolumeData(&provider, stop_token);
+              return GetVolumeData(&provider, stop_token_or.GetToken());
             },
             account.provider());
         nlohmann::json json;
