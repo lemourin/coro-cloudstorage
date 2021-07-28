@@ -111,8 +111,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
                                                   handler->id;
                                          });
           account_it != accounts_.end()) {
-        coro::util::StopTokenOr stop_token_or(account_it->stop_token(),
-                                              stop_token);
+        stdx::stop_token account_token = account_it->stop_token();
+        coro::util::StopTokenOr stop_token_or(account_token, stop_token);
         auto response = co_await std::visit(
             [request = std::move(request),
              stop_token = stop_token_or.GetToken()](auto& d) mutable {
@@ -122,7 +122,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         co_return Response{.status = response.status,
                            .headers = std::move(response.headers),
                            .body = GetResponse(std::move(response.body),
-                                               account_it->stop_token(),
+                                               std::move(account_token),
                                                std::move(stop_token))};
       } else {
         co_return co_await std::visit(
