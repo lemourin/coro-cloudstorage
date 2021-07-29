@@ -207,17 +207,17 @@ class CloudProviderHandler {
       Generator<typename CloudProvider::PageData> page_data,
       std::string path) const {
     co_yield "<!DOCTYPE html>"
-              "<html>"
-              "<head>"
-              "  <title>coro-cloudstorage</title>"
-              "  <meta charset='UTF-8'>"
-              "  <meta name='viewport' "
-              "        content='width=device-width, initial-scale=1'>"
-              "  <link rel=stylesheet href='/static/layout.css'>"
-              "  <link rel=stylesheet href='/static/colors.css'>"
-              "</head>"
-              "<body class='root-container'>"
-              "<table class='content-table'>";
+             "<html lang='en-us'>"
+             "<head>"
+             "  <title>coro-cloudstorage</title>"
+             "  <meta charset='UTF-8'>"
+             "  <meta name='viewport' "
+             "        content='width=device-width, initial-scale=1'>"
+             "  <link rel=stylesheet href='/static/layout.css'>"
+             "  <link rel=stylesheet href='/static/colors.css'>"
+             "</head>"
+             "<body class='root-container'>"
+             "<table class='content-table'>";
     co_yield fmt::format(
         fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", ".."),
         fmt::arg("size", ""), fmt::arg("timestamp", ""),
