@@ -46,9 +46,8 @@ void CreateDirectory(std::string_view path) {
                                             : path.begin() + it)
                   .c_str()) != 0) {
       if (errno != EEXIST) {
-        std::string error = strerror(errno);
-        throw std::runtime_error(
-            util::StrCat("cannot initialize config file ", path, " ", error));
+        throw std::runtime_error(util::StrCat("cannot initialize config file ",
+                                              path, " ", ErrorToString(errno)));
       }
     }
   }

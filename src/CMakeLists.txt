@@ -1,5 +1,17 @@
 add_library(coro-cloudstorage)
 
+include(CheckSymbolExists)
+
+check_symbol_exists(strerror_r "string.h" HAVE_STRERROR_R)
+if(HAVE_STRERROR_R)
+    target_compile_definitions(coro-cloudstorage PRIVATE HAVE_STRERROR_R)
+endif()
+
+check_symbol_exists(strerror_s "string.h" HAVE_STRERROR_S)
+if(HAVE_STRERROR_S)
+    target_compile_definitions(coro-cloudstorage PRIVATE HAVE_STRERROR_S)
+endif()
+
 target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/fetch_json.h
     coro/cloudstorage/util/account_manager_handler.h
@@ -24,6 +36,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/muxer.h
     coro/cloudstorage/util/file_utils.h
     coro/cloudstorage/util/string_utils.h
+    coro/cloudstorage/util/string_utils.cc
     coro/cloudstorage/util/merged_cloud_provider.h
     coro/cloudstorage/util/timing_out_cloud_provider.h
     coro/cloudstorage/util/timing_out_stop_token.h
