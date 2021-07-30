@@ -43,6 +43,8 @@ MuxerContext::MuxerContext(AVIOContext* video, AVIOContext* audio,
                                return "mp4";
                              case MediaContainer::kWebm:
                                return "webm";
+                             default:
+                               throw std::runtime_error("invalid container");
                            }
                          }(),
                          /*filename=*/nullptr),
