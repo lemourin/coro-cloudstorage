@@ -1,9 +1,13 @@
-#include "youtube.h"
+#include "coro/cloudstorage/providers/youtube.h"
 
-#include <coro/cloudstorage/util/string_utils.h>
-
+#include <algorithm>
 #include <regex>
 #include <sstream>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "coro/cloudstorage/util/string_utils.h"
 
 namespace coro::cloudstorage {
 
@@ -12,7 +16,6 @@ namespace {
 enum class TransformType { kReverse, kSplice, kSwap };
 
 using ::coro::cloudstorage::util::StrCat;
-using ::coro::cloudstorage::util::ToString;
 
 std::string XmlAttributes(
     const std::vector<std::pair<std::string, std::string>>& args) {
@@ -76,18 +79,21 @@ nlohmann::json YouTube::StreamData::GetBestAudio(
 
 YouTube::Stream YouTube::ToStream(const StreamDirectory& directory, json d) {
   std::string mime_type = d["mimeType"];
-  std::string extension(mime_type.begin() + mime_type.find('/') + 1,
-                        mime_type.begin() + mime_type.find(';'));
-  Stream stream;
+  std::string extension(
+      mime_type.begin() +
+          static_cast<std::string::difference_type>(mime_type.find('/') + 1),
+      mime_type.begin() +
+          static_cast<std::string::difference_type>(mime_type.find(';')));
+  YouTube::Stream stream;
   stream.video_id = directory.video_id;
   if (d.contains("qualityLabel")) {
-    stream.name += "[" + std::string(d["qualityLabel"]) + "]";
+    stream.name += StrCat("[", std::string(d["qualityLabel"]), "]");
   }
   if (d.contains("audioQuality")) {
-    stream.name += "[" + std::string(d["audioQuality"]) + "]";
+    stream.name += StrCat("[", std::string(d["audioQuality"]), "]");
   }
-  stream.name += "[" + std::to_string(int(d["itag"])) + "] " + directory.name +
-                 "." + extension;
+  stream.name += StrCat("[", static_cast<int>(d["itag"]), "] ", directory.name,
+                        ".", extension);
   stream.mime_type = std::move(mime_type);
   stream.size = std::stoll(std::string(d["contentLength"]));
   stream.id = directory.id + stream.name;
@@ -166,8 +172,11 @@ std::string YouTube::GenerateDashManifest(std::string_view path,
       std::string quality_label =
           (stream.contains("qualityLabel") ? stream["qualityLabel"]
                                            : stream["audioQuality"]);
-      std::string extension(full_mimetype.begin() + full_mimetype.find('/') + 1,
-                            full_mimetype.begin() + full_mimetype.find(';'));
+      std::string extension(
+          full_mimetype.begin() + static_cast<std::string::difference_type>(
+                                      full_mimetype.find('/') + 1),
+          full_mimetype.begin() + static_cast<std::string::difference_type>(
+                                      full_mimetype.find(';')));
       r << "<Representation "
         << XmlAttributes(
                {{"id", quality_label},
