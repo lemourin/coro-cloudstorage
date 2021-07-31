@@ -1,7 +1,9 @@
-#include "serialize_utils.h"
+#include "coro/cloudstorage/util/serialize_utils.h"
 
 #include <iomanip>
 #include <sstream>
+#include <string>
+#include <utility>
 
 namespace coro::cloudstorage::util {
 
@@ -24,11 +26,11 @@ std::string SizeToString(std::optional<int64_t> size) {
   if (*size < 1'000) {
     stream << *size << "B";
   } else if (*size < 1'000'000) {
-    stream << *size * 1e-3 << "KB";
+    stream << static_cast<double>(*size) * 1e-3 << "KB";
   } else if (*size < 1'000'000'000) {
-    stream << *size * 1e-6 << "MB";
+    stream << static_cast<double>(*size) * 1e-6 << "MB";
   } else {
-    stream << *size * 1e-9 << "GB";
+    stream << static_cast<double>(*size) * 1e-9 << "GB";
   }
   return std::move(stream).str();
 }

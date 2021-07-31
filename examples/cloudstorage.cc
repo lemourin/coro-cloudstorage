@@ -1,33 +1,23 @@
-#include <coro/cloudstorage/providers/mega.h>
-#include <coro/cloudstorage/util/account_manager_handler.h>
-#include <coro/cloudstorage/util/cloud_factory_context.h>
-#include <coro/cloudstorage/util/muxer.h>
-#include <coro/cloudstorage/util/random_number_generator.h>
-#include <coro/cloudstorage/util/thumbnail_generator.h>
-#include <coro/http/cache_http.h>
-#include <coro/http/curl_http.h>
-#include <coro/http/http_server.h>
-#include <coro/stdx/coroutine.h>
-#include <coro/util/event_loop.h>
 #include <event2/thread.h>
 
 #include <csignal>
 #include <iostream>
 
+#include "coro/cloudstorage/providers/mega.h"
+#include "coro/cloudstorage/util/account_manager_handler.h"
+#include "coro/cloudstorage/util/cloud_factory_context.h"
+#include "coro/cloudstorage/util/thumbnail_generator.h"
+#include "coro/http/cache_http.h"
+#include "coro/http/curl_http.h"
+#include "coro/http/http_server.h"
+#include "coro/util/event_loop.h"
+
 using ::coro::Promise;
 using ::coro::Task;
-using ::coro::cloudstorage::CloudFactory;
 using ::coro::cloudstorage::util::AccountManagerHandler;
 using ::coro::cloudstorage::util::CloudFactoryContext;
-using ::coro::cloudstorage::util::Muxer;
-using ::coro::cloudstorage::util::RandomNumberGenerator;
-using ::coro::cloudstorage::util::ThumbnailGenerator;
-using ::coro::http::CacheHttp;
-using ::coro::http::CacheHttpConfig;
 using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
-using ::coro::util::EventLoop;
-using ::coro::util::ThreadPool;
 using ::coro::util::TypeList;
 
 using CloudProviders = TypeList<coro::cloudstorage::Mega>;
@@ -58,7 +48,8 @@ class HttpHandler {
       quit_->SetValue();
       co_return Response{.status = 200};
     }
-    co_return co_await account_manager_handler_(std::move(request), stop_token);
+    co_return co_await account_manager_handler_(std::move(request),
+                                                std::move(stop_token));
   }
 
  private:
@@ -108,7 +99,7 @@ int main() {
 #endif
 
 #ifdef SIGPIPE
-  signal(SIGPIPE, SIG_IGN);
+  signal(SIGPIPE, SIG_IGN);  // NOLINT
 #endif
 
   std::unique_ptr<event_base, coro::util::EventBaseDeleter> base(

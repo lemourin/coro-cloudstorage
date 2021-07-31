@@ -1,4 +1,6 @@
-#include "generator_utils.h"
+#include "coro/cloudstorage/util/generator_utils.h"
+
+#include <algorithm>
 
 namespace coro::cloudstorage::util {
 
@@ -20,9 +22,13 @@ Generator<std::string> Take(Generator<std::string>& generator,
       break;
     }
     auto size = std::min<size_t>((*iterator).size(), at_most);
-    co_yield std::string((*iterator).begin(), (*iterator).begin() + size);
+    co_yield std::string(
+        (*iterator).begin(),
+        (*iterator).begin() + static_cast<std::string::difference_type>(size));
     at_most -= size;
-    (*iterator).erase((*iterator).begin(), (*iterator).begin() + size);
+    (*iterator).erase(
+        (*iterator).begin(),
+        (*iterator).begin() + static_cast<std::string::difference_type>(size));
   }
 }
 

@@ -1,15 +1,15 @@
 #ifndef CORO_CLOUDSTORAGE_UTIL_GENERATE_THUMBNAIL_H
 #define CORO_CLOUDSTORAGE_UTIL_GENERATE_THUMBNAIL_H
 
-#include <coro/cloudstorage/cloud_provider.h>
-#include <coro/cloudstorage/util/abstract_cloud_provider.h>
-#include <coro/cloudstorage/util/avio_context.h>
-#include <coro/cloudstorage/util/generator_utils.h>
-#include <coro/cloudstorage/util/thumbnail_options.h>
-#include <coro/task.h>
-#include <coro/util/thread_pool.h>
-
 #include <future>
+
+#include "coro/cloudstorage/cloud_provider.h"
+#include "coro/cloudstorage/util/abstract_cloud_provider.h"
+#include "coro/cloudstorage/util/avio_context.h"
+#include "coro/cloudstorage/util/generator_utils.h"
+#include "coro/cloudstorage/util/thumbnail_options.h"
+#include "coro/task.h"
+#include "coro/util/thread_pool.h"
 
 extern "C" {
 #include <libavformat/avformat.h>

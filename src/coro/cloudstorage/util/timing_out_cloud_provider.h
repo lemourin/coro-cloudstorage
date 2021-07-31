@@ -1,12 +1,12 @@
 #ifndef CORO_CLOUDSTORAGE_FUSE_TIMING_OUT_CLOUD_PROVIDER_H
 #define CORO_CLOUDSTORAGE_FUSE_TIMING_OUT_CLOUD_PROVIDER_H
 
-#include <coro/cloudstorage/cloud_provider.h>
-#include <coro/cloudstorage/util/timing_out_stop_token.h>
-#include <coro/util/event_loop.h>
-#include <coro/util/stop_token_or.h>
-
 #include <utility>
+
+#include "coro/cloudstorage/cloud_provider.h"
+#include "coro/cloudstorage/util/timing_out_stop_token.h"
+#include "coro/util/event_loop.h"
+#include "coro/util/stop_token_or.h"
 
 namespace coro::cloudstorage::util {
 

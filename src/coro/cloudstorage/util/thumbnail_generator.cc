@@ -1,4 +1,4 @@
-#include "thumbnail_generator.h"
+#include "coro/cloudstorage/util/thumbnail_generator.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -11,7 +11,12 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-#include <coro/cloudstorage/util/ffmpeg_utils.h>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "coro/cloudstorage/util/ffmpeg_utils.h"
 
 namespace coro::cloudstorage::util {
 
@@ -120,14 +125,14 @@ auto ConvertFrame(AVFrame* frame, ImageSize size, AVPixelFormat format) {
 std::string EncodeFrame(AVFrame* input_frame, ThumbnailOptions options) {
   auto size =
       GetThumbnailSize({input_frame->width, input_frame->height}, options.size);
-  auto codec = avcodec_find_encoder(
+  auto* codec = avcodec_find_encoder(
       options.codec == ThumbnailOptions::Codec::JPEG ? AV_CODEC_ID_MJPEG
                                                      : AV_CODEC_ID_PNG);
   if (!codec) {
     throw std::logic_error("codec not found");
   }
   std::vector<AVPixelFormat> supported;
-  for (auto p = codec->pix_fmts; p && *p != -1; p++) {
+  for (const auto* p = codec->pix_fmts; p && *p != -1; p++) {
     if (sws_isSupportedOutput(*p)) {
       supported.emplace_back(*p);
     }
@@ -150,7 +155,8 @@ std::string EncodeFrame(AVFrame* input_frame, ThumbnailOptions options) {
   context->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
   CheckAVError(avcodec_open2(context.get(), codec, nullptr), "avcodec_open2");
   auto packet = CreatePacket();
-  bool frame_sent = false, flush_sent = false;
+  bool frame_sent = false;
+  bool flush_sent = false;
   std::string result;
   while (true) {
     if (!frame_sent) {

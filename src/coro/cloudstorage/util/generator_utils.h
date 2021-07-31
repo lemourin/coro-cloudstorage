@@ -1,9 +1,9 @@
 #ifndef CORO_CLOUDSTORAGE_GENERATOR_UTILS_H
 #define CORO_CLOUDSTORAGE_GENERATOR_UTILS_H
 
-#include <coro/generator.h>
-
 #include <string>
+
+#include "coro/generator.h"
 
 namespace coro::cloudstorage::util {
 

@@ -1,17 +1,20 @@
-#include "amazon_s3.h"
+#include "coro/cloudstorage/providers/amazon_s3.h"
 
-#include <coro/cloudstorage/util/crypto_utils.h>
-#include <coro/cloudstorage/util/file_utils.h>
-#include <coro/http/http_parse.h>
-
+#include <algorithm>
 #include <iomanip>
 #include <regex>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "coro/cloudstorage/util/crypto_utils.h"
+#include "coro/cloudstorage/util/file_utils.h"
+#include "coro/http/http_parse.h"
 
 namespace coro::cloudstorage {
 
 namespace {
 
-using ::coro::cloudstorage::util::GetDirectoryPath;
 using ::coro::cloudstorage::util::GetFileName;
 using ::coro::cloudstorage::util::GetHMACSHA256;
 using ::coro::cloudstorage::util::GetSHA256;

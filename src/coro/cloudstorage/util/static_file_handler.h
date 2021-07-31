@@ -1,12 +1,13 @@
 #ifndef CORO_CLOUDSTORAGE_UTIL_STATIC_FILE_HANDLER_H
 #define CORO_CLOUDSTORAGE_UTIL_STATIC_FILE_HANDLER_H
 
-#include <coro/cloudstorage/util/theme_handler.h>
-#include <coro/http/http.h>
 #include <fmt/format.h>
 
 #include <optional>
 #include <string_view>
+
+#include "coro/cloudstorage/util/theme_handler.h"
+#include "coro/http/http.h"
 
 namespace coro::cloudstorage::util {
 

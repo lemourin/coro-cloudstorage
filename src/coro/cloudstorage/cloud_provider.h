@@ -1,20 +1,20 @@
 #ifndef CORO_CLOUDSTORAGE_CLOUD_PROVIDER_H
 #define CORO_CLOUDSTORAGE_CLOUD_PROVIDER_H
 
-#include <coro/cloudstorage/util/auth_manager.h>
-#include <coro/cloudstorage/util/generator_utils.h>
-#include <coro/cloudstorage/util/string_utils.h>
-#include <coro/http/http.h>
-#include <coro/http/http_parse.h>
-#include <coro/promise.h>
-#include <coro/shared_promise.h>
-#include <coro/stdx/stop_callback.h>
-#include <coro/stdx/stop_source.h>
-#include <coro/util/raii_utils.h>
-#include <coro/util/stop_token_or.h>
-#include <coro/util/type_list.h>
-
 #include <span>
+
+#include "coro/cloudstorage/util/auth_manager.h"
+#include "coro/cloudstorage/util/generator_utils.h"
+#include "coro/cloudstorage/util/string_utils.h"
+#include "coro/http/http.h"
+#include "coro/http/http_parse.h"
+#include "coro/promise.h"
+#include "coro/shared_promise.h"
+#include "coro/stdx/stop_callback.h"
+#include "coro/stdx/stop_source.h"
+#include "coro/util/raii_utils.h"
+#include "coro/util/stop_token_or.h"
+#include "coro/util/type_list.h"
 
 namespace coro::cloudstorage {
 

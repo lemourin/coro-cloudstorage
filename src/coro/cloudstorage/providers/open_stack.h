@@ -1,18 +1,18 @@
 #ifndef CORO_CLOUDSTORAGE_OPEN_STACK_H
 #define CORO_CLOUDSTORAGE_OPEN_STACK_H
 
-#include <coro/cloudstorage/cloud_provider.h>
-#include <coro/cloudstorage/util/crypto_utils.h>
-#include <coro/cloudstorage/util/fetch_json.h>
-#include <coro/cloudstorage/util/file_utils.h>
-#include <coro/cloudstorage/util/recursive_visit.h>
-#include <coro/cloudstorage/util/serialize_utils.h>
-#include <coro/cloudstorage/util/string_utils.h>
-#include <coro/generator.h>
-
 #include <optional>
 #include <string>
 #include <variant>
+
+#include "coro/cloudstorage/cloud_provider.h"
+#include "coro/cloudstorage/util/crypto_utils.h"
+#include "coro/cloudstorage/util/fetch_json.h"
+#include "coro/cloudstorage/util/file_utils.h"
+#include "coro/cloudstorage/util/recursive_visit.h"
+#include "coro/cloudstorage/util/serialize_utils.h"
+#include "coro/cloudstorage/util/string_utils.h"
+#include "coro/generator.h"
 
 namespace coro::cloudstorage {
 

@@ -1,16 +1,16 @@
 #ifndef CORO_CLOUDSTORAGE_CLOUD_FACTORY_H
 #define CORO_CLOUDSTORAGE_CLOUD_FACTORY_H
 
-#include <coro/cloudstorage/cloud_provider.h>
-#include <coro/cloudstorage/util/auth_data.h>
-#include <coro/cloudstorage/util/auth_handler.h>
-#include <coro/cloudstorage/util/thumbnail_generator.h>
-#include <coro/http/http.h>
-#include <coro/util/event_loop.h>
-#include <coro/util/type_list.h>
-
 #include <boost/di.hpp>
 #include <random>
+
+#include "coro/cloudstorage/cloud_provider.h"
+#include "coro/cloudstorage/util/auth_data.h"
+#include "coro/cloudstorage/util/auth_handler.h"
+#include "coro/cloudstorage/util/thumbnail_generator.h"
+#include "coro/http/http.h"
+#include "coro/util/event_loop.h"
+#include "coro/util/type_list.h"
 
 namespace coro::cloudstorage {
 

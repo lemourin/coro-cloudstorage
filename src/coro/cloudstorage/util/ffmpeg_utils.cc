@@ -1,4 +1,4 @@
-#include "ffmpeg_utils.h"
+#include "coro/cloudstorage/util/ffmpeg_utils.h"
 
 #include <memory>
 #include <stdexcept>
@@ -9,11 +9,12 @@ namespace coro::cloudstorage::util {
 namespace {
 
 std::string GetAvError(int err) {
-  char buffer[AV_ERROR_MAX_STRING_SIZE + 1] = {};
-  if (av_strerror(err, buffer, AV_ERROR_MAX_STRING_SIZE) < 0)
+  std::string buffer(AV_ERROR_MAX_STRING_SIZE, 0);
+  if (av_strerror(err, buffer.data(), AV_ERROR_MAX_STRING_SIZE) < 0) {
     return "invalid error";
-  else
+  } else {
     return buffer;
+  }
 }
 
 }  // namespace
@@ -31,7 +32,7 @@ std::unique_ptr<AVFormatContext, AVFormatContextDeleter> CreateFormatContext(
     throw std::runtime_error("avformat_alloc_context");
   }
   context->interrupt_callback.opaque = nullptr;
-  context->interrupt_callback.callback = [](void* t) -> int { return 0; };
+  context->interrupt_callback.callback = [](void*) -> int { return 0; };
   context->pb = io_context;
   int e = 0;
   if ((e = avformat_open_input(&context, nullptr, nullptr, nullptr)) < 0) {

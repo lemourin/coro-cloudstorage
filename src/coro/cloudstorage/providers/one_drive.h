@@ -1,10 +1,10 @@
 #ifndef CORO_CLOUDSTORAGE_ONE_DRIVE_H
 #define CORO_CLOUDSTORAGE_ONE_DRIVE_H
 
-#include <coro/cloudstorage/util/assets.h>
-#include <coro/cloudstorage/util/auth_data.h>
-#include <coro/cloudstorage/util/fetch_json.h>
-#include <coro/when_all.h>
+#include "coro/cloudstorage/util/assets.h"
+#include "coro/cloudstorage/util/auth_data.h"
+#include "coro/cloudstorage/util/fetch_json.h"
+#include "coro/when_all.h"
 
 namespace coro::cloudstorage {
 

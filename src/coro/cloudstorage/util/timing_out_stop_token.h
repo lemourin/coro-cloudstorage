@@ -1,10 +1,10 @@
 #ifndef CORO_CLOUDSTORAGE_FUSE_TIMING_OUT_STOP_TOKEN_H
 #define CORO_CLOUDSTORAGE_FUSE_TIMING_OUT_STOP_TOKEN_H
 
-#include <coro/stdx/stop_token.h>
-#include <coro/util/event_loop.h>
-
 #include <string>
+
+#include "coro/stdx/stop_token.h"
+#include "coro/util/event_loop.h"
 
 namespace coro::cloudstorage::util {
 

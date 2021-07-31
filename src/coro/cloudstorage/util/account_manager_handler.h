@@ -1,25 +1,26 @@
 #ifndef CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
 #define CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
 
-#include <coro/cloudstorage/util/assets.h>
-#include <coro/cloudstorage/util/auth_handler.h>
-#include <coro/cloudstorage/util/auth_token_manager.h>
-#include <coro/cloudstorage/util/cloud_provider_account.h>
-#include <coro/cloudstorage/util/cloud_provider_handler.h>
-#include <coro/cloudstorage/util/get_size_handler.h>
-#include <coro/cloudstorage/util/serialize_utils.h>
-#include <coro/cloudstorage/util/static_file_handler.h>
-#include <coro/cloudstorage/util/string_utils.h>
-#include <coro/cloudstorage/util/theme_handler.h>
-#include <coro/cloudstorage/util/webdav_utils.h>
-#include <coro/http/http.h>
-#include <coro/http/http_parse.h>
-#include <coro/util/type_list.h>
-#include <coro/when_all.h>
 #include <fmt/core.h>
 #include <fmt/format.h>
 
 #include <list>
+
+#include "coro/cloudstorage/util/assets.h"
+#include "coro/cloudstorage/util/auth_handler.h"
+#include "coro/cloudstorage/util/auth_token_manager.h"
+#include "coro/cloudstorage/util/cloud_provider_account.h"
+#include "coro/cloudstorage/util/cloud_provider_handler.h"
+#include "coro/cloudstorage/util/get_size_handler.h"
+#include "coro/cloudstorage/util/serialize_utils.h"
+#include "coro/cloudstorage/util/static_file_handler.h"
+#include "coro/cloudstorage/util/string_utils.h"
+#include "coro/cloudstorage/util/theme_handler.h"
+#include "coro/cloudstorage/util/webdav_utils.h"
+#include "coro/http/http.h"
+#include "coro/http/http_parse.h"
+#include "coro/util/type_list.h"
+#include "coro/when_all.h"
 
 namespace coro::cloudstorage::util {
 
@@ -140,8 +141,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       if (request.method == coro::http::Method::kPropfind) {
         co_return GetWebDAVRootResponse(request.headers);
       } else {
-        co_return Response{.status = 200,
-                           .body = GetHomePage(std::move(stop_token))};
+        co_return Response{.status = 200, .body = GetHomePage()};
       }
     } else {
       co_return Response{.status = 302, .headers = {{"Location", "/"}}};
@@ -376,7 +376,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         fmt::arg("image_url", util::StrCat("/static/", id, ".png")));
   }
 
-  Generator<std::string> GetHomePage(stdx::stop_token stop_token) {
+  Generator<std::string> GetHomePage() const {
     std::stringstream supported_providers;
     (AppendAuthUrl<CloudProviders>(factory_, supported_providers), ...);
     std::stringstream content_table;

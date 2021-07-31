@@ -1,9 +1,9 @@
 #ifndef CORO_CLOUDSTORAGE_FUSE_AUTH_DATA_H
 #define CORO_CLOUDSTORAGE_FUSE_AUTH_DATA_H
 
-#include <coro/stdx/concepts.h>
-
 #include <string_view>
+
+#include "coro/stdx/concepts.h"
 
 namespace coro::cloudstorage::util {
 
@@ -12,8 +12,7 @@ typename CloudProvider::Auth::AuthData GetAuthData() = delete;
 
 template <typename T>
 concept HasRedirectUri = requires(T v) {
-  { v.redirect_uri }
-  ->stdx::convertible_to<std::string>;
+  { v.redirect_uri } -> stdx::convertible_to<std::string>;
 };
 
 struct AuthData {

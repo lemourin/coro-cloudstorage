@@ -1,13 +1,13 @@
 #ifndef CORO_CLOUDSTORAGE_AUTH_MANAGER_H
 #define CORO_CLOUDSTORAGE_AUTH_MANAGER_H
 
-#include <coro/cloudstorage/cloud_exception.h>
-#include <coro/cloudstorage/util/string_utils.h>
-#include <coro/http/http.h>
-#include <coro/shared_promise.h>
-#include <coro/stdx/stop_source.h>
-
 #include <nlohmann/json.hpp>
+
+#include "coro/cloudstorage/cloud_exception.h"
+#include "coro/cloudstorage/util/string_utils.h"
+#include "coro/http/http.h"
+#include "coro/shared_promise.h"
+#include "coro/stdx/stop_source.h"
 
 namespace coro::cloudstorage::util {
 

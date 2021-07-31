@@ -1,4 +1,4 @@
-#include "mega.h"
+#include "coro/cloudstorage/providers/mega.h"
 
 #include <cryptopp/aes.h>
 #include <cryptopp/cryptlib.h>
@@ -7,6 +7,9 @@
 #include <cryptopp/sha.h>
 
 #include <span>
+#include <string>
+#include <tuple>
+#include <vector>
 
 namespace coro::cloudstorage {
 
@@ -256,14 +259,14 @@ auto Mega::Auth::GetLoginWithSaltData(std::string_view password,
                                       std::string_view salt)
     -> LoginWithSaltData {
   CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA512> pbkdf;
-  uint8_t output[32] = {};
+  std::array<uint8_t, 32> output = {};
   pbkdf.DeriveKey(
-      output, sizeof(output), 0,
+      output.data(), output.size(), 0,
       reinterpret_cast<const uint8_t*>(password.data()), password.size(),
       reinterpret_cast<const uint8_t*>(salt.data()), salt.size(), 100000);
   LoginWithSaltData data;
-  memcpy(data.password_key.data(), output, 16);
-  memcpy(data.handle.data(), output + 16, 16);
+  memcpy(data.password_key.data(), output.data(), 16);
+  memcpy(data.handle.data(), output.data() + 16, 16);
   return data;
 }
 
@@ -386,9 +389,9 @@ std::string Mega::DecodeChunk(std::span<const uint8_t, 16> key,
 
 std::string Mega::DecodeAttributeContent(std::span<const uint8_t, 16> key,
                                          std::string_view encoded) {
-  uint8_t iv[16] = {};
+  std::array<uint8_t, 16> iv = {};
   CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption cipher;
-  cipher.SetKeyWithIV(key.data(), key.size(), iv, sizeof(iv));
+  cipher.SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());
   std::string decrypted(encoded.size(), 0);
   cipher.ProcessData(reinterpret_cast<uint8_t*>(decrypted.data()),
                      reinterpret_cast<const uint8_t*>(encoded.data()),
@@ -404,9 +407,9 @@ std::array<uint8_t, 16> Mega::ToFileKey(std::span<const uint8_t, 32> compkey) {
 
 std::string Mega::EncodeAttributeContent(std::span<const uint8_t> key,
                                          std::string_view content) {
-  uint8_t iv[16] = {};
+  std::array<uint8_t, 16> iv = {};
   CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption cipher;
-  cipher.SetKeyWithIV(key.data(), key.size(), iv, sizeof(iv));
+  cipher.SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());
   std::string padded_input =
       util::StrCat(content, std::string(GetPaddingSize(content.size(), 16), 0));
   std::string encrypted(padded_input.size(), 0);
@@ -426,9 +429,9 @@ std::string Mega::BlockEncrypt(std::span<const uint8_t> key,
 Generator<std::string> Mega::GetEncodedStream(
     std::span<const uint8_t, 16> key, std::span<const uint8_t, 32> compkey,
     Generator<std::string> decoded, std::array<uint32_t, 4>& cbc_mac_a32) {
-  uint8_t iv[16] = {};
+  std::array<uint8_t, 16> iv = {};
   CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption cipher;
-  cipher.SetKeyWithIV(key.data(), key.size(), iv, sizeof(iv));
+  cipher.SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());
   int64_t position = 0;
   std::string carry_over;
   auto cbc_mac = ToBytes(MakeConstSpan(cbc_mac_a32));
@@ -453,7 +456,7 @@ Generator<std::string> Mega::GetEncodedStream(
 
 auto Mega::ToItem(const nlohmann::json& json,
                   std::span<const uint8_t> master_key) -> Item {
-  switch (int(json["t"])) {
+  switch (static_cast<int>(json["t"])) {
     case kFile:
       return ToItemImpl<File>(master_key, json);
     case kFolder:

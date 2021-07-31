@@ -1,15 +1,15 @@
-#include "file_utils.h"
+#include "coro/cloudstorage/util/file_utils.h"
 
 #include <cstdlib>
+#include <memory>
+#include <utility>
 
 namespace coro::cloudstorage::util {
 
 namespace {
 
-using ::coro::util::ThreadPool;
-
 #ifdef __ANDROID__
-std::string gAndroidTempDirectory;
+std::string gAndroidTempDirectory;  // NOLINT
 #endif
 
 }  // namespace

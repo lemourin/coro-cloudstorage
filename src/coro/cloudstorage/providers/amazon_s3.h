@@ -1,23 +1,23 @@
 #ifndef CORO_CLOUDSTORAGE_AMAZON_S3_H
 #define CORO_CLOUDSTORAGE_AMAZON_S3_H
 
-#include <coro/cloudstorage/cloud_provider.h>
-#include <coro/cloudstorage/util/assets.h>
-#include <coro/cloudstorage/util/auth_data.h>
-#include <coro/cloudstorage/util/auth_handler.h>
-#include <coro/cloudstorage/util/auth_token_manager.h>
-#include <coro/cloudstorage/util/file_utils.h>
-#include <coro/cloudstorage/util/recursive_visit.h>
-#include <coro/cloudstorage/util/string_utils.h>
-#include <coro/http/http.h>
-#include <coro/http/http_parse.h>
-#include <coro/when_all.h>
-
 #include <chrono>
 #include <nlohmann/json.hpp>
 #include <pugixml.hpp>
 #include <span>
 #include <sstream>
+
+#include "coro/cloudstorage/cloud_provider.h"
+#include "coro/cloudstorage/util/assets.h"
+#include "coro/cloudstorage/util/auth_data.h"
+#include "coro/cloudstorage/util/auth_handler.h"
+#include "coro/cloudstorage/util/auth_token_manager.h"
+#include "coro/cloudstorage/util/file_utils.h"
+#include "coro/cloudstorage/util/recursive_visit.h"
+#include "coro/cloudstorage/util/string_utils.h"
+#include "coro/http/http.h"
+#include "coro/http/http_parse.h"
+#include "coro/when_all.h"
 
 namespace coro::cloudstorage {
 

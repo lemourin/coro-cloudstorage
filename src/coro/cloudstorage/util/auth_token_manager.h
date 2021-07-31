@@ -1,16 +1,16 @@
 #ifndef CORO_CLOUDSTORAGE_AUTH_TOKEN_MANAGER_H
 #define CORO_CLOUDSTORAGE_AUTH_TOKEN_MANAGER_H
 
-#include <coro/cloudstorage/cloud_factory.h>
-#include <coro/cloudstorage/util/serialize_utils.h>
-#include <coro/util/type_list.h>
-
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <variant>
 #include <vector>
+
+#include "coro/cloudstorage/cloud_factory.h"
+#include "coro/cloudstorage/util/serialize_utils.h"
+#include "coro/util/type_list.h"
 
 namespace coro::cloudstorage::util {
 

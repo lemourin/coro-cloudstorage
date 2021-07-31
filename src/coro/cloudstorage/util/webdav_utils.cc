@@ -1,25 +1,27 @@
-#include "webdav_utils.h"
-
-#include <coro/http/http_parse.h>
+#include "coro/cloudstorage/util/webdav_utils.h"
 
 #include <cstring>
 #include <sstream>
+
+#include "coro/http/http_parse.h"
 
 namespace coro::cloudstorage::util {
 
 namespace {
 
-const char *kDayNames[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-const char *kMonthNames[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+constexpr std::array<std::string_view, 7> kDayNames = {
+    "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+constexpr std::array<std::string_view, 12> kMonthNames = {
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
 std::string GetRFC1123(int64_t timestamp) {
   const int kBufferSize = 29;
   tm tm = coro::http::gmtime(timestamp);
   std::string buffer(kBufferSize, 0);
   strftime(buffer.data(), kBufferSize + 1, "---, %d --- %Y %H:%M:%S GMT", &tm);
-  memcpy(buffer.data(), kDayNames[tm.tm_wday], 3);
-  memcpy(buffer.data() + 8, kMonthNames[tm.tm_mon], 3);
+  memcpy(buffer.data(), kDayNames[tm.tm_wday].data(), 3);
+  memcpy(buffer.data() + 8, kMonthNames[tm.tm_mon].data(), 3);
   return buffer;
 }
 

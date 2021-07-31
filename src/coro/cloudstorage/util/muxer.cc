@@ -1,4 +1,4 @@
-#include "muxer.h"
+#include "coro/cloudstorage/util/muxer.h"
 
 namespace coro::cloudstorage::util {
 
@@ -16,7 +16,7 @@ auto CreateMuxerIOContext(std::FILE* file) {
                                        reinterpret_cast<std::FILE*>(opaque)));
       },
       [](void* opaque, int64_t offset, int whence) -> int64_t {
-        auto file = reinterpret_cast<std::FILE*>(opaque);
+        auto* file = reinterpret_cast<std::FILE*>(opaque);
         whence &= ~AVSEEK_FORCE;
         return Fseek(file, offset, whence);
       });

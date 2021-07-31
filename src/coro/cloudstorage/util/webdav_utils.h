@@ -1,11 +1,11 @@
 #ifndef CORO_CLOUDSTORAGE_WEBDAV_UTILS_H
 #define CORO_CLOUDSTORAGE_WEBDAV_UTILS_H
 
-#include <coro/generator.h>
-
 #include <optional>
 #include <span>
 #include <string>
+
+#include "coro/generator.h"
 
 namespace coro::cloudstorage::util {
 

@@ -1,10 +1,10 @@
 #ifndef CORO_CLOUDSTORAGE_UTIL_AVIO_CONTEXT_H
 #define CORO_CLOUDSTORAGE_UTIL_AVIO_CONTEXT_H
 
-#include <coro/cloudstorage/cloud_provider.h>
-#include <coro/util/event_loop.h>
-
 #include <cerrno>
+
+#include "coro/cloudstorage/cloud_provider.h"
+#include "coro/util/event_loop.h"
 
 extern "C" {
 #include <libavformat/avformat.h>

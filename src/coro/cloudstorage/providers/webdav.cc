@@ -1,7 +1,9 @@
-#include "webdav.h"
+#include "coro/cloudstorage/providers/webdav.h"
 
 #include <iomanip>
 #include <regex>
+#include <string>
+#include <utility>
 
 namespace coro::cloudstorage {
 

@@ -1,4 +1,4 @@
-#include "auth_token_manager.h"
+#include "coro/cloudstorage/util/auth_token_manager.h"
 
 #ifdef WIN32
 #include <direct.h>
@@ -7,6 +7,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+
+#include <utility>
 
 namespace coro::cloudstorage::util {
 
@@ -74,9 +76,9 @@ std::string GetConfigFilePath(std::string_view app_name,
   return path_utf8;
 #else
   std::string path;
-  if (const char* xdg_config = getenv("XDG_CONFIG_HOME")) {
+  if (const char* xdg_config = getenv("XDG_CONFIG_HOME")) {  // NOLINT
     path = xdg_config;
-  } else if (const char* home = getenv("HOME")) {
+  } else if (const char* home = getenv("HOME")) {  // NOLINT
     path = std::string(home) + "/.config/";
   }
   path += app_name;

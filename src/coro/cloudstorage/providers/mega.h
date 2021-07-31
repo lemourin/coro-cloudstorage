@@ -1,22 +1,22 @@
 #ifndef CORO_CLOUDSTORAGE_FUSE_MEGA_H
 #define CORO_CLOUDSTORAGE_FUSE_MEGA_H
 
-#include <coro/cloudstorage/cloud_provider.h>
-#include <coro/cloudstorage/util/assets.h>
-#include <coro/cloudstorage/util/auth_data.h>
-#include <coro/cloudstorage/util/auth_handler.h>
-#include <coro/cloudstorage/util/fetch_json.h>
-#include <coro/cloudstorage/util/serialize_utils.h>
-#include <coro/cloudstorage/util/thumbnail_generator.h>
-#include <coro/cloudstorage/util/thumbnail_options.h>
-#include <coro/http/http_parse.h>
-#include <coro/stdx/stop_token.h>
-#include <coro/util/event_loop.h>
-#include <coro/util/function_traits.h>
-#include <coro/util/raii_utils.h>
-#include <coro/util/type_list.h>
-
 #include <array>
+
+#include "coro/cloudstorage/cloud_provider.h"
+#include "coro/cloudstorage/util/assets.h"
+#include "coro/cloudstorage/util/auth_data.h"
+#include "coro/cloudstorage/util/auth_handler.h"
+#include "coro/cloudstorage/util/fetch_json.h"
+#include "coro/cloudstorage/util/serialize_utils.h"
+#include "coro/cloudstorage/util/thumbnail_generator.h"
+#include "coro/cloudstorage/util/thumbnail_options.h"
+#include "coro/http/http_parse.h"
+#include "coro/stdx/stop_token.h"
+#include "coro/util/event_loop.h"
+#include "coro/util/function_traits.h"
+#include "coro/util/raii_utils.h"
+#include "coro/util/type_list.h"
 
 namespace coro::cloudstorage {
 
@@ -141,7 +141,7 @@ struct Mega {
 
   static std::string DecodeChunk(std::span<const uint8_t, 16> key,
                                  std::span<const uint8_t, 32> compkey,
-                                 int64_t position, std::string_view encoded);
+                                 int64_t position, std::string_view input);
   static nlohmann::json DecryptAttribute(std::span<const uint8_t, 16> key,
                                          std::string_view input);
   static std::string DecodeAttributeContent(std::span<const uint8_t, 16> key,
