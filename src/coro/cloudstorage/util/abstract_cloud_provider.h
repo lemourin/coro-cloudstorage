@@ -245,8 +245,8 @@ class AbstractCloudProvider::CloudProviderImpl
     result.name = d.name;
     result.size = CloudProviderT::GetSize(d);
     result.timestamp = CloudProviderT::GetTimestamp(d);
-    if constexpr (IsFile<From, CloudProvider>) {
-      result.mime_type = CloudProviderT::GetMimetype(d);
+    if constexpr (std::is_same_v<To, File> && IsFile<From, CloudProviderT>) {
+      result.mime_type = CloudProviderT::GetMimeType(d);
     }
     result.impl.template emplace<ItemT>(std::move(d));
     return result;
