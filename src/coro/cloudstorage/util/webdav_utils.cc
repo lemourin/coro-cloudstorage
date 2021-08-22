@@ -1,5 +1,6 @@
 #include "coro/cloudstorage/util/webdav_utils.h"
 
+#include <array>
 #include <cstring>
 #include <sstream>
 
