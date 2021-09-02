@@ -237,7 +237,9 @@ std::function<std::string(std::string_view)> YouTube::GetDescrambler(
   auto descrambler = Find(
       page_data,
       {std::regex(
-          R"re((?:\b|[^a-zA-Z0-9$])([a-zA-Z0-9$]{2})\s*=\s*function\(\s*a\s*\)\s*\{\s*a\s*=\s*a\.split\(\s*""\s*\))re")});
+           R"re(([a-zA-Z0-9$]+)\s*=\s*function\(\s*a\s*\)\s*\{\s*a\s*=\s*a\.split\(\s*""\s*\))re"),
+       std::regex(
+           R"re((?:\b|[^a-zA-Z0-9$])([a-zA-Z0-9$]{2})\s*=\s*function\(\s*a\s*\)\s*\{\s*a\s*=\s*a\.split\(\s*""\s*\))re")});
   auto rules = Find(
       page_data, {std::regex(descrambler + R"(=function[^{]*\{([^}]*)\};)")});
   auto helper = Find(rules, {std::regex(R"(;([^\.]*)\.)")});
