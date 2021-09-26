@@ -9,7 +9,7 @@ std::string ErrorToString(int error_code) {
   while (true) {
     std::string buffer(length, 0);
     int error = [&] {
-#if defined(HAVE_STRERROR_R) && defined(_GNU_SOURCE)
+#if defined(HAVE_GLIBC_STRERROR_R)
       errno = 0;
       if (const char* ret = strerror_r(error_code, buffer.data(), length);
           ret && errno == 0) {

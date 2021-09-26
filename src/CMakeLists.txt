@@ -1,14 +1,38 @@
 add_library(coro-cloudstorage)
 
 include(CheckSymbolExists)
+include(CheckCXXSourceCompiles)
 
-check_symbol_exists(strerror_r "string.h" HAVE_STRERROR_R)
-if(HAVE_STRERROR_R)
+check_cxx_source_compiles(
+    "
+    #include <string.h>
+    int main() {
+      const char* ret = strerror_r(0, NULL, 0);
+      return 0;
+    }
+    "
+    CORO_CLOUDSTORAGE_HAVE_GLIBC_STRERROR_R
+)
+if(CORO_CLOUDSTORAGE_HAVE_GLIBC_STRERROR_R)
+    target_compile_definitions(coro-cloudstorage PRIVATE HAVE_GLIBC_STRERROR_R)
+endif()
+
+check_cxx_source_compiles(
+    "
+    #include <string.h>
+    int main() {
+      int err = strerror_r(0, NULL, 0);
+      return 0;
+    }
+    "
+    CORO_CLOUDSTORAGE_HAVE_STRERROR_R
+)
+if(CORO_CLOUDSTORAGE_HAVE_STRERROR_R)
     target_compile_definitions(coro-cloudstorage PRIVATE HAVE_STRERROR_R)
 endif()
 
-check_symbol_exists(strerror_s "string.h" HAVE_STRERROR_S)
-if(HAVE_STRERROR_S)
+check_symbol_exists(strerror_s "string.h" CORO_CLOUDSTORAGE_HAVE_STRERROR_S)
+if(CORO_CLOUDSTORAGE_HAVE_STRERROR_S)
     target_compile_definitions(coro-cloudstorage PRIVATE HAVE_STRERROR_S)
 endif()
 
