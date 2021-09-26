@@ -170,9 +170,15 @@ class LocalFileSystem::CloudProvider
     if constexpr (std::is_same_v<T, File>) {
       item.size = std::filesystem::file_size(entry.path());
     }
+#ifdef CORO_CLOUDSTORAGE_HAVE_CLOCK_CAST
     item.timestamp = std::chrono::system_clock::to_time_t(
         std::chrono::clock_cast<std::chrono::system_clock>(
             std::filesystem::last_write_time(entry.path())));
+#else
+    item.timestamp =
+        std::filesystem::last_write_time(entry.path()).time_since_epoch() /
+        std::chrono::seconds(1);
+#endif
     return item;
   }
 

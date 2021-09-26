@@ -1,6 +1,7 @@
 add_library(coro-cloudstorage)
 
 include(CheckSymbolExists)
+include(CheckCXXSymbolExists)
 
 check_symbol_exists(strerror_r "string.h" HAVE_STRERROR_R)
 if(HAVE_STRERROR_R)
@@ -10,6 +11,11 @@ endif()
 check_symbol_exists(strerror_s "string.h" HAVE_STRERROR_S)
 if(HAVE_STRERROR_S)
     target_compile_definitions(coro-cloudstorage PRIVATE HAVE_STRERROR_S)
+endif()
+
+check_cxx_symbol_exists(std::chrono::clock_cast "chrono" HAVE_CLOCK_CAST)
+if(HAVE_CLOCK_CAST)
+    target_compile_definitions(coro-cloudstorage PUBLIC CORO_CLOUDSTORAGE_HAVE_CLOCK_CAST)
 endif()
 
 target_sources(coro-cloudstorage PRIVATE
