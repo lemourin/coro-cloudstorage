@@ -123,8 +123,8 @@ concept HasUsageData = requires(T v) {
 };
 
 template <typename Auth>
-concept HasAuthData = requires(typename Auth::AuthData d) {
-  { d } -> stdx::same_as<typename Auth::AuthData>;
+concept HasAuthData = requires(typename Auth::AuthData* d) {
+  { d } -> stdx::convertible_to<typename Auth::AuthData*>;
 };
 
 enum class FileType { kUnknown, kVideo, kAudio, kImage };

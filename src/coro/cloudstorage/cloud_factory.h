@@ -62,10 +62,10 @@ class CloudFactory {
               OnTokenUpdated on_token_updated) const {
     namespace di = boost::di;
 
-    auto base_injector = di::make_injector(
-        di::bind<typename CloudProvider::Auth::AuthToken>().to(auth_token),
-        GetConfig<CloudProvider>());
     auto injector = [&] {
+      auto base_injector = di::make_injector(
+          di::bind<typename CloudProvider::Auth::AuthToken>().to(auth_token),
+          GetConfig<CloudProvider>());
       if constexpr (HasAuthData<typename CloudProvider::Auth>) {
         return di::make_injector(
             di::bind<class OnAuthTokenUpdatedT>().template to<OnTokenUpdated>(
@@ -74,7 +74,7 @@ class CloudFactory {
                 .template to<AuthManagerT<CloudProvider, OnTokenUpdated>>(),
             std::move(base_injector));
       } else {
-        return std::move(base_injector);
+        return base_injector;
       }
     }();
 

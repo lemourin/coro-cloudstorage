@@ -435,7 +435,8 @@ class Mega::CloudProvider
         co_await CreateUpload(content.size, stop_token);
     std::string upload_url = upload_response["p"];
     std::array<uint32_t, 8> compkey = GenerateKey<uint32_t, 8>();
-    std::span<const uint32_t, 4> key(std::span(compkey).subspan<0, 4>());
+    std::span<const uint32_t, 4> key(
+        std::span<const uint32_t>(compkey).subspan<0, 4>());
     std::array<uint32_t, 4> cbc_mac{};
     std::array<uint8_t, 32> compkey_bytes = ToBytes(MakeConstSpan(compkey));
     auto response = co_await http_->Fetch(
