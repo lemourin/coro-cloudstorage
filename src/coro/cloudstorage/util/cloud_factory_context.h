@@ -23,8 +23,9 @@ class CloudFactoryContext {
   using MuxerT = util::Muxer<EventLoopT, ThreadPoolT>;
   using RandomNumberGeneratorT =
       util::RandomNumberGenerator<std::default_random_engine>;
-  using CloudFactoryT = CloudFactory<EventLoopT, HttpT, ThumbnailGeneratorT,
-                                     MuxerT, RandomNumberGeneratorT, AuthData>;
+  using CloudFactoryT =
+      CloudFactory<EventLoopT, ThreadPoolT, HttpT, ThumbnailGeneratorT, MuxerT,
+                   RandomNumberGeneratorT, AuthData>;
 
   CloudFactoryContext(event_base* event_base)
       : event_loop_(event_base),
@@ -34,8 +35,8 @@ class CloudFactoryContext {
         muxer_(&event_loop_, &thread_pool_),
         random_engine_(std::random_device()()),
         random_number_generator_(&random_engine_),
-        factory_(&event_loop_, &http_, &thumbnail_generator_, &muxer_,
-                 &random_number_generator_) {}
+        factory_(&event_loop_, &thread_pool_, &http_, &thumbnail_generator_,
+                 &muxer_, &random_number_generator_) {}
 
   CloudFactoryContext(CloudFactoryContext&&) = delete;
   CloudFactoryContext& operator=(CloudFactoryContext&&) = delete;

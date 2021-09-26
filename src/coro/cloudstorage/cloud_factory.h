@@ -34,7 +34,7 @@ concept HasCloudProviderT = requires {
   typename T::template CloudProvider<>;
 };
 
-template <typename EventLoop, coro::http::HttpClient Http,
+template <typename EventLoop, typename ThreadPool, coro::http::HttpClient Http,
           typename ThumbnailGenerator, typename Muxer,
           typename RandomNumberGenerator,
           typename AuthData = coro::cloudstorage::util::AuthData>
@@ -44,12 +44,13 @@ class CloudFactory {
   using AuthManagerT =
       util::AuthManager<Http, typename CloudProvider::Auth, OnTokenUpdated>;
 
-  CloudFactory(const EventLoop* event_loop, const Http* http,
-               const ThumbnailGenerator* thumbnail_generator,
+  CloudFactory(const EventLoop* event_loop, ThreadPool* thread_pool,
+               const Http* http, const ThumbnailGenerator* thumbnail_generator,
                const Muxer* muxer,
                RandomNumberGenerator* random_number_generator,
                AuthData auth_data = AuthData{})
       : event_loop_(event_loop),
+        thread_pool_(thread_pool),
         http_(http),
         thumbnail_generator_(thumbnail_generator),
         muxer_(muxer),
@@ -61,13 +62,21 @@ class CloudFactory {
               OnTokenUpdated on_token_updated) const {
     namespace di = boost::di;
 
-    auto injector = di::make_injector(
-        di::bind<class OnAuthTokenUpdatedT>().template to<OnTokenUpdated>(
-            on_token_updated),
+    auto base_injector = di::make_injector(
         di::bind<typename CloudProvider::Auth::AuthToken>().to(auth_token),
-        di::bind<class coro::cloudstorage::AuthManagerT>()
-            .template to<AuthManagerT<CloudProvider, OnTokenUpdated>>(),
         GetConfig<CloudProvider>());
+    auto injector = [&] {
+      if constexpr (HasAuthData<typename CloudProvider::Auth>) {
+        return di::make_injector(
+            di::bind<class OnAuthTokenUpdatedT>().template to<OnTokenUpdated>(
+                on_token_updated),
+            di::bind<class coro::cloudstorage::AuthManagerT>()
+                .template to<AuthManagerT<CloudProvider, OnTokenUpdated>>(),
+            std::move(base_injector));
+      } else {
+        return std::move(base_injector);
+      }
+    }();
 
     if constexpr (HasCloudProviderT<CloudProvider>) {
       return injector.template create<CloudProvider::template CloudProvider>();
@@ -110,16 +119,16 @@ class CloudFactory {
   auto GetConfig() const {
     namespace di = boost::di;
 
-    return di::make_injector(
+    auto injector = di::make_injector(
         di::bind<class coro::cloudstorage::CloudProviderT>()
             .template to<CloudProvider>(),
-        di::bind<typename CloudProvider::Auth::AuthData>().to(
-            GetAuthData<CloudProvider>()),
         di::bind<http::FetchF>().to(http::FetchF(http_)),
         di::bind<class coro::cloudstorage::HttpT>().template to<Http>(http_),
         di::bind<coro::util::WaitF>().to(coro::util::WaitF(event_loop_)),
         di::bind<class coro::cloudstorage::EventLoopT>().template to<EventLoop>(
             event_loop_),
+        di::bind<class coro::cloudstorage::ThreadPoolT>()
+            .template to<ThreadPool>(thread_pool_),
         di::bind<util::ThumbnailGeneratorF>().to(
             util::ThumbnailGeneratorF(thumbnail_generator_)),
         di::bind<class coro::cloudstorage::ThumbnailGeneratorT>()
@@ -127,9 +136,19 @@ class CloudFactory {
         di::bind<class coro::cloudstorage::MuxerT>().template to<Muxer>(muxer_),
         di::bind<class coro::cloudstorage::RandomNumberGeneratorT>()
             .template to<RandomNumberGenerator>(random_number_generator_));
+
+    if constexpr (HasAuthData<typename CloudProvider::Auth>) {
+      return di::make_injector(
+          std::move(injector),
+          di::bind<typename CloudProvider::Auth::AuthData>().to(
+              GetAuthData<CloudProvider>()));
+    } else {
+      return injector;
+    }
   }
 
   const EventLoop* event_loop_;
+  ThreadPool* thread_pool_;
   const Http* http_;
   const ThumbnailGenerator* thumbnail_generator_;
   const Muxer* muxer_;

@@ -22,6 +22,7 @@ class CloudProviderT;
 class HttpT;
 class AuthManagerT;
 class EventLoopT;
+class ThreadPoolT;
 class OnAuthTokenUpdatedT;
 class ThumbnailGeneratorT;
 class MuxerT;
@@ -119,6 +120,11 @@ template <typename T>
 concept HasUsageData = requires(T v) {
   { v.space_used } -> stdx::convertible_to<std::optional<int64_t>>;
   { v.space_total } -> stdx::convertible_to<std::optional<int64_t>>;
+};
+
+template <typename Auth>
+concept HasAuthData = requires(typename Auth::AuthData d) {
+  { d } -> stdx::same_as<typename Auth::AuthData>;
 };
 
 enum class FileType { kUnknown, kVideo, kAudio, kImage };

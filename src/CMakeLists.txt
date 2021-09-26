@@ -59,6 +59,8 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/providers/amazon_s3.h
     coro/cloudstorage/providers/open_stack.h
     coro/cloudstorage/providers/hubic.h
+    coro/cloudstorage/providers/local_filesystem.h
+    coro/cloudstorage/providers/local_filesystem.cc
     coro/cloudstorage/util/webdav_utils.cc
     coro/cloudstorage/util/auth_token_manager.cc
     coro/cloudstorage/util/generator_utils.cc
@@ -113,6 +115,7 @@ embed_resource(
         ../assets/icons-dark/places/64/folder.svg
         ../assets/icons-dark/places/64/user-trash.svg
         ../assets/html/mega_login.html
+        ../assets/html/local_login.html
         ../assets/html/webdav_login.html
         ../assets/html/amazons3_login.html
         ../assets/html/dash_player.html
@@ -129,6 +132,7 @@ embed_resource(
         ../assets/providers/google.png
         ../assets/providers/mega.png
         ../assets/providers/amazons3.png
+        ../assets/providers/local.png
         ../assets/providers/hubic.png
         ../assets/styles/layout.css
         ../assets/styles/colors_light.css
