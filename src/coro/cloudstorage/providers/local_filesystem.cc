@@ -2,6 +2,8 @@
 
 #ifdef WIN32
 #include <windows.h>
+#else
+#include <sys/stat.h>
 #endif
 
 #include <fmt/format.h>
@@ -36,6 +38,27 @@ bool LocalFileSystem::IsFileHidden(const std::filesystem::directory_entry& e) {
 #else
   return e.path().filename().c_str()[0] == '.' ||
          e.path().filename() == "lost+found";
+#endif
+}
+
+int64_t LocalFileSystem::GetTimestamp(
+    const std::filesystem::directory_entry& e) {
+#ifdef WIN32
+  struct _stat64 file_info;
+  if (_wstati64(e.path().wstring().c_str(), &file_info) != 0) {
+    throw std::runtime_error("failed to get last write time");
+  }
+  return file_info.st_mtime;
+#else
+  struct stat64 file_info;
+  if (stat64(e.path().c_str(), &file_info) != 0) {
+    throw std::runtime_error("failed to get last write time");
+  }
+#ifdef __APPLE__
+  return file_info.st_mtimespec.tv_sec;
+#else
+  return file_info.st_mtim.tv_sec;
+#endif
 #endif
 }
 
