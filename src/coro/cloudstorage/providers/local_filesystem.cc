@@ -43,22 +43,24 @@ bool LocalFileSystem::IsFileHidden(const std::filesystem::directory_entry& e) {
 
 int64_t LocalFileSystem::GetTimestamp(
     const std::filesystem::directory_entry& e) {
-#ifdef WIN32
+#if defined(WIN32)
   struct _stat64 file_info;
   if (_wstati64(e.path().wstring().c_str(), &file_info) != 0) {
     throw std::runtime_error("failed to get last write time");
   }
   return file_info.st_mtime;
+#elif defined(__APPLE__)
+  struct stat file_info;
+  if (stat(e.path().c_str(), &file_info) != 0) {
+    throw std::runtime_error("failed to get last write time");
+  }
+  return file_info.st_mtimespec.tv_sec;
 #else
   struct stat64 file_info;
   if (stat64(e.path().c_str(), &file_info) != 0) {
     throw std::runtime_error("failed to get last write time");
   }
-#ifdef __APPLE__
-  return file_info.st_mtimespec.tv_sec;
-#else
   return file_info.st_mtim.tv_sec;
-#endif
 #endif
 }
 
