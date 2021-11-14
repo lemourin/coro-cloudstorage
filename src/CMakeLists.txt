@@ -1,7 +1,8 @@
-add_library(coro-cloudstorage)
-
 include(CheckSymbolExists)
 include(CheckCXXSourceCompiles)
+include(embed_resource)
+
+add_library(coro-cloudstorage)
 
 check_cxx_source_compiles(
     "
@@ -110,16 +111,14 @@ target_link_libraries(coro-cloudstorage PUBLIC
     coro-http
     nlohmann_json::nlohmann_json
     pugixml::pugixml
-    avcodec
-    avutil
-    avformat
-    swscale
-    avfilter
-    cryptopp
-    fmt
+    FFMPEG::avcodec
+    FFMPEG::avutil
+    FFMPEG::avformat
+    FFMPEG::swscale
+    FFMPEG::avfilter
+    cryptopp::cryptopp
+    fmt::fmt
 )
-
-include(embed_resource)
 
 embed_resource(
     TARGET coro-cloudstorage

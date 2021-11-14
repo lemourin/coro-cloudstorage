@@ -172,6 +172,7 @@ add_library(avutil
     ${FFMPEG_SOURCE_DIR}/libavutil/xga_font_data.c
     ${FFMPEG_SOURCE_DIR}/libavutil/xtea.c
 )
+add_library(FFMPEG::avutil ALIAS avutil)
 target_link_libraries(avutil PRIVATE ${FFMPEG_DEPENDENCIES})
 target_compile_definitions(avutil PRIVATE ${FFMPEG_DEFINITIONS})
 target_compile_options(avutil PRIVATE ${FFMPEG_COMPILE_OPTIONS})
@@ -196,6 +197,7 @@ add_library(swscale
     ${FFMPEG_SOURCE_DIR}/libswscale/vscale.c
     ${FFMPEG_SOURCE_DIR}/libswscale/yuv2rgb.c
 )
+add_library(FFMPEG::swscale ALIAS swscale)
 target_link_libraries(swscale PRIVATE ${FFMPEG_DEPENDENCIES})
 target_compile_definitions(swscale PRIVATE ${FFMPEG_DEFINITIONS})
 target_compile_options(swscale PRIVATE ${FFMPEG_COMPILE_OPTIONS})
@@ -214,6 +216,7 @@ add_library(swresample
     ${FFMPEG_SOURCE_DIR}/libswresample/swresample.c
     ${FFMPEG_SOURCE_DIR}/libswresample/swresample_frame.c
 )
+add_library(FFMPEG::swresample ALIAS swresample)
 target_link_libraries(swresample PRIVATE ${FFMPEG_DEPENDENCIES})
 target_compile_definitions(swresample PRIVATE ${FFMPEG_DEFINITIONS})
 target_compile_options(swresample PRIVATE ${FFMPEG_COMPILE_OPTIONS})
@@ -462,6 +465,7 @@ add_library(avcodec
     ${FFMPEG_SOURCE_DIR}/libavcodec/xsubdec.c
     ${FFMPEG_SOURCE_DIR}/libavcodec/xvididct.c
 )
+add_library(FFMPEG::avcodec ALIAS avcodec)
 target_link_libraries(avcodec PRIVATE ${FFMPEG_DEPENDENCIES} swscale swresample)
 target_compile_definitions(avcodec PRIVATE ${FFMPEG_DEFINITIONS})
 target_compile_options(avcodec PRIVATE ${FFMPEG_COMPILE_OPTIONS})
@@ -544,6 +548,7 @@ add_library(avformat
     ${FFMPEG_SOURCE_DIR}/libavformat/wavdec.c
     ${FFMPEG_SOURCE_DIR}/libavformat/wv.c
 )
+add_library(FFMPEG::avformat ALIAS avformat)
 target_link_libraries(avformat PRIVATE ${FFMPEG_DEPENDENCIES} swscale avutil avcodec)
 target_compile_definitions(avformat PRIVATE ${FFMPEG_DEFINITIONS})
 target_compile_options(avformat PRIVATE ${FFMPEG_COMPILE_OPTIONS})
@@ -573,6 +578,7 @@ add_library(avfilter
     ${FFMPEG_SOURCE_DIR}/libavfilter/vf_thumbnail.c
     ${FFMPEG_SOURCE_DIR}/libavfilter/video.c
 )
+add_library(FFMPEG::avfilter ALIAS avfilter)
 target_link_libraries(avfilter PRIVATE ${FFMPEG_DEPENDENCIES})
 target_compile_definitions(avfilter PRIVATE
     ${FFMPEG_DEFINITIONS}
