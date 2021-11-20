@@ -312,11 +312,7 @@ class Dropbox::CloudProvider
                     {"Dropbox-API-Arg", json.dump()},
                     ToRangeHeader(range)}};
     auto response =
-        co_await http_->Fetch(std::move(request), std::move(stop_token));
-    if (response.status / 100 != 2) {
-      throw http::HttpException(
-          response.status, co_await http::GetBody(std::move(response.body)));
-    }
+        co_await http_->FetchOk(std::move(request), std::move(stop_token));
     Thumbnail result;
     result.size =
         std::stoll(http::GetHeader(response.headers, "Content-Length").value());
@@ -357,11 +353,7 @@ class Dropbox::CloudProvider
                     {"Content-Type", "application/octet-stream"},
                     {"Dropbox-API-Arg", json.dump()}},
         .body = std::move(content.data)};
-    auto response = co_await http_->Fetch(std::move(request), stop_token);
-    if (response.status / 100 != 2) {
-      throw coro::http::HttpException(
-          response.status, co_await http::GetBody(std::move(response.body)));
-    }
+    co_await http_->FetchOk(std::move(request), stop_token);
     co_return std::move(session);
   }
 

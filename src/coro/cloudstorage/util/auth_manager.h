@@ -79,8 +79,8 @@ class AuthManager {
     } else if (response.status / 100 == 2 || response.status / 100 == 3) {
       co_return response;
     } else {
-      throw coro::http::HttpException(
-          response.status, co_await http::GetBody(std::move(response.body)));
+      auto message = co_await http::GetBody(std::move(response.body));
+      throw coro::http::HttpException(response.status, std::move(message));
     }
   }
 

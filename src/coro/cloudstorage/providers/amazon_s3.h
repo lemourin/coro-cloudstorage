@@ -316,13 +316,8 @@ class AmazonS3::CloudProvider
   Task<typename Http::ResponseType> Fetch(RequestT request,
                                           stdx::stop_token stop_token) const {
     AuthorizeRequest(auth_token_, request);
-    http::ResponseLike auto response =
-        co_await http_->Fetch(std::move(request), std::move(stop_token));
-    if (response.status / 100 != 2) {
-      throw coro::http::HttpException(
-          response.status, co_await http::GetBody(std::move(response.body)));
-    }
-    co_return response;
+    co_return co_await http_->FetchOk(std::move(request),
+                                      std::move(stop_token));
   }
 
   template <typename RequestT>
