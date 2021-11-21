@@ -1,7 +1,6 @@
 #include "coro/cloudstorage/providers/youtube.h"
 
 #include <algorithm>
-#include <fstream>
 #include <regex>
 #include <sstream>
 #include <unordered_map>
@@ -57,12 +56,12 @@ struct Function {
 
 Function GetFunction(std::string_view document,
                      std::string_view function_name) {
-  auto regex = util::StrCat(
-      R"((?:)", function_name,
-      R"(\s*=\s*function\s*)\(([^\)]*)\)\s*(\{(?!\};)[\s\S]+?\};))");
   std::match_results<std::string_view::iterator> match;
-  if (std::regex_search(document.begin(), document.end(), match,
-                        std::regex{regex})) {
+  if (std::regex_search(
+          document.begin(), document.end(), match,
+          std::regex{StrCat(
+              R"((?:)", function_name,
+              R"(\s*=\s*function\s*)\(([^\)]*)\)\s*(\{(?!\};)[\s\S]+?\};))")})) {
     auto args = util::SplitString(match[1].str(), ',');
     for (auto& arg : args) {
       arg = util::TrimWhitespace(arg);
@@ -155,38 +154,41 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
       int b = std::stoi(match[2].str());
       int c = std::stoi(match[3].str());
       auto do_operation = [&]<typename T>(T& i) {
-        if (input[a].find("for") != std::string::npos) {
-          CircularShift(i, std::stoi(input[c]));
-        } else if (input[a].find("d.splice(e,1)") != std::string::npos) {
-          RemoveElement(i, std::stoi(input[c]));
-        } else if (input[a].find("push") != std::string::npos) {
+        std::string_view source = input.at(a);
+        if (source.find("for") != std::string::npos) {
+          CircularShift(i, std::stoi(input.at(c)));
+        } else if (source.find("d.splice(e,1)") != std::string::npos) {
+          RemoveElement(i, std::stoi(input.at(c)));
+        } else if (source.find("push") != std::string::npos) {
           if constexpr (std::is_same_v<T, std::vector<std::string>>) {
-            i.push_back(input[c]);
+            i.push_back(input.at(c));
           } else {
             throw CloudException("unexpected push");
           }
         } else {
-          SwapElement(i, std::stoi(input[c]));
+          SwapElement(i, std::stoi(input.at(c)));
         }
       };
-      if (input[b] == "null") {
+      std::string_view nd_argument = input.at(b);
+      if (nd_argument == "null") {
         do_operation(input);
-      } else if (input[b] == "b") {
+      } else if (nd_argument == "b") {
         do_operation(nsig);
       } else {
-        throw CloudException(StrCat("unexpected ", input[b]));
+        throw CloudException(StrCat("unexpected ", nd_argument));
       }
     } else if (std::regex_search(
                    command.begin(), command.end(), match,
                    std::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\]\))"))) {
       int a = std::stoi(match[1].str());
       int b = std::stoi(match[2].str());
-      if (input[b] == "null") {
+      std::string_view nd_argument = input.at(b);
+      if (nd_argument == "null") {
         std::reverse(input.begin(), input.end());
-      } else if (input[b] == "b") {
+      } else if (nd_argument == "b") {
         std::reverse(nsig.begin(), nsig.end());
       } else {
-        throw CloudException(StrCat("unexpected ", input[b]));
+        throw CloudException(StrCat("unexpected ", nd_argument));
       }
     } else if (
         std::regex_search(
@@ -197,8 +199,9 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
       int b = std::stoi(match[2].str());
       int c = std::stoi(match[3].str());
       int d = std::stoi(match[4].str());
-      nsig = Decrypt(std::move(nsig), input[c].substr(1, input[c].size() - 2),
-                     kCipherChars);
+      const std::string& key = input.at(c);
+      nsig =
+          Decrypt(std::move(nsig), key.substr(1, key.size() - 2), kCipherChars);
     } else {
       throw CloudException(StrCat("unexpected command ", command));
     }
@@ -397,7 +400,6 @@ std::string YouTube::GetPlayerUrl(std::string_view page_data) {
 
 std::function<std::string(std::string_view)> YouTube::GetDescrambler(
     std::string_view page_data) {
-  // std::ofstream("C:/Users/lemourin/Desktop/player.js") << page_data;
   auto nsig_function_name = Find(
       page_data,
       {std::regex(R"(\.get\("n"\)\)&&\(b=([a-zA-Z0-9$]{3})\([a-zA-Z0-9]\))")});
@@ -423,7 +425,7 @@ std::function<std::string(std::string_view)> YouTube::GetDescrambler(
   auto rules = Find(page_data,
                     {std::regex(descrambler + R"(=function[^{]*\{([^}]*)\};)")})
                    .value();
-  auto helper = Find(rules, {std::regex(R"(;([^\.]*)\.)")}).value();
+  auto helper = Find(rules, {std::regex(R"(;([a-zA-Z0-9]*)\.)")}).value();
   auto transforms =
       Find(page_data, {std::regex(helper + R"(=\{([\s\S]*?)\};)")}).value();
   std::unordered_map<std::string, TransformType> transform_type;
@@ -469,11 +471,11 @@ std::function<std::string(std::string_view)> YouTube::GetDescrambler(
     auto params = http::ParseQuery(uri.query.value_or(""));
     if (auto it = params.find("n"); it != params.end()) {
       it->second = nsig_function(it->second);
-      data["url"] = util::StrCat(uri.scheme.value_or("https"), "://",
-                                 uri.host.value_or(""), uri.path.value_or(""),
-                                 "?", http::FormDataToString(params));
+      data["url"] =
+          StrCat(uri.scheme.value_or("https"), "://", uri.host.value_or(""),
+                 uri.path.value_or(""), "?", http::FormDataToString(params));
     }
-    return util::StrCat(data["url"], "&", data["sp"], "=", signature);
+    return StrCat(data["url"], "&", data["sp"], "=", signature);
   };
 }
 
