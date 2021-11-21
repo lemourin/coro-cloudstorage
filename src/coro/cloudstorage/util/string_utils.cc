@@ -42,4 +42,17 @@ std::string ErrorToString(int error_code) {
   }
 }
 
+std::string_view TrimWhitespace(std::string_view input) {
+  int it1 = 0;
+  int it2 = input.size() - 1;
+
+  while (it1 < input.size() && std::isspace(input[it1])) {
+    it1++;
+  }
+  while (it2 >= it1 && std::isspace(input[it2])) {
+    it2--;
+  }
+  return input.substr(it1, it2 - it1 + 1);
+}
+
 }  // namespace coro::cloudstorage::util

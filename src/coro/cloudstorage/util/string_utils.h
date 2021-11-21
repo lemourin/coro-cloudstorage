@@ -48,6 +48,8 @@ std::vector<T> SplitString(const T& string, C delim) {
 
 std::string ErrorToString(int error_code);
 
+std::string_view TrimWhitespace(std::string_view);
+
 }  // namespace coro::cloudstorage::util
 
 #endif  // CORO_CLOUDSTORAGE_FUSE_STRING_UTILS_H
