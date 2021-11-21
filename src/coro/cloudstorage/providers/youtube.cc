@@ -400,20 +400,6 @@ std::string YouTube::GetPlayerUrl(std::string_view page_data) {
 
 std::function<std::string(std::string_view)> YouTube::GetDescrambler(
     std::string_view page_data) {
-  auto nsig_function_name = Find(
-      page_data,
-      {std::regex(R"(\.get\("n"\)\)&&\(b=([a-zA-Z0-9$]{3})\([a-zA-Z0-9]\))")});
-  auto nsig_function =
-      [nsig_function = nsig_function_name
-                           ? js::GetFunction(page_data, *nsig_function_name)
-                           : std::optional<js::Function>(std::nullopt)](
-          std::string_view nsig) {
-        if (!nsig_function) {
-          throw CloudException("nsig_function_code not found");
-        }
-        return GetNewCipher(*nsig_function, std::string(nsig));
-      };
-
   auto descrambler =
       Find(
           page_data,
@@ -436,8 +422,7 @@ std::function<std::string(std::string_view)> YouTube::GetDescrambler(
   transform_type[Find(transforms, {std::regex(R"(([^:]{2}):.*\[0\])")})
                      .value()] = TransformType::kSwap;
 
-  return [rules, helper, transform_type,
-          nsig_function = std::move(nsig_function)](std::string_view sig) {
+  return [rules, helper, transform_type](std::string_view sig) {
     auto data = http::ParseQuery(sig);
     std::string signature = data["s"];
     size_t it = 0;
@@ -467,15 +452,21 @@ std::function<std::string(std::string_view)> YouTube::GetDescrambler(
       }
       it = next + 1;
     }
-    auto uri = http::ParseUri(data["url"]);
-    auto params = http::ParseQuery(uri.query.value_or(""));
-    if (auto it = params.find("n"); it != params.end()) {
-      it->second = nsig_function(it->second);
-      data["url"] =
-          StrCat(uri.scheme.value_or("https"), "://", uri.host.value_or(""),
-                 uri.path.value_or(""), "?", http::FormDataToString(params));
-    }
     return StrCat(data["url"], "&", data["sp"], "=", signature);
+  };
+}
+
+std::optional<std::function<std::string(std::string_view cipher)>>
+YouTube::GetNewDescrambler(std::string_view page_data) {
+  auto nsig_function_name = Find(
+      page_data,
+      {std::regex(R"(\.get\("n"\)\)&&\(b=([a-zA-Z0-9$]{3})\([a-zA-Z0-9]\))")});
+  if (!nsig_function_name) {
+    return std::nullopt;
+  }
+  return [nsig_function = js::GetFunction(page_data, *nsig_function_name)](
+             std::string_view nsig) {
+    return GetNewCipher(nsig_function, std::string(nsig));
   };
 }
 
