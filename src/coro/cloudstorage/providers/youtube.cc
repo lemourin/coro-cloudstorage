@@ -1,6 +1,7 @@
 #include "coro/cloudstorage/providers/youtube.h"
 
 #include <algorithm>
+#include <fstream>
 #include <regex>
 #include <sstream>
 #include <unordered_map>
@@ -17,6 +18,9 @@ enum class TransformType { kReverse, kSplice, kSwap };
 
 using ::coro::cloudstorage::util::StrCat;
 
+constexpr const std::string_view kCipherChars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
 std::string XmlAttributes(
     const std::vector<std::pair<std::string, std::string>>& args) {
   std::stringstream stream;
@@ -32,15 +36,174 @@ std::string XmlAttributes(
   return stream.str();
 }
 
-std::string Find(std::string_view text,
-                 const std::initializer_list<std::regex>& re) {
+std::optional<std::string> Find(std::string_view text,
+                                const std::initializer_list<std::regex>& re) {
   std::match_results<std::string_view::iterator> match;
   for (const auto& regex : re) {
     if (std::regex_search(text.begin(), text.end(), match, regex)) {
       return match[match.size() - 1].str();
     }
   }
-  throw CloudException("pattern not found");
+  return std::nullopt;
+}
+
+namespace js {
+
+struct Function {
+  std::string name;
+  std::vector<std::string> args;
+  std::string source;
+};
+
+Function GetFunction(std::string_view document,
+                     std::string_view function_name) {
+  auto regex = util::StrCat(
+      R"((?:)", function_name,
+      R"(\s*=\s*function\s*)\(([^\)]*)\)\s*(\{(?!\};)[\s\S]+?\};))");
+  std::match_results<std::string_view::iterator> match;
+  if (std::regex_search(document.begin(), document.end(), match,
+                        std::regex{regex})) {
+    auto args = util::SplitString(match[1].str(), ',');
+    for (auto& arg : args) {
+      arg = util::TrimWhitespace(arg);
+    }
+    return Function{std::string(function_name), std::move(args),
+                    match[2].str()};
+  } else {
+    throw CloudException(StrCat("function ", function_name, " not found"));
+  }
+}
+
+std::vector<std::string> Split(std::string_view text, char delimiter) {
+  std::vector<std::string> result;
+  std::string current;
+  int balance = 0;
+  for (char c : text) {
+    if (c == '(' || c == '[' || c == '{') {
+      balance++;
+      current += c;
+    } else if (c == ')' || c == ']' || c == '}') {
+      balance--;
+      current += c;
+    } else if (c == ',') {
+      if (balance == 0) {
+        result.emplace_back(util::TrimWhitespace(current));
+        current.clear();
+      } else {
+        current += c;
+      }
+    } else {
+      current += c;
+    }
+  }
+  if (!current.empty()) {
+    result.emplace_back(std::move(current));
+  }
+  return result;
+}
+
+}  // namespace js
+
+template <typename Container>
+void CircularShift(Container& container, int shift) {
+  int size = container.size();
+  int m = size - (((shift % size) + size) % size);
+  std::reverse(container.begin(), container.begin() + m);
+  std::reverse(container.begin() + m, container.end());
+  std::reverse(container.begin(), container.end());
+}
+
+template <typename Container>
+void SwapElement(Container& container, int shift) {
+  int size = container.size();
+  int m = ((shift % size) + size) % size;
+  std::swap(container[0], container[m]);
+}
+
+template <typename Container>
+void RemoveElement(Container& container, int shift) {
+  int size = container.size();
+  int m = ((shift % size) + size) % size;
+  container.erase(container.begin() + m);
+}
+
+std::string Decrypt(std::string input, std::string key,
+                    std::string_view cipher_chars) {
+  int h = cipher_chars.length();
+  for (int i = 0; i < input.size(); i++) {
+    int i1 = cipher_chars.find(input[i]);
+    int i2 = cipher_chars.find(key[i]);
+    input[i] = cipher_chars[(i1 - i2 + i + h--) % cipher_chars.length()];
+    key.push_back(input[i]);
+  }
+  return input;
+}
+
+std::string GetNewCipher(const js::Function& function, std::string nsig) {
+  auto input = js::Split(
+      Find(function.source, {std::regex(R"(\w\s*=\s*\[([\s\S]*)\];)")}).value(),
+      ',');
+  for (std::string_view command : js::Split(
+           Find(function.source, {std::regex(R"(try\s*\{([\s\S]*)\}\s*catch)")})
+               .value(),
+           ',')) {
+    std::match_results<std::string_view::iterator> match;
+    if (std::regex_search(
+            command.begin(), command.end(), match,
+            std::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\],\s*\w+\[(\d+)\]\))"))) {
+      int a = std::stoi(match[1].str());
+      int b = std::stoi(match[2].str());
+      int c = std::stoi(match[3].str());
+      auto do_operation = [&]<typename T>(T& i) {
+        if (input[a].find("for") != std::string::npos) {
+          CircularShift(i, std::stoi(input[c]));
+        } else if (input[a].find("d.splice(e,1)") != std::string::npos) {
+          RemoveElement(i, std::stoi(input[c]));
+        } else if (input[a].find("push") != std::string::npos) {
+          if constexpr (std::is_same_v<T, std::vector<std::string>>) {
+            i.push_back(input[c]);
+          } else {
+            throw CloudException("unexpected push");
+          }
+        } else {
+          SwapElement(i, std::stoi(input[c]));
+        }
+      };
+      if (input[b] == "null") {
+        do_operation(input);
+      } else if (input[b] == "b") {
+        do_operation(nsig);
+      } else {
+        throw CloudException(StrCat("unexpected ", input[b]));
+      }
+    } else if (std::regex_search(
+                   command.begin(), command.end(), match,
+                   std::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\]\))"))) {
+      int a = std::stoi(match[1].str());
+      int b = std::stoi(match[2].str());
+      if (input[b] == "null") {
+        std::reverse(input.begin(), input.end());
+      } else if (input[b] == "b") {
+        std::reverse(nsig.begin(), nsig.end());
+      } else {
+        throw CloudException(StrCat("unexpected ", input[b]));
+      }
+    } else if (
+        std::regex_search(
+            command.begin(), command.end(), match,
+            std::regex(
+                R"(\w+\[(\d+)\]\(\w+\[(\d+)\],\s*\w+\[(\d+)\],\s*\w+\[(\d+)\]\(\)\))"))) {
+      int a = std::stoi(match[1].str());
+      int b = std::stoi(match[2].str());
+      int c = std::stoi(match[3].str());
+      int d = std::stoi(match[4].str());
+      nsig = Decrypt(std::move(nsig), input[c].substr(1, input[c].size() - 2),
+                     kCipherChars);
+    } else {
+      throw CloudException(StrCat("unexpected command ", command));
+    }
+  }
+  return nsig;
 }
 
 }  // namespace
@@ -234,26 +397,45 @@ std::string YouTube::GetPlayerUrl(std::string_view page_data) {
 
 std::function<std::string(std::string_view)> YouTube::GetDescrambler(
     std::string_view page_data) {
-  auto descrambler = Find(
+  // std::ofstream("C:/Users/lemourin/Desktop/player.js") << page_data;
+  auto nsig_function_name = Find(
       page_data,
-      {std::regex(
-           R"re(([a-zA-Z0-9$]+)\s*=\s*function\(\s*a\s*\)\s*\{\s*a\s*=\s*a\.split\(\s*""\s*\))re"),
-       std::regex(
-           R"re((?:\b|[^a-zA-Z0-9$])([a-zA-Z0-9$]{2})\s*=\s*function\(\s*a\s*\)\s*\{\s*a\s*=\s*a\.split\(\s*""\s*\))re")});
-  auto rules = Find(
-      page_data, {std::regex(descrambler + R"(=function[^{]*\{([^}]*)\};)")});
-  auto helper = Find(rules, {std::regex(R"(;([^\.]*)\.)")});
-  auto transforms =
-      Find(page_data, {std::regex(helper + R"(=\{([\s\S]*?)\};)")});
-  std::unordered_map<std::string, TransformType> transform_type;
-  transform_type[Find(transforms, {std::regex(R"(([^:]{2}):.*reverse)")})] =
-      TransformType::kReverse;
-  transform_type[Find(transforms, {std::regex(R"(([^:]{2}):.*splice)")})] =
-      TransformType::kSplice;
-  transform_type[Find(transforms, {std::regex(R"(([^:]{2}):.*\[0\])")})] =
-      TransformType::kSwap;
+      {std::regex(R"(\.get\("n"\)\)&&\(b=([a-zA-Z0-9$]{3})\([a-zA-Z0-9]\))")});
+  auto nsig_function =
+      [nsig_function = nsig_function_name
+                           ? js::GetFunction(page_data, *nsig_function_name)
+                           : std::optional<js::Function>(std::nullopt)](
+          std::string_view nsig) {
+        if (!nsig_function) {
+          throw CloudException("nsig_function_code not found");
+        }
+        return GetNewCipher(*nsig_function, std::string(nsig));
+      };
 
-  return [rules, helper, transform_type](std::string_view sig) {
+  auto descrambler =
+      Find(
+          page_data,
+          {std::regex(
+               R"re(([a-zA-Z0-9$]+)\s*=\s*function\(\s*a\s*\)\s*\{\s*a\s*=\s*a\.split\(\s*""\s*\))re"),
+           std::regex(
+               R"re((?:\b|[^a-zA-Z0-9$])([a-zA-Z0-9$]{2})\s*=\s*function\(\s*a\s*\)\s*\{\s*a\s*=\s*a\.split\(\s*""\s*\))re")})
+          .value();
+  auto rules = Find(page_data,
+                    {std::regex(descrambler + R"(=function[^{]*\{([^}]*)\};)")})
+                   .value();
+  auto helper = Find(rules, {std::regex(R"(;([^\.]*)\.)")}).value();
+  auto transforms =
+      Find(page_data, {std::regex(helper + R"(=\{([\s\S]*?)\};)")}).value();
+  std::unordered_map<std::string, TransformType> transform_type;
+  transform_type[Find(transforms, {std::regex(R"(([^:]{2}):.*reverse)")})
+                     .value()] = TransformType::kReverse;
+  transform_type[Find(transforms, {std::regex(R"(([^:]{2}):.*splice)")})
+                     .value()] = TransformType::kSplice;
+  transform_type[Find(transforms, {std::regex(R"(([^:]{2}):.*\[0\])")})
+                     .value()] = TransformType::kSwap;
+
+  return [rules, helper, transform_type,
+          nsig_function = std::move(nsig_function)](std::string_view sig) {
     auto data = http::ParseQuery(sig);
     std::string signature = data["s"];
     size_t it = 0;
@@ -283,7 +465,15 @@ std::function<std::string(std::string_view)> YouTube::GetDescrambler(
       }
       it = next + 1;
     }
-    return data["url"] + "&" + data["sp"] + "=" + signature;
+    auto uri = http::ParseUri(data["url"]);
+    auto params = http::ParseQuery(uri.query.value_or(""));
+    if (auto it = params.find("n"); it != params.end()) {
+      it->second = nsig_function(it->second);
+      data["url"] = util::StrCat(uri.scheme.value_or("https"), "://",
+                                 uri.host.value_or(""), uri.path.value_or(""),
+                                 "?", http::FormDataToString(params));
+    }
+    return util::StrCat(data["url"], "&", data["sp"], "=", signature);
   };
 }
 
