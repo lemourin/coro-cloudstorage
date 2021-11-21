@@ -31,6 +31,8 @@ struct YouTube {
                                           const json& stream_data);
   static std::function<std::string(std::string_view cipher)> GetDescrambler(
       std::string_view page);
+  static std::optional<std::function<std::string(std::string_view cipher)>>
+  GetNewDescrambler(std::string_view page);
 
   template <http::HttpClient Http>
   static Task<std::string> GetVideoPage(const Http& http, std::string video_id,
@@ -108,6 +110,7 @@ struct YouTube {
     json adaptive_formats;
     json formats;
     std::optional<std::function<std::string(std::string_view)>> descrambler;
+    std::optional<std::function<std::string(std::string_view)>> new_descrambler;
 
     json GetBestVideo(std::string_view mime_type) const;
     json GetBestAudio(std::string_view mime_type) const;
@@ -463,6 +466,15 @@ struct YouTube::CloudProvider
           } else {
             url = (*data.descrambler)(std::string(d["signatureCipher"]));
           }
+          auto uri = http::ParseUri(*url);
+          auto params = http::ParseQuery(uri.query.value_or(""));
+          if (auto it = params.find("n");
+              it != params.end() && data.new_descrambler) {
+            it->second = (*data.new_descrambler)(it->second);
+            url = util::StrCat(uri.scheme.value_or("https"), "://",
+                               uri.host.value_or(""), uri.path.value_or(""),
+                               "?", http::FormDataToString(params));
+          }
         }
       }
     }
@@ -481,12 +493,13 @@ struct YouTube::CloudProvider
       StreamData result{
           .adaptive_formats = config["streamingData"]["adaptiveFormats"],
           .formats = config["streamingData"]["formats"]};
+      auto response = co_await http.Fetch(GetPlayerUrl(page), stop_token);
+      auto player_content = co_await http::GetBody(std::move(response.body));
+      result.new_descrambler = GetNewDescrambler(player_content);
       for (const auto& formats : {result.adaptive_formats, result.formats}) {
         for (const auto& d : formats) {
           if (!d.contains("url")) {
-            auto response = co_await http.Fetch(GetPlayerUrl(page), stop_token);
-            result.descrambler = GetDescrambler(
-                co_await http::GetBody(std::move(response.body)));
+            result.descrambler = GetDescrambler(player_content);
             co_return result;
           }
         }
