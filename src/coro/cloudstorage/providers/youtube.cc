@@ -17,9 +17,6 @@ enum class TransformType { kReverse, kSplice, kSwap };
 
 using ::coro::cloudstorage::util::StrCat;
 
-constexpr const std::string_view kCipherChars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
 std::string XmlAttributes(
     const std::vector<std::pair<std::string, std::string>>& args) {
   std::stringstream stream;
@@ -200,8 +197,14 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
       int c = std::stoi(match[3].str());
       int d = std::stoi(match[4].str());
       const std::string& key = input.at(c);
-      nsig =
-          Decrypt(std::move(nsig), key.substr(1, key.size() - 2), kCipherChars);
+      nsig = Decrypt(std::move(nsig), key.substr(1, key.size() - 2), [&] {
+        const std::string& cipher_source = input.at(d);
+        if (cipher_source.find("-=58") != std::string::npos) {
+          return R"(0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_)";
+        } else {
+          return R"(ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_)";
+        }
+      }());
     } else {
       throw CloudException(StrCat("unexpected command ", command));
     }
