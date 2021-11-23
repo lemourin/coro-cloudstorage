@@ -100,6 +100,8 @@ std::vector<std::string> Split(std::string_view text, char delimiter) {
 
 }  // namespace js
 
+int ToInt(const std::string& str) { return std::lround(std::stod(str)); }
+
 template <typename Container>
 void CircularShift(Container& container, int shift) {
   int size = container.size();
@@ -147,15 +149,15 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
     if (std::regex_search(
             command.begin(), command.end(), match,
             std::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\],\s*\w+\[(\d+)\]\))"))) {
-      int a = std::stoi(match[1].str());
-      int b = std::stoi(match[2].str());
-      int c = std::stoi(match[3].str());
+      int a = ToInt(match[1].str());
+      int b = ToInt(match[2].str());
+      int c = ToInt(match[3].str());
       auto do_operation = [&]<typename T>(T& i) {
         std::string_view source = input.at(a);
         if (source.find("for") != std::string::npos) {
-          CircularShift(i, std::stoi(input.at(c)));
+          CircularShift(i, ToInt(input.at(c)));
         } else if (source.find("d.splice(e,1)") != std::string::npos) {
-          RemoveElement(i, std::stoi(input.at(c)));
+          RemoveElement(i, ToInt(input.at(c)));
         } else if (source.find("push") != std::string::npos) {
           if constexpr (std::is_same_v<T, std::vector<std::string>>) {
             i.push_back(input.at(c));
@@ -163,7 +165,7 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
             throw CloudException("unexpected push");
           }
         } else {
-          SwapElement(i, std::stoi(input.at(c)));
+          SwapElement(i, ToInt(input.at(c)));
         }
       };
       std::string_view nd_argument = input.at(b);
@@ -177,8 +179,8 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
     } else if (std::regex_search(
                    command.begin(), command.end(), match,
                    std::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\]\))"))) {
-      int a = std::stoi(match[1].str());
-      int b = std::stoi(match[2].str());
+      int a = ToInt(match[1].str());
+      int b = ToInt(match[2].str());
       std::string_view nd_argument = input.at(b);
       if (nd_argument == "null") {
         std::reverse(input.begin(), input.end());
@@ -192,10 +194,10 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
             command.begin(), command.end(), match,
             std::regex(
                 R"(\w+\[(\d+)\]\(\w+\[(\d+)\],\s*\w+\[(\d+)\],\s*\w+\[(\d+)\]\(\)\))"))) {
-      int a = std::stoi(match[1].str());
-      int b = std::stoi(match[2].str());
-      int c = std::stoi(match[3].str());
-      int d = std::stoi(match[4].str());
+      int a = ToInt(match[1].str());
+      int b = ToInt(match[2].str());
+      int c = ToInt(match[3].str());
+      int d = ToInt(match[4].str());
       const std::string& key = input.at(c);
       nsig = Decrypt(std::move(nsig), key.substr(1, key.size() - 2), [&] {
         const std::string& cipher_source = input.at(d);
