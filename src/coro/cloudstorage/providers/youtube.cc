@@ -201,7 +201,8 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
       const std::string& key = input.at(c);
       nsig = Decrypt(std::move(nsig), key.substr(1, key.size() - 2), [&] {
         const std::string& cipher_source = input.at(d);
-        if (cipher_source.find("-=58") != std::string::npos) {
+        if (cipher_source.find("-=58") != std::string::npos ||
+            cipher_source.find("-=18") != std::string::npos) {
           return R"(0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_)";
         } else {
           return R"(ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_)";
