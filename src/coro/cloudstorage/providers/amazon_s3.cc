@@ -1,8 +1,6 @@
 #include "coro/cloudstorage/providers/amazon_s3.h"
 
-#include <algorithm>
 #include <iomanip>
-#include <regex>
 #include <string>
 #include <utility>
 #include <vector>

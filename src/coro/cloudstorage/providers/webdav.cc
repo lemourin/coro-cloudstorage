@@ -1,13 +1,16 @@
 #include "coro/cloudstorage/providers/webdav.h"
 
 #include <iomanip>
-#include <regex>
 #include <string>
 #include <utility>
+
+#include "coro/util/regex.h"
 
 namespace coro::cloudstorage {
 
 namespace {
+
+namespace re = ::coro::util::re;
 
 int64_t ParseTime(std::string str) {
   std::stringstream stream(std::move(str));
@@ -46,9 +49,9 @@ WebDAV::Auth::AuthToken ToAuthToken<WebDAV::Auth::AuthToken>(
   if (json.contains("access_token")) {
     std::string access_token =
         http::FromBase64(std::string(json["access_token"]));
-    std::regex regex(R"(([^\:]+):(.*))");
-    std::smatch match;
-    if (std::regex_match(access_token, match, regex)) {
+    re::regex regex(R"(([^\:]+):(.*))");
+    re::smatch match;
+    if (re::regex_match(access_token, match, regex)) {
       auth_token.credential = WebDAV::Auth::Credential{
           .username = match[1].str(), .password = match[2].str()};
     } else {
@@ -100,8 +103,8 @@ std::optional<std::string> WebDAV::GetNamespace(const pugi::xml_node& node) {
       });
   if (std::string_view(attr.name()) == "xmlns") {
     return std::nullopt;
-  } else if (std::cmatch match; std::regex_match(
-                 attr.name(), match, std::regex(R"(xmlns\:(\S+))"))) {
+  } else if (re::cmatch match; re::regex_match(attr.name(), match,
+                                               re::regex(R"(xmlns\:(\S+))"))) {
     return match[1];
   } else {
     throw CloudException("invalid xml");
