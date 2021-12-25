@@ -67,6 +67,7 @@ check_symbol_exists(_aligned_malloc "malloc.h" HAVE_ALIGNED_MALLOC)
 check_symbol_exists(gettimeofday "sys/time.h" HAVE_GETTIMEOFDAY)
 check_symbol_exists(nanosleep "time.h" HAVE_NANOSLEEP)
 check_symbol_exists(posix_memalign "stdlib.h" HAVE_POSIX_MEMALIGN)
+check_symbol_exists(mkstemp "stdlib.h" HAVE_MKSTEMP)
 
 if(WIN32)
     set(SLIBSUF ".dll")
