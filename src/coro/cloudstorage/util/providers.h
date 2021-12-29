@@ -1,0 +1,43 @@
+#ifndef CORO_CLOUDSTORAGE_UTIL_PROVIDERS_H
+#define CORO_CLOUDSTORAGE_UTIL_PROVIDERS_H
+
+#include "coro/util/type_list.h"
+
+#ifdef NDEBUG
+#include "coro/cloudstorage/providers/amazon_s3.h"
+#include "coro/cloudstorage/providers/box.h"
+#include "coro/cloudstorage/providers/dropbox.h"
+#include "coro/cloudstorage/providers/google_drive.h"
+#include "coro/cloudstorage/providers/hubic.h"
+
+#ifndef __ANDROID__
+#include "coro/cloudstorage/providers/local_filesystem.h"
+#endif
+
+#include "coro/cloudstorage/providers/mega.h"
+#include "coro/cloudstorage/providers/one_drive.h"
+#include "coro/cloudstorage/providers/pcloud.h"
+#include "coro/cloudstorage/providers/webdav.h"
+#include "coro/cloudstorage/providers/yandex_disk.h"
+#else
+#include "coro/cloudstorage/providers/mega.h"
+#endif
+
+namespace coro::cloudstorage::util {
+
+#ifdef NDEBUG
+using CloudProviderTypeList =
+    coro::util::TypeList<GoogleDrive, Mega, AmazonS3, Box, Dropbox, OneDrive,
+                         PCloud, WebDAV, YandexDisk, HubiC
+#ifndef __ANDROID__
+                         ,
+                         LocalFileSystem
+#endif
+                         >;
+#else
+using CloudProviderTypeList = coro::util::TypeList<Mega>;
+#endif
+
+}  // namespace coro::cloudstorage::util
+
+#endif  // CORO_CLOUDSTORAGE_UTIL_PROVIDERS_H
