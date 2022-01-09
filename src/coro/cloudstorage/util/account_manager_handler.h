@@ -289,10 +289,11 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
       auto& provider =
           std::get<CloudProviderT<CloudProvider>>(account->provider());
-      handlers_.emplace_back(Handler{
-          .id = std::string(account_id),
-          .prefix = StrCat("/", account_id),
-          .handler = CloudProviderHandler(thumbnail_generator_, &provider)});
+      handlers_.emplace_back(
+          Handler{.id = std::string(account_id),
+                  .prefix = StrCat("/", account_id),
+                  .handler = CloudProviderHandler(
+                      &provider, thumbnail_generator_, &settings_manager_)});
 
       account_listener_.OnCreate(account);
     } catch (...) {
@@ -363,7 +364,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
                  GetSizeHandler, AuthHandler<CloudProviders>...,
                  OnRemoveHandler<CloudProviders>...,
                  CloudProviderHandler<CloudProviderT<CloudProviders>,
-                                      ThumbnailGenerator>...>
+                                      ThumbnailGenerator, SettingsManagerT>...>
         handler;
   };
 

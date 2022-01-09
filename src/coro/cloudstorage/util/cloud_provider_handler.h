@@ -19,15 +19,19 @@ namespace coro::cloudstorage::util {
 std::string GetItemPathPrefix(
     std::span<const std::pair<std::string, std::string>> headers);
 
-template <typename CloudProvider, typename ThumbnailGenerator>
+template <typename CloudProvider, typename ThumbnailGenerator,
+          typename SettingsManager>
 class CloudProviderHandler {
  public:
   using Request = http::Request<>;
   using Response = http::Response<>;
 
-  CloudProviderHandler(const ThumbnailGenerator* thumbnail_generator,
-                       CloudProvider* provider)
-      : thumbnail_generator_(thumbnail_generator), provider_(provider) {}
+  CloudProviderHandler(CloudProvider* provider,
+                       const ThumbnailGenerator* thumbnail_generator,
+                       const SettingsManager* settings_manager)
+      : provider_(provider),
+        thumbnail_generator_(thumbnail_generator),
+        settings_manager_(settings_manager) {}
 
   Task<Response> operator()(Request request, stdx::stop_token stop_token) {
     try {
@@ -80,6 +84,14 @@ class CloudProviderHandler {
   }
 
  private:
+  std::string GetItemPathPrefix(
+      std::span<const std::pair<std::string, std::string>> headers) const {
+    if (!settings_manager_->EffectiveIsPublicNetworkEnabled()) {
+      return "";
+    }
+    return ::coro::cloudstorage::util::GetItemPathPrefix(headers);
+  }
+
   static Generator<std::string> GetDashPlayer(std::string path) {
     std::stringstream stream;
     stream << "<source src='" << path << "'>";
@@ -262,8 +274,9 @@ class CloudProviderHandler {
 
   using ItemT = typename CloudProvider::Item;
 
-  const ThumbnailGenerator* thumbnail_generator_;
   CloudProvider* provider_;
+  const ThumbnailGenerator* thumbnail_generator_;
+  const SettingsManager* settings_manager_;
 };
 
 }  // namespace coro::cloudstorage::util

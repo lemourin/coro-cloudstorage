@@ -53,12 +53,18 @@ Task<Response> GetSettingsHandlerResponse(SettingsHandlerData d) {
     co_return Response{.status = 200,
                        .headers = {{"Set-Cookie", std::move(cookie)}}};
   }
-  co_return Response{.status = 200,
-                     .body = http::CreateBody(fmt::format(
-                         fmt::runtime(util::kAssetsHtmlSettingsPageHtml),
-                         fmt::arg("host_selector", GetHostSelector(d.headers)),
-                         fmt::arg("public_network_checked",
-                                  d.public_network ? "checked" : "")))};
+  co_return Response{
+      .status = 200,
+      .body = http::CreateBody(fmt::format(
+          fmt::runtime(util::kAssetsHtmlSettingsPageHtml),
+          fmt::arg("host_class", d.effective_public_network ? "" : "hidden"),
+          fmt::arg("host_selector", d.effective_public_network
+                                        ? GetHostSelector(d.headers)
+                                        : ""),
+          fmt::arg("public_network_checked", d.public_network ? "checked" : ""),
+          fmt::arg("public_network_requires_restart_class",
+                   d.effective_public_network == d.public_network ? "hidden"
+                                                                  : "")))};
 }
 
 }  // namespace coro::cloudstorage::util::internal

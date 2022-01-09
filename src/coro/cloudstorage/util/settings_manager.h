@@ -10,7 +10,9 @@ namespace coro::cloudstorage::util {
 class SettingsManager {
  public:
   explicit SettingsManager(std::string path = GetConfigFilePath())
-      : auth_token_manager_(path), path_(std::move(path)) {}
+      : auth_token_manager_(path),
+        path_(std::move(path)),
+        effective_is_public_network_enabled_(IsPublicNetworkEnabled()) {}
 
   template <typename CloudProviderList>
   auto LoadTokenData() const {
@@ -31,11 +33,16 @@ class SettingsManager {
   void SetEnablePublicNetwork(bool enable) const;
   bool IsPublicNetworkEnabled() const;
 
+  bool EffectiveIsPublicNetworkEnabled() const {
+    return effective_is_public_network_enabled_;
+  }
+
   http::HttpServerConfig GetHttpServerConfig() const;
 
  private:
   AuthTokenManager auth_token_manager_;
   std::string path_;
+  bool effective_is_public_network_enabled_;
 };
 
 }  // namespace coro::cloudstorage::util

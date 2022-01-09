@@ -22,8 +22,9 @@ bool SettingsManager::IsPublicNetworkEnabled() const {
 }
 
 http::HttpServerConfig SettingsManager::GetHttpServerConfig() const {
-  return {.address = IsPublicNetworkEnabled() ? "0.0.0.0" : "127.0.0.1",
-          .port = 12345};
+  return {
+      .address = EffectiveIsPublicNetworkEnabled() ? "0.0.0.0" : "127.0.0.1",
+      .port = 12345};
 }
 
 }  // namespace coro::cloudstorage::util

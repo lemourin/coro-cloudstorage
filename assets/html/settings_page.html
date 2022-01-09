@@ -29,10 +29,13 @@
     <tr>
         <td><label for="public-network">PUBLIC NETWORK</label></td>
         <td class='host-switch setting'>
-            <input class="checkbox" type="checkbox" id="public-network" name="public-network" {public_network_checked}>
+            <div class='setting-toggle'>
+                <div class="setting-note {public_network_requires_restart_class}">REQUIRES RESTART</div>
+                <input class="checkbox" type="checkbox" id="public-network" name="public-network" {public_network_checked}>
+            </div>
         </td>
     </tr>
-    <tr>
+    <tr class="{host_class}">
         <td><label for="host">HOST</label></td>
         <td class='host-switch setting'>
             <select name='host' id='host'>

@@ -76,7 +76,20 @@ table {
 .setting {
   padding: 16px;
 }
+.setting-toggle {
+    display: flex;
+    justify-content: flex-end;
+}
+.setting-note {
+    margin-top: auto;
+    margin-bottom: auto;
+    padding-left: 8px;
+    padding-right: 8px;
+}
 .checkbox {
     width: 24px;
     height: 24px;
+}
+.hidden {
+    display: none;
 }

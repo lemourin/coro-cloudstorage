@@ -15,6 +15,7 @@ struct SettingsHandlerData {
   std::span<const std::pair<std::string, std::string>> headers;
   std::optional<Generator<std::string>> request_body;
   bool public_network;
+  bool effective_public_network;
   stdx::stop_token stop_token;
 };
 
@@ -23,9 +24,13 @@ Task<http::Response<>> GetSettingsHandlerResponse(SettingsHandlerData);
 }  // namespace internal
 
 template <typename SettingsManagerT>
-struct SettingsHandler {
+class SettingsHandler {
+ public:
   using Request = http::Request<>;
   using Response = http::Response<>;
+
+  explicit SettingsHandler(SettingsManagerT* settings_manager)
+      : settings_manager_(settings_manager) {}
 
   Task<Response> operator()(Request request,
                             stdx::stop_token stop_token) const {
@@ -38,7 +43,7 @@ struct SettingsHandler {
         auto body = co_await http::GetBody(std::move(request.body).value());
         auto query = http::ParseQuery(body);
         if (auto it = query.find("value"); it != query.end()) {
-          settings_manager->SetEnablePublicNetwork(it->second == "true");
+          settings_manager_->SetEnablePublicNetwork(it->second == "true");
           co_return Response{.status = 200};
         } else {
           co_return Response{.status = 400};
@@ -50,11 +55,14 @@ struct SettingsHandler {
             .path = *uri.path,
             .headers = request.headers,
             .request_body = std::move(request.body),
-            .public_network = settings_manager->IsPublicNetworkEnabled(),
+            .public_network = settings_manager_->IsPublicNetworkEnabled(),
+            .effective_public_network =
+                settings_manager_->EffectiveIsPublicNetworkEnabled(),
             .stop_token = std::move(stop_token)});
   }
 
-  SettingsManagerT* settings_manager;
+ private:
+  SettingsManagerT* settings_manager_;
 };
 
 }  // namespace coro::cloudstorage::util
