@@ -1,13 +1,13 @@
 #include "coro/cloudstorage/providers/youtube.h"
 
 #include <algorithm>
-#include <regex>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "coro/cloudstorage/util/string_utils.h"
+#include "coro/util/regex.h"
 
 namespace coro::cloudstorage {
 
@@ -17,9 +17,11 @@ enum class TransformType { kReverse, kSplice, kSwap };
 
 using ::coro::cloudstorage::util::StrCat;
 
+namespace re = ::coro::util::re;
+
 std::string EscapeRegex(std::string_view input) {
-  std::regex special_characters{R"([-[\]{}()*+?.,\^$|#\s])"};
-  return std::regex_replace(std::string(input), special_characters, R"(\$&)");
+  re::regex special_characters{R"([-[\]{}()*+?.,\^$|#\s])"};
+  return re::regex_replace(std::string(input), special_characters, R"(\$&)");
 }
 
 std::string XmlAttributes(
@@ -38,10 +40,10 @@ std::string XmlAttributes(
 }
 
 std::optional<std::string> Find(std::string_view text,
-                                const std::initializer_list<std::regex>& re) {
-  std::match_results<std::string_view::iterator> match;
+                                const std::initializer_list<re::regex>& re) {
+  re::match_results<std::string_view::iterator> match;
   for (const auto& regex : re) {
-    if (std::regex_search(text.begin(), text.end(), match, regex)) {
+    if (re::regex_search(text.begin(), text.end(), match, regex)) {
       return match[match.size() - 1].str();
     }
   }
@@ -58,10 +60,10 @@ struct Function {
 
 Function GetFunction(std::string_view document,
                      std::string_view function_name) {
-  std::match_results<std::string_view::iterator> match;
-  if (std::regex_search(
+  re::match_results<std::string_view::iterator> match;
+  if (re::regex_search(
           document.begin(), document.end(), match,
-          std::regex{StrCat(
+          re::regex{StrCat(
               R"((?:)", EscapeRegex(function_name),
               R"(\s*=\s*function\s*)\(([^\)]*)\)\s*(\{(?!\};)[\s\S]+?\};))")})) {
     auto args = util::SplitString(match[1].str(), ',');
@@ -144,16 +146,16 @@ std::string Decrypt(std::string input, std::string key,
 
 std::string GetNewCipher(const js::Function& function, std::string nsig) {
   auto input = js::Split(
-      Find(function.source, {std::regex(R"(\w\s*=\s*\[([\s\S]*)\];)")}).value(),
+      Find(function.source, {re::regex(R"(\w\s*=\s*\[([\s\S]*)\];)")}).value(),
       ',');
   for (std::string_view command : js::Split(
-           Find(function.source, {std::regex(R"(try\s*\{([\s\S]*)\}\s*catch)")})
+           Find(function.source, {re::regex(R"(try\s*\{([\s\S]*)\}\s*catch)")})
                .value(),
            ',')) {
-    std::match_results<std::string_view::iterator> match;
-    if (std::regex_search(
+    re::match_results<std::string_view::iterator> match;
+    if (re::regex_search(
             command.begin(), command.end(), match,
-            std::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\],\s*\w+\[(\d+)\]\))"))) {
+            re::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\],\s*\w+\[(\d+)\]\))"))) {
       int a = ToInt(match[1].str());
       int b = ToInt(match[2].str());
       int c = ToInt(match[3].str());
@@ -181,9 +183,8 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
       } else {
         throw CloudException(StrCat("unexpected ", nd_argument));
       }
-    } else if (std::regex_search(
-                   command.begin(), command.end(), match,
-                   std::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\]\))"))) {
+    } else if (re::regex_search(command.begin(), command.end(), match,
+                                re::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\]\))"))) {
       int a = ToInt(match[1].str());
       int b = ToInt(match[2].str());
       std::string_view nd_argument = input.at(b);
@@ -195,9 +196,9 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
         throw CloudException(StrCat("unexpected ", nd_argument));
       }
     } else if (
-        std::regex_search(
+        re::regex_search(
             command.begin(), command.end(), match,
-            std::regex(
+            re::regex(
                 R"(\w+\[(\d+)\]\(\w+\[(\d+)\],\s*\w+\[(\d+)\],\s*\w+\[(\d+)\]\(\)\))"))) {
       int a = ToInt(match[1].str());
       int b = ToInt(match[2].str());
@@ -399,9 +400,9 @@ std::string YouTube::GenerateDashManifest(std::string_view path,
 }
 
 std::string YouTube::GetPlayerUrl(std::string_view page_data) {
-  std::match_results<std::string_view::iterator> match;
-  if (std::regex_search(page_data.begin(), page_data.end(), match,
-                        std::regex(R"re("jsUrl":"([^"]*)")re"))) {
+  re::match_results<std::string_view::iterator> match;
+  if (re::regex_search(page_data.begin(), page_data.end(), match,
+                       re::regex(R"re("jsUrl":"([^"]*)")re"))) {
     return "https://www.youtube.com/" + match[1].str();
   } else {
     throw CloudException("jsUrl not found");
@@ -414,26 +415,26 @@ std::function<std::string(std::string_view)> YouTube::GetDescrambler(
   auto descrambler =
       Find(
           page_data,
-          {std::regex(
+          {re::regex(
                R"re(([a-zA-Z0-9$]+)\s*=\s*function\(\s*a\s*\)\s*\{\s*a\s*=\s*a\.split\(\s*""\s*\))re"),
-           std::regex(
+           re::regex(
                R"re((?:\b|[^a-zA-Z0-9$])([a-zA-Z0-9$]{2})\s*=\s*function\(\s*a\s*\)\s*\{\s*a\s*=\s*a\.split\(\s*""\s*\))re")})
           .value();
   auto rules =
-      Find(page_data, {std::regex(StrCat(EscapeRegex(descrambler),
-                                         R"(=function[^{]*\{([^}]*)\};)"))})
+      Find(page_data, {re::regex(StrCat(EscapeRegex(descrambler),
+                                        R"(=function[^{]*\{([^}]*)\};)"))})
           .value();
-  auto helper = Find(rules, {std::regex(R"(;([a-zA-Z0-9]*)\.)")}).value();
+  auto helper = Find(rules, {re::regex(R"(;([a-zA-Z0-9]*)\.)")}).value();
   auto transforms =
       Find(page_data,
-           {std::regex(StrCat(EscapeRegex(helper), R"(=\{([\s\S]*?)\};)"))})
+           {re::regex(StrCat(EscapeRegex(helper), R"(=\{([\s\S]*?)\};)"))})
           .value();
   std::unordered_map<std::string, TransformType> transform_type;
-  transform_type[Find(transforms, {std::regex(R"(([^:]{2}):.*reverse)")})
+  transform_type[Find(transforms, {re::regex(R"(([^:]{2}):.*reverse)")})
                      .value()] = TransformType::kReverse;
-  transform_type[Find(transforms, {std::regex(R"(([^:]{2}):.*splice)")})
+  transform_type[Find(transforms, {re::regex(R"(([^:]{2}):.*splice)")})
                      .value()] = TransformType::kSplice;
-  transform_type[Find(transforms, {std::regex(R"(([^:]{2}):.*\[0\])")})
+  transform_type[Find(transforms, {re::regex(R"(([^:]{2}):.*\[0\])")})
                      .value()] = TransformType::kSwap;
 
   return [rules, helper, transform_type](std::string_view sig) {
@@ -446,11 +447,11 @@ std::function<std::string(std::string_view)> YouTube::GetDescrambler(
         break;
       }
       std::string_view transform(rules.data() + it, next - it);
-      std::match_results<std::string_view::iterator> match;
-      if (std::regex_match(
+      re::match_results<std::string_view::iterator> match;
+      if (re::regex_match(
               transform.begin(), transform.end(), match,
-              std::regex(StrCat(EscapeRegex(helper),
-                                R"re(\.([^\(]*)\([^,]*,([^\)]*)\))re")))) {
+              re::regex(StrCat(EscapeRegex(helper),
+                               R"re(\.([^\(]*)\([^,]*,([^\)]*)\))re")))) {
         std::string func = match[1].str();
         int arg = std::stoi(match[2].str());
         switch (transform_type.at(func)) {
@@ -475,7 +476,7 @@ std::optional<std::function<std::string(std::string_view cipher)>>
 YouTube::GetNewDescrambler(std::string_view page_data) {
   auto nsig_function_name = Find(
       page_data,
-      {std::regex(R"(\.get\("n"\)\)&&\(b=([a-zA-Z0-9$]{3})\([a-zA-Z0-9]\))")});
+      {re::regex(R"(\.get\("n"\)\)&&\(b=([a-zA-Z0-9$]{3})\([a-zA-Z0-9]\))")});
   if (!nsig_function_name) {
     return std::nullopt;
   }
