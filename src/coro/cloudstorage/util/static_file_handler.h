@@ -107,10 +107,11 @@ class StaticFileHandler {
 
   static Response Resolve(Theme theme, std::string_view url) {
     auto it = url.find_last_of('.');
-    return Response{.status = 302,
-                    .headers = {{"Location", util::StrCat(url.substr(0, it),
-                                                          "-", ToString(theme),
-                                                          url.substr(it))}}};
+    return Response{
+        .status = 302,
+        .headers = {{"Location", util::StrCat(url.substr(0, it), "-",
+                                              ToString(theme), url.substr(it))},
+                    {"Vary", "Cookie"}}};
   }
 };
 
