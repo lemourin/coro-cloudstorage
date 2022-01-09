@@ -37,16 +37,12 @@ std::string GetHostSelector(
 
 }  // namespace
 
-Task<Response> GetSettingsHandlerResponse(Request request, stdx::stop_token) {
-  auto uri = http::ParseUri(request.url);
-  if (!uri.path) {
-    co_return Response{.status = 400};
-  }
-  if (uri.path == "/settings/host-set") {
-    if (!request.body) {
+Task<Response> GetSettingsHandlerResponse(SettingsHandlerData d) {
+  if (d.path == "/settings/host-set") {
+    if (!d.request_body) {
       co_return Response{.status = 400};
     }
-    auto body = co_await http::GetBody(std::move(*request.body));
+    auto body = co_await http::GetBody(std::move(*d.request_body));
     auto query = http::ParseQuery(body);
     std::string cookie = [&] {
       if (auto it = query.find("host");
@@ -61,11 +57,12 @@ Task<Response> GetSettingsHandlerResponse(Request request, stdx::stop_token) {
                        .headers = {{"Location", "/settings"},
                                    {"Set-Cookie", std::move(cookie)}}};
   }
-  co_return Response{
-      .status = 200,
-      .body = http::CreateBody(fmt::format(
-          fmt::runtime(util::kAssetsHtmlSettingsPageHtml),
-          fmt::arg("host_selector", GetHostSelector(request.headers))))};
+  co_return Response{.status = 200,
+                     .body = http::CreateBody(fmt::format(
+                         fmt::runtime(util::kAssetsHtmlSettingsPageHtml),
+                         fmt::arg("host_selector", GetHostSelector(d.headers)),
+                         fmt::arg("public_network_checked",
+                                  d.public_network ? "checked" : "")))};
 }
 
 }  // namespace coro::cloudstorage::util::internal

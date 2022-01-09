@@ -94,6 +94,9 @@ class StaticFileHandler {
     } else if (request.url == "/static/account_list_main.js") {
       content = util::kAssetsJsAccountListMainJs;
       mime_type = "text/javascript;charset=UTF-8";
+    } else if (request.url == "/static/settings_main.js") {
+      content = util::kAssetsJsSettingsMainJs;
+      mime_type = "text/javascript;charset=UTF-8";
     }
     if (!content) {
       co_return Response{.status = 404};

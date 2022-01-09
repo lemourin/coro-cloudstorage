@@ -3,6 +3,7 @@
 
 #include "coro/cloudstorage/util/auth_token_manager.h"
 #include "coro/cloudstorage/util/settings_utils.h"
+#include "coro/http/http_server.h"
 
 namespace coro::cloudstorage::util {
 
@@ -26,6 +27,11 @@ class SettingsManager {
   void RemoveToken(std::string_view id) const {
     auth_token_manager_.RemoveToken<CloudProvider>(id);
   }
+
+  void SetEnablePublicNetwork(bool enable) const;
+  bool IsPublicNetworkEnabled() const;
+
+  http::HttpServerConfig GetHttpServerConfig() const;
 
  private:
   AuthTokenManager auth_token_manager_;

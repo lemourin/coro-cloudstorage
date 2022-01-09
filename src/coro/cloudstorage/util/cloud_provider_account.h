@@ -29,7 +29,7 @@ struct OnAuthTokenChanged {
 }  // namespace internal
 
 template <typename CloudProviderTypeList, typename CloudFactory,
-          typename AuthTokenManagerT = AuthTokenManager>
+          typename AuthTokenManagerT = SettingsManager>
 class CloudProviderAccount;
 
 template <typename... CloudProviders, typename CloudFactory,

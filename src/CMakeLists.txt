@@ -85,6 +85,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/settings_utils.h
     coro/cloudstorage/util/settings_utils.cc
     coro/cloudstorage/util/settings_manager.h
+    coro/cloudstorage/util/settings_manager.cc
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
     coro/cloudstorage/cloud_provider.h
@@ -182,4 +183,5 @@ embed_resource(
         ../assets/styles/colors_light.css
         ../assets/styles/colors_dark.css
         ../assets/js/account_list_main.js
+        ../assets/js/settings_main.js
 )

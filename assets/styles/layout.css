@@ -76,3 +76,7 @@ table {
 .setting {
   padding: 16px;
 }
+.checkbox {
+    width: 24px;
+    height: 24px;
+}

@@ -6,6 +6,7 @@
           content='width=device-width, initial-scale=1'>
     <link rel=stylesheet href='/static/layout.css'>
     <link rel=stylesheet href='/static/colors.css'>
+    <script src='/static/settings_main.js'></script>
 </head>
 <body class='root-container'>
 <table class="content-table">
@@ -23,6 +24,12 @@
             <form method="post" action="settings/theme-toggle">
                 <button type="submit">TOGGLE THEME</button>
             </form>
+        </td>
+    </tr>
+    <tr>
+        <td><label for="public-network">PUBLIC NETWORK</label></td>
+        <td class='host-switch setting'>
+            <input class="checkbox" type="checkbox" id="public-network" name="public-network" {public_network_checked}>
         </td>
     </tr>
     <tr>
