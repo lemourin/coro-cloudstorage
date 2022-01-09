@@ -173,11 +173,14 @@ class CloudProviderHandler {
       if (directory_path.empty() || directory_path.back() != '/') {
         directory_path += '/';
       }
-      co_return Response{.status = 200,
-                         .headers = {{"Content-Type", "text/html"}},
-                         .body = GetDirectoryContent(
-                             provider_->ListDirectory(d, std::move(stop_token)),
-                             directory_path)};
+      auto hostname = http::GetCookie(request.headers, "host");
+      co_return Response{
+          .status = 200,
+          .headers = {{"Content-Type", "text/html"}},
+          .body = GetDirectoryContent(
+              hostname && !hostname->empty() ? &*hostname : nullptr,
+              provider_->ListDirectory(d, std::move(stop_token)),
+              directory_path)};
     } else {
       co_return GetFileContentResponse(
           provider_, std::move(d),
@@ -193,20 +196,30 @@ class CloudProviderHandler {
   }
 
   template <typename Item>
-  std::string GetItemEntry(const Item& item, std::string_view path) const {
+  std::string GetItemEntry(const std::string* hostname, const Item& item,
+                           std::string_view path) const {
     std::string file_link = StrCat(path, http::EncodeUri(item.name));
+    bool use_dash_player = [&] {
+      if constexpr (IsFile<Item, CloudProvider>) {
+        return item.name.ends_with(".mpd") ||
+               (hostname &&
+                CloudProvider::GetMimeType(item).starts_with("video"));
+      } else {
+        return false;
+      }
+    }();
     return fmt::format(
         fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", item.name),
         fmt::arg("size", SizeToString(CloudProvider::GetSize(item))),
         fmt::arg("timestamp",
                  TimeStampToString(CloudProvider::GetTimestamp(item))),
-        fmt::arg("url", StrCat(file_link, item.name.ends_with(".mpd")
-                                              ? "?dash_player=true"
-                                              : "")),
+        fmt::arg("url",
+                 StrCat(file_link, use_dash_player ? "?dash_player=true" : "")),
         fmt::arg("thumbnail_url", StrCat(file_link, "?thumbnail=true")));
   }
 
   Generator<std::string> GetDirectoryContent(
+      const std::string* hostname,
       Generator<typename CloudProvider::PageData> page_data,
       std::string path) const {
     co_yield "<!DOCTYPE html>"
@@ -231,7 +244,10 @@ class CloudProviderHandler {
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
         co_yield std::visit(
-            [&](const auto& item) { return GetItemEntry(item, path); }, item);
+            [&](const auto& item) {
+              return GetItemEntry(hostname, item, path);
+            },
+            item);
       }
     }
     co_yield "</table>"
