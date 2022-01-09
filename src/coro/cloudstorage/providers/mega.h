@@ -396,34 +396,13 @@ class Mega::CloudProvider
 
   Task<Thumbnail> GetItemThumbnail(File item, http::Range range,
                                    stdx::stop_token stop_token) {
-    if (!item.thumbnail_id) {
-      throw CloudException(CloudException::Type::kNotFound);
+    if (item.thumbnail_id) {
+      co_return co_await GetItemThumbnailImpl(std::move(item), range,
+                                              std::move(stop_token));
     }
-    auto response = co_await GetAttribute(*item.thumbnail_id, stop_token);
-    std::string input = FromBase64(ToAttributeHandle(*item.thumbnail_id));
-    if (input.size() % 8 != 0) {
-      input.resize(input.size() + 8 - input.size() % 8);
-    }
-    http::Request<> request = {
-        .url = response["p"],
-        .method = http::Method::kPost,
-        .headers = {{"Content-Type", "application/octet-stream"},
-                    {"Content-Length", "8"}},
-        .body = http::CreateBody(std::move(input))};
-    auto thumbnail_response =
-        co_await http_->Fetch(std::move(request), stop_token);
-    auto content = co_await http::GetBody(std::move(thumbnail_response.body));
-    content = content.substr(12);
-    Thumbnail thumbnail{.size = static_cast<int64_t>(content.size())};
-    auto decoded = DecodeAttributeContent(ToFileKey(item.compkey), content);
-    int64_t end = range.end.value_or(decoded.size() - 1);
-    if (end >= static_cast<int64_t>(decoded.size())) {
-      throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
-    }
-    std::string output(end - range.start + 1, 0);
-    memcpy(output.data(), decoded.data() + range.start, end - range.start + 1);
-    thumbnail.data = http::CreateBody(std::move(output));
-    co_return thumbnail;
+    auto new_item = co_await TrySetThumbnail(std::move(item), stop_token);
+    co_return co_await GetItemThumbnailImpl(std::move(new_item), range,
+                                            std::move(stop_token));
   }
 
   template <typename DirectoryT,
@@ -624,6 +603,38 @@ class Mega::CloudProvider
 
   std::string GetEncryptedItemKey(std::span<const uint8_t> key) const {
     return ToBase64(BlockEncrypt(auth_token_.pkey, ToStringView(key)));
+  }
+
+  Task<Thumbnail> GetItemThumbnailImpl(File item, http::Range range,
+                                       stdx::stop_token stop_token) {
+    if (!item.thumbnail_id) {
+      throw CloudException(CloudException::Type::kNotFound);
+    }
+    auto response = co_await GetAttribute(*item.thumbnail_id, stop_token);
+    std::string input = FromBase64(ToAttributeHandle(*item.thumbnail_id));
+    if (input.size() % 8 != 0) {
+      input.resize(input.size() + 8 - input.size() % 8);
+    }
+    http::Request<> request = {
+        .url = response["p"],
+        .method = http::Method::kPost,
+        .headers = {{"Content-Type", "application/octet-stream"},
+                    {"Content-Length", "8"}},
+        .body = http::CreateBody(std::move(input))};
+    auto thumbnail_response =
+        co_await http_->Fetch(std::move(request), stop_token);
+    auto content = co_await http::GetBody(std::move(thumbnail_response.body));
+    content = content.substr(12);
+    Thumbnail thumbnail{.size = static_cast<int64_t>(content.size())};
+    auto decoded = DecodeAttributeContent(ToFileKey(item.compkey), content);
+    int64_t end = range.end.value_or(decoded.size() - 1);
+    if (end >= static_cast<int64_t>(decoded.size())) {
+      throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
+    }
+    std::string output(end - range.start + 1, 0);
+    memcpy(output.data(), decoded.data() + range.start, end - range.start + 1);
+    thumbnail.data = http::CreateBody(std::move(output));
+    co_return thumbnail;
   }
 
   Task<> LazyInit(stdx::stop_token stop_token) {
