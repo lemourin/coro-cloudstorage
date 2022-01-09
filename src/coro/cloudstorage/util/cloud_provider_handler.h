@@ -53,7 +53,9 @@ class CloudProviderHandler {
           co_return Response{
               .status = 200,
               .headers = {{"Content-Type", "text/html; charset=UTF-8"}},
-              .body = GetDashPlayer(uri.path.value())};
+              .body = GetDashPlayer(
+                  StrCat(http::GetCookie(request.headers, "host").value_or(""),
+                         uri.path.value()))};
         }
       }
       co_return co_await std::visit(
@@ -120,7 +122,7 @@ class CloudProviderHandler {
     }();
     return Response{
         .status = 302,
-        .headers = {{"Location", util::StrCat("/static/", icon_name, ".svg")}}};
+        .headers = {{"Location", StrCat("/static/", icon_name, ".svg")}}};
   }
 
   template <typename Item>
@@ -192,16 +194,16 @@ class CloudProviderHandler {
 
   template <typename Item>
   std::string GetItemEntry(const Item& item, std::string_view path) const {
-    std::string file_link = util::StrCat(path, http::EncodeUri(item.name));
+    std::string file_link = StrCat(path, http::EncodeUri(item.name));
     return fmt::format(
         fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", item.name),
         fmt::arg("size", SizeToString(CloudProvider::GetSize(item))),
         fmt::arg("timestamp",
                  TimeStampToString(CloudProvider::GetTimestamp(item))),
-        fmt::arg("url", util::StrCat(file_link, item.name.ends_with(".mpd")
-                                                    ? "?dash_player=true"
-                                                    : "")),
-        fmt::arg("thumbnail_url", util::StrCat(file_link, "?thumbnail=true")));
+        fmt::arg("url", StrCat(file_link, item.name.ends_with(".mpd")
+                                              ? "?dash_player=true"
+                                              : "")),
+        fmt::arg("thumbnail_url", StrCat(file_link, "?thumbnail=true")));
   }
 
   Generator<std::string> GetDirectoryContent(
@@ -224,8 +226,8 @@ class CloudProviderHandler {
         fmt::arg("size", ""), fmt::arg("timestamp", ""),
         fmt::arg("url", GetDirectoryPath(path)),
         fmt::arg("thumbnail_url",
-                 util::StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
-                              "?thumbnail=true")));
+                 StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
+                        "?thumbnail=true")));
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
         co_yield std::visit(

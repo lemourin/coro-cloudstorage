@@ -37,7 +37,7 @@ auto ThemeHandler::operator()(Request request, stdx::stop_token) const
       .status = 302,
       .headers = {{"Location", "/settings"},
                   {"Set-Cookie",
-                   util::StrCat(
+                   StrCat(
                        "theme=",
                        ToString(current_theme == Theme::kLight ? Theme::kDark
                                                                : Theme::kLight),
