@@ -71,7 +71,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     handlers_.emplace_back(
         Handler{.prefix = "/settings", .handler = SettingsHandler()});
     handlers_.emplace_back(
-        Handler{.prefix = "/theme-toggle", .handler = ThemeHandler{}});
+        Handler{.prefix = "/settings/theme-toggle", .handler = ThemeHandler{}});
     (AddAuthHandler<CloudProviders>(), ...);
     for (const auto& any_token : auth_token_manager_.template LoadTokenData<
                                  coro::util::TypeList<CloudProviders...>>()) {

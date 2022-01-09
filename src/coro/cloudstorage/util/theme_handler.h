@@ -5,58 +5,21 @@
 #include <span>
 
 #include "coro/cloudstorage/util/string_utils.h"
+#include "coro/http/http.h"
 #include "coro/http/http_parse.h"
 
 namespace coro::cloudstorage::util {
 
 enum class Theme { kDark, kLight };
 
-inline std::string_view ToString(Theme theme) {
-  switch (theme) {
-    case Theme::kDark:
-      return "dark";
-    case Theme::kLight:
-      return "light";
-  }
-  throw std::runtime_error("invalid theme");
-}
-
-inline Theme GetTheme(
-    std::span<const std::pair<std::string, std::string>> headers) {
-  if (auto cookie = http::GetHeader(headers, "Cookie")) {
-    if (cookie->find("theme=dark") != std::string::npos) {
-      return Theme::kDark;
-    } else if (cookie->find("theme=light") != std::string::npos) {
-      return Theme::kLight;
-    }
-  }
-  if (auto hint = http::GetHeader(headers, "Sec-CH-Prefers-Color-Scheme")) {
-    if (*hint == "dark") {
-      return Theme::kDark;
-    } else if (*hint == "light") {
-      return Theme::kLight;
-    }
-  }
-  return Theme::kLight;
-}
+std::string_view ToString(Theme theme);
+Theme GetTheme(std::span<const std::pair<std::string, std::string>> headers);
 
 struct ThemeHandler {
   using Request = http::Request<>;
   using Response = http::Response<>;
 
-  Task<Response> operator()(Request request, stdx::stop_token) const {
-    Theme current_theme = GetTheme(request.headers);
-    co_return Response{
-        .status = 302,
-        .headers = {{"Location", "/settings"},
-                    {"Set-Cookie",
-                     util::StrCat("theme=",
-                                  ToString(current_theme == Theme::kLight
-                                               ? Theme::kDark
-                                               : Theme::kLight),
-                                  "; Expires=Mon, 01 Jan 9999 00:00:00 GMT")}},
-    };
-  }
+  Task<Response> operator()(Request request, stdx::stop_token) const;
 };
 
 }  // namespace coro::cloudstorage::util
