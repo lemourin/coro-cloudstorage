@@ -42,12 +42,11 @@ std::string GetItemPathPrefix(
   if (host.empty()) {
     return "";
   }
+  std::string host_header = http::GetHeader(headers, "Host").value();
   auto port = [&]() -> std::string_view {
     re::regex regex(R"((\:\d{1,5})$)");
     re::match_results<std::string::const_iterator> match;
-    std::string_view port = "";
-    if (re::regex_search(http::GetHeader(headers, "host").value(), match,
-                         regex)) {
+    if (re::regex_search(host_header, match, regex)) {
       return std::string_view(&*match[1].begin(), match[1].length());
     } else {
       return "";
