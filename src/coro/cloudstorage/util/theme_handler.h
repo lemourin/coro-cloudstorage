@@ -23,12 +23,21 @@ inline std::string_view ToString(Theme theme) {
 
 inline Theme GetTheme(
     std::span<const std::pair<std::string, std::string>> headers) {
-  if (auto cookie = http::GetHeader(headers, "Cookie");
-      cookie && cookie->find("theme=dark") != std::string::npos) {
-    return Theme::kDark;
-  } else {
-    return Theme::kLight;
+  if (auto cookie = http::GetHeader(headers, "Cookie")) {
+    if (cookie->find("theme=dark")) {
+      return Theme::kDark;
+    } else if (cookie->find("theme=light")) {
+      return Theme::kLight;
+    }
   }
+  if (auto hint = http::GetHeader(headers, "Sec-CH-Prefers-Color-Scheme")) {
+    if (*hint == "dark") {
+      return Theme::kDark;
+    } else if (*hint == "light") {
+      return Theme::kLight;
+    }
+  }
+  return Theme::kLight;
 }
 
 struct ThemeHandler {

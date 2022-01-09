@@ -90,6 +90,17 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
   Task<Response> operator()(Request request,
                             coro::stdx::stop_token stop_token) {
+    auto response =
+        co_await HandleRequest(std::move(request), std::move(stop_token));
+    response.headers.emplace_back("Accept-CH", "Sec-CH-Prefers-Color-Scheme");
+    response.headers.emplace_back("Vary", "Sec-CH-Prefers-Color-Scheme");
+    response.headers.emplace_back("Critical-CH", "Sec-CH-Prefers-Color-Scheme");
+    co_return response;
+  }
+
+ private:
+  Task<Response> HandleRequest(Request request,
+                               coro::stdx::stop_token stop_token) {
     if (request.method == coro::http::Method::kOptions) {
       co_return Response{
           .status = 204,
@@ -148,7 +159,6 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     }
   }
 
- private:
   template <typename CloudProvider>
   using CloudProviderT =
       typename CloudProviderAccount::template CloudProviderT<CloudProvider>;
