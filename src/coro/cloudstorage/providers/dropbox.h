@@ -11,8 +11,6 @@
 #include "coro/http/http.h"
 #include "coro/when_all.h"
 
-#define Dropbox DropboxV2
-
 namespace coro::cloudstorage {
 
 struct Dropbox {
