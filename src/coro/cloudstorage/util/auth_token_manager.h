@@ -10,6 +10,7 @@
 
 #include "coro/cloudstorage/cloud_factory.h"
 #include "coro/cloudstorage/util/serialize_utils.h"
+#include "coro/cloudstorage/util/settings_utils.h"
 #include "coro/util/type_list.h"
 
 namespace coro::cloudstorage::util {
@@ -65,14 +66,7 @@ struct LoadToken<coro::util::TypeList<CloudProviders...>> {
   }
 };
 
-std::string GetDirectoryPath(std::string_view path);
-
-void CreateDirectory(std::string_view path);
-
 }  // namespace internal
-
-std::string GetConfigFilePath(std::string_view app_name = "coro-cloudstorage",
-                              std::string_view file_name = "config.json");
 
 class AuthTokenManager {
  public:
@@ -112,7 +106,7 @@ class AuthTokenManager {
       token_json["type"] = GetCloudProviderId<CloudProvider>();
       json["auth_token"].emplace_back(std::move(token_json));
     }
-    internal::CreateDirectory(internal::GetDirectoryPath(token_file));
+    CreateDirectory(GetDirectoryPath(token_file));
     std::ofstream stream{token_file};
     stream.exceptions(std::ofstream::failbit | std::ofstream::badbit);
     stream << json.dump(2);
