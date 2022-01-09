@@ -37,6 +37,11 @@ if(CORO_CLOUDSTORAGE_HAVE_STRERROR_S)
     target_compile_definitions(coro-cloudstorage PRIVATE HAVE_STRERROR_S)
 endif()
 
+check_include_file(ifaddrs.h CORO_CLOUDSTORAGE_HAVE_IFADDRS_H)
+if(CORO_CLOUDSTORAGE_HAVE_IFADDRS_H)
+    target_compile_definitions(coro-cloudstorage PRIVATE HAVE_IFADDRS_H)
+endif()
+
 target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/fetch_json.h
     coro/cloudstorage/util/account_manager_handler.h
@@ -73,6 +78,8 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/random_number_generator.h
     coro/cloudstorage/util/cloud_factory_context.h
     coro/cloudstorage/util/providers.h
+    coro/cloudstorage/util/net_utils.h
+    coro/cloudstorage/util/net_utils.cc
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
     coro/cloudstorage/cloud_provider.h

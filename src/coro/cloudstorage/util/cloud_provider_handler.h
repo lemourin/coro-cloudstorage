@@ -8,10 +8,12 @@
 
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/handler_utils.h"
+#include "coro/cloudstorage/util/net_utils.h"
 #include "coro/cloudstorage/util/thumbnail_options.h"
 #include "coro/cloudstorage/util/webdav_handler.h"
 #include "coro/http/http_parse.h"
 #include "coro/util/lru_cache.h"
+#include "coro/util/regex.h"
 
 namespace coro::cloudstorage::util {
 
@@ -54,8 +56,8 @@ class CloudProviderHandler {
               .status = 200,
               .headers = {{"Content-Type", "text/html; charset=UTF-8"}},
               .body = GetDashPlayer(
-                  StrCat(http::GetCookie(request.headers, "host").value_or(""),
-                         uri.path.value()))};
+                  http::GetHeader(request.headers, "Host").value(),
+                  uri.path.value())};
         }
       }
       co_return co_await std::visit(
@@ -77,9 +79,23 @@ class CloudProviderHandler {
   }
 
  private:
-  static Generator<std::string> GetDashPlayer(std::string path) {
+  static Generator<std::string> GetDashPlayer(std::string host,
+                                              std::string path) {
+    namespace re = coro::util::re;
+    re::regex regex(R"((\:\d{1,5})$)");
+    re::match_results<std::string::const_iterator> match;
+    std::string_view port = "";
+    if (re::regex_search(host, match, regex)) {
+      port = std::string_view(match[1].begin(), match[1].end());
+    }
+    std::stringstream stream;
+    stream << "<source src='" << path << "'>";
+    for (std::string address : GetHostAddresses()) {
+      stream << "<source src='"
+             << "http://" << address << port << path << "'>";
+    }
     co_yield fmt::format(fmt::runtime(kAssetsHtmlDashPlayerHtml),
-                         fmt::arg("video_url", path));
+                         fmt::arg("source", std::move(stream).str()));
   }
 
   static bool IsRoot(std::string_view path) {
