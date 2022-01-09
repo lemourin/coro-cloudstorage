@@ -77,7 +77,7 @@ Task<> CoMain(event_base* event_base) noexcept {
     Promise<void> quit;
     HttpServer<HttpHandler<CloudFactoryContext<>::CloudFactoryT,
                            CloudFactoryContext<>::ThumbnailGeneratorT>>
-        http_server(event_base, {.address = "127.0.0.1", .port = 12345},
+        http_server(event_base, {.address = "0.0.0.0", .port = 12345},
                     factory_context.factory(),
                     factory_context.thumbnail_generator(), &quit);
     co_await quit;
