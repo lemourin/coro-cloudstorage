@@ -17,6 +17,11 @@ enum class TransformType { kReverse, kSplice, kSwap };
 
 using ::coro::cloudstorage::util::StrCat;
 
+std::string EscapeRegex(std::string_view input) {
+  std::regex special_characters{R"([-[\]{}()*+?.,\^$|#\s])"};
+  return std::regex_replace(std::string(input), special_characters, R"(\$&)");
+}
+
 std::string XmlAttributes(
     const std::vector<std::pair<std::string, std::string>>& args) {
   std::stringstream stream;
@@ -57,7 +62,7 @@ Function GetFunction(std::string_view document,
   if (std::regex_search(
           document.begin(), document.end(), match,
           std::regex{StrCat(
-              R"((?:)", function_name,
+              R"((?:)", EscapeRegex(function_name),
               R"(\s*=\s*function\s*)\(([^\)]*)\)\s*(\{(?!\};)[\s\S]+?\};))")})) {
     auto args = util::SplitString(match[1].str(), ',');
     for (auto& arg : args) {
@@ -414,12 +419,15 @@ std::function<std::string(std::string_view)> YouTube::GetDescrambler(
            std::regex(
                R"re((?:\b|[^a-zA-Z0-9$])([a-zA-Z0-9$]{2})\s*=\s*function\(\s*a\s*\)\s*\{\s*a\s*=\s*a\.split\(\s*""\s*\))re")})
           .value();
-  auto rules = Find(page_data,
-                    {std::regex(descrambler + R"(=function[^{]*\{([^}]*)\};)")})
-                   .value();
+  auto rules =
+      Find(page_data, {std::regex(StrCat(EscapeRegex(descrambler),
+                                         R"(=function[^{]*\{([^}]*)\};)"))})
+          .value();
   auto helper = Find(rules, {std::regex(R"(;([a-zA-Z0-9]*)\.)")}).value();
   auto transforms =
-      Find(page_data, {std::regex(helper + R"(=\{([\s\S]*?)\};)")}).value();
+      Find(page_data,
+           {std::regex(StrCat(EscapeRegex(helper), R"(=\{([\s\S]*?)\};)"))})
+          .value();
   std::unordered_map<std::string, TransformType> transform_type;
   transform_type[Find(transforms, {std::regex(R"(([^:]{2}):.*reverse)")})
                      .value()] = TransformType::kReverse;
@@ -441,7 +449,8 @@ std::function<std::string(std::string_view)> YouTube::GetDescrambler(
       std::match_results<std::string_view::iterator> match;
       if (std::regex_match(
               transform.begin(), transform.end(), match,
-              std::regex(helper + R"re(\.([^\(]*)\([^,]*,([^\)]*)\))re"))) {
+              std::regex(StrCat(EscapeRegex(helper),
+                                R"re(\.([^\(]*)\([^,]*,([^\)]*)\))re")))) {
         std::string func = match[1].str();
         int arg = std::stoi(match[2].str());
         switch (transform_type.at(func)) {
