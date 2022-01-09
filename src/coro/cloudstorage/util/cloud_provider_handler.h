@@ -104,6 +104,7 @@ class CloudProviderHandler {
     std::stringstream stream;
     stream << "<source src='" << path << "'>";
     co_yield fmt::format(fmt::runtime(kAssetsHtmlDashPlayerHtml),
+                         fmt::arg("poster", StrCat(path, "?thumbnail=true")),
                          fmt::arg("source", std::move(stream).str()));
   }
 
