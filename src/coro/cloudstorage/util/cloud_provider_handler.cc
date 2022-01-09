@@ -24,7 +24,7 @@ std::string GetItemPathPrefix(
     if (!host_addresses) {
       host_addresses = GetHostAddresses();
     }
-    std::optional<int> idx;
+    std::optional<size_t> idx;
     bool ambiguous = false;
     for (size_t i = 0; i < host_addresses->size(); i++) {
       if ((*host_addresses)[i] != "127.0.0.1") {
