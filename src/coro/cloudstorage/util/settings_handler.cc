@@ -36,6 +36,7 @@ std::string GetHostSelector(
 }
 
 }  // namespace
+
 Task<Response> GetSettingsHandlerResponse(Request request, stdx::stop_token) {
   auto uri = http::ParseUri(request.url);
   if (!uri.path) {
