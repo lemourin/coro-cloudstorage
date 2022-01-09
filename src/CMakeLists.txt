@@ -44,6 +44,8 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/cloud_provider_account.h
     coro/cloudstorage/util/get_size_handler.h
     coro/cloudstorage/util/theme_handler.h
+    coro/cloudstorage/util/settings_handler.h
+    coro/cloudstorage/util/settings_handler.cc
     coro/cloudstorage/util/auth_token_manager.h
     coro/cloudstorage/util/auth_manager.h
     coro/cloudstorage/util/auth_handler.h
@@ -132,12 +134,16 @@ embed_resource(
         ../assets/icons/mimetypes/64/video-x-generic.svg
         ../assets/icons/places/64/folder.svg
         ../assets/icons/places/64/user-trash.svg
+        ../assets/icons/actions/32/settings-configure.svg
+        ../assets/icons/actions/32/go-previous.svg
         ../assets/icons-dark/mimetypes/64/audio-x-generic.svg
         ../assets/icons-dark/mimetypes/64/image-x-generic.svg
         ../assets/icons-dark/mimetypes/64/unknown.svg
         ../assets/icons-dark/mimetypes/64/video-x-generic.svg
         ../assets/icons-dark/places/64/folder.svg
         ../assets/icons-dark/places/64/user-trash.svg
+        ../assets/icons-dark/actions/32/settings-configure.svg
+        ../assets/icons-dark/actions/32/go-previous.svg
         ../assets/html/mega_login.html
         ../assets/html/local_login.html
         ../assets/html/webdav_login.html
@@ -147,6 +153,7 @@ embed_resource(
         ../assets/html/provider_entry.html
         ../assets/html/account_entry.html
         ../assets/html/home_page.html
+        ../assets/html/settings_page.html
         ../assets/providers/box.png
         ../assets/providers/yandex.png
         ../assets/providers/dropbox.png

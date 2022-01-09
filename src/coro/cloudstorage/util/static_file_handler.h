@@ -33,7 +33,9 @@ class StaticFileHandler {
                request.url == "/static/image-x-generic.svg" ||
                request.url == "/static/unknown.svg" ||
                request.url == "/static/video-x-generic.svg" ||
-               request.url == "/static/folder.svg") {
+               request.url == "/static/folder.svg" ||
+               request.url == "/static/configure-settings.svg" ||
+               request.url == "/static/go-previous.svg") {
       co_return Resolve(theme, request.url);
     } else if (request.url == "/static/colors-light.css") {
       content = util::kAssetsStylesColorsLightCss;
@@ -76,6 +78,18 @@ class StaticFileHandler {
       mime_type = "image/svg+xml";
     } else if (request.url == "/static/folder-dark.svg") {
       content = util::kAssetsIconsDarkPlaces64FolderSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/configure-settings-light.svg") {
+      content = util::kAssetsIconsActions32SettingsConfigureSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/configure-settings-dark.svg") {
+      content = util::kAssetsIconsDarkActions32SettingsConfigureSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/go-previous-light.svg") {
+      content = util::kAssetsIconsActions32GoPreviousSvg;
+      mime_type = "image/svg+xml";
+    } else if (request.url == "/static/go-previous-dark.svg") {
+      content = util::kAssetsIconsDarkActions32GoPreviousSvg;
       mime_type = "image/svg+xml";
     } else if (request.url == "/static/account_list_main.js") {
       content = util::kAssetsJsAccountListMainJs;

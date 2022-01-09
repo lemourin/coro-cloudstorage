@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <title>coro-cloudstorage</title>
+    <meta name='viewport'
+          content='width=device-width, initial-scale=1'>
+    <link rel=stylesheet href='/static/layout.css'>
+    <link rel=stylesheet href='/static/colors.css'>
+</head>
+<body class='root-container'>
+<table class="content-table">
+    <tr>
+        <td><a href="../"><img class='icon' src="/static/go-previous.svg"></a></td>
+    </tr>
+    <tr>
+        <td><h3 class='table-header'>SETTINGS</h3></td>
+    </tr>
+</table>
+<table class='content-table'>
+    <tr>
+        <td>THEME</td>
+        <td class='theme-switch setting'>
+            <form method="post" action="theme-toggle">
+                <button type="submit">TOGGLE THEME</button>
+            </form>
+        </td>
+    </tr>
+    <tr>
+        <td><label for="host">HOST</label></td>
+        <td class='host-switch setting'>
+            <form method="post" action="settings">
+                {host_selector}
+                <button type="submit">OK</button>
+            </form>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

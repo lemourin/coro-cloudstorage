@@ -44,7 +44,7 @@ table {
   text-align: right;
   width: 64px;
 }
-.trash-icon {
+.icon {
   width: 48px;
   height: 48px;
 }
@@ -63,6 +63,16 @@ table {
   width: 100%;
   text-align: right;
 }
+.host-switch {
+  width: 100%;
+  text-align: right;
+}
 .root-container {
   margin: auto;
+}
+.settings-icon {
+  float: right;
+}
+.setting {
+  padding: 16px;
 }

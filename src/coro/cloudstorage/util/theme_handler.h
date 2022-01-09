@@ -48,7 +48,7 @@ struct ThemeHandler {
     Theme current_theme = GetTheme(request.headers);
     co_return Response{
         .status = 302,
-        .headers = {{"Location", "/"},
+        .headers = {{"Location", "/settings"},
                     {"Set-Cookie",
                      util::StrCat("theme=",
                                   ToString(current_theme == Theme::kLight

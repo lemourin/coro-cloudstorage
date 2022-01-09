@@ -13,6 +13,7 @@
 #include "coro/cloudstorage/util/cloud_provider_handler.h"
 #include "coro/cloudstorage/util/get_size_handler.h"
 #include "coro/cloudstorage/util/serialize_utils.h"
+#include "coro/cloudstorage/util/settings_handler.h"
 #include "coro/cloudstorage/util/static_file_handler.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/cloudstorage/util/theme_handler.h"
@@ -67,6 +68,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         Handler{.prefix = "/static/", .handler = StaticFileHandler{}});
     handlers_.emplace_back(
         Handler{.prefix = "/size", .handler = GetSizeHandler{&accounts_}});
+    handlers_.emplace_back(
+        Handler{.prefix = "/settings", .handler = SettingsHandler()});
     handlers_.emplace_back(
         Handler{.prefix = "/theme-toggle", .handler = ThemeHandler{}});
     (AddAuthHandler<CloudProviders>(), ...);
@@ -354,8 +357,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   struct Handler {
     std::string id;
     std::string prefix;
-    std::variant<ThemeHandler, StaticFileHandler, GetSizeHandler,
-                 AuthHandler<CloudProviders>...,
+    std::variant<SettingsHandler, ThemeHandler, StaticFileHandler,
+                 GetSizeHandler, AuthHandler<CloudProviders>...,
                  OnRemoveHandler<CloudProviders>...,
                  CloudProviderHandler<CloudProviderT<CloudProviders>,
                                       ThumbnailGenerator>...>
