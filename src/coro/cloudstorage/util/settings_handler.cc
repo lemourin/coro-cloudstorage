@@ -5,6 +5,7 @@
 #include <span>
 
 #include "coro/cloudstorage/util/assets.h"
+#include "coro/cloudstorage/util/net_utils.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/http/http.h"
 #include "coro/http/http_parse.h"
@@ -15,9 +16,20 @@ namespace {
 
 std::string GetHostSelector(
     std::span<const std::pair<std::string, std::string>> headers) {
-  return fmt::format(
-      "<input name='host' id='host' type='text' value='{value}'>",
-      fmt::arg("value", http::GetCookie(headers, "host").value_or("")));
+  auto host_addresses = GetHostAddresses();
+  std::stringstream stream;
+  stream << "<select name='host' id='host'>";
+  stream << "<option value=''></option>";
+  auto host = http::GetCookie(headers, "host");
+  for (std::string_view address : GetHostAddresses()) {
+    stream << "<option";
+    if (host && *host == address) {
+      stream << " selected=true";
+    }
+    stream << " value='" << address << "'>" << address << "</option>";
+  }
+  stream << "</select>";
+  return std::move(stream).str();
 }
 
 }  // namespace

@@ -56,8 +56,7 @@ class CloudProviderHandler {
               .status = 200,
               .headers = {{"Content-Type", "text/html; charset=UTF-8"}},
               .body = GetDashPlayer(
-                  http::GetHeader(request.headers, "Host").value(),
-                  uri.path.value())};
+                  StrCat(GetPathPrefix(request.headers), uri.path.value()))};
         }
       }
       co_return co_await std::visit(
@@ -79,21 +78,31 @@ class CloudProviderHandler {
   }
 
  private:
-  static Generator<std::string> GetDashPlayer(std::string host,
-                                              std::string path) {
+  static std::string GetPathPrefix(
+      std::span<const std::pair<std::string, std::string>> headers) {
     namespace re = coro::util::re;
-    re::regex regex(R"((\:\d{1,5})$)");
-    re::match_results<std::string::const_iterator> match;
-    std::string_view port = "";
-    if (re::regex_search(host, match, regex)) {
-      port = std::string_view(match[1].begin(), match[1].end());
+    if (auto host = http::GetCookie(headers, "host")) {
+      auto host_addresses = GetHostAddresses();
+      if (std::find(host_addresses.begin(), host_addresses.end(), *host) ==
+          host_addresses.end()) {
+        return "";
+      }
+      re::regex regex(R"((\:\d{1,5})$)");
+      re::match_results<std::string::const_iterator> match;
+      std::string_view port = "";
+      if (re::regex_search(http::GetHeader(headers, "host").value(), match,
+                           regex)) {
+        port = std::string_view(match[1].begin(), match[1].end());
+      }
+      return StrCat("http://", *host, port);
+    } else {
+      return "";
     }
+  }
+
+  static Generator<std::string> GetDashPlayer(std::string path) {
     std::stringstream stream;
     stream << "<source src='" << path << "'>";
-    for (std::string address : GetHostAddresses()) {
-      stream << "<source src='"
-             << "http://" << address << port << path << "'>";
-    }
     co_yield fmt::format(fmt::runtime(kAssetsHtmlDashPlayerHtml),
                          fmt::arg("source", std::move(stream).str()));
   }
@@ -189,14 +198,12 @@ class CloudProviderHandler {
       if (directory_path.empty() || directory_path.back() != '/') {
         directory_path += '/';
       }
-      auto hostname = http::GetCookie(request.headers, "host");
-      co_return Response{
-          .status = 200,
-          .headers = {{"Content-Type", "text/html"}},
-          .body = GetDirectoryContent(
-              hostname && !hostname->empty() ? &*hostname : nullptr,
-              provider_->ListDirectory(d, std::move(stop_token)),
-              directory_path)};
+      co_return Response{.status = 200,
+                         .headers = {{"Content-Type", "text/html"}},
+                         .body = GetDirectoryContent(
+                             GetPathPrefix(request.headers),
+                             provider_->ListDirectory(d, std::move(stop_token)),
+                             directory_path)};
     } else {
       co_return GetFileContentResponse(
           provider_, std::move(d),
@@ -212,18 +219,9 @@ class CloudProviderHandler {
   }
 
   template <typename Item>
-  std::string GetItemEntry(const std::string* hostname, const Item& item,
-                           std::string_view path) const {
+  std::string GetItemEntry(const Item& item, std::string_view path,
+                           bool use_dash_player) const {
     std::string file_link = StrCat(path, http::EncodeUri(item.name));
-    bool use_dash_player = [&] {
-      if constexpr (IsFile<Item, CloudProvider>) {
-        return item.name.ends_with(".mpd") ||
-               (hostname &&
-                CloudProvider::GetMimeType(item).starts_with("video"));
-      } else {
-        return false;
-      }
-    }();
     return fmt::format(
         fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", item.name),
         fmt::arg("size", SizeToString(CloudProvider::GetSize(item))),
@@ -235,7 +233,7 @@ class CloudProviderHandler {
   }
 
   Generator<std::string> GetDirectoryContent(
-      const std::string* hostname,
+      std::string path_prefix,
       Generator<typename CloudProvider::PageData> page_data,
       std::string path) const {
     co_yield "<!DOCTYPE html>"
@@ -260,8 +258,18 @@ class CloudProviderHandler {
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
         co_yield std::visit(
-            [&](const auto& item) {
-              return GetItemEntry(hostname, item, path);
+            [&]<typename Item>(const Item& item) {
+              bool use_dash_player = [&] {
+                if constexpr (IsFile<Item, CloudProvider>) {
+                  return item.name.ends_with(".mpd") ||
+                         (!path_prefix.empty() &&
+                          CloudProvider::GetMimeType(item).starts_with(
+                              "video"));
+                } else {
+                  return false;
+                }
+              }();
+              return GetItemEntry(item, path, use_dash_player);
             },
             item);
       }
