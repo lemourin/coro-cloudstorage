@@ -92,7 +92,7 @@ class CloudProviderHandler {
       std::string_view port = "";
       if (re::regex_search(http::GetHeader(headers, "host").value(), match,
                            regex)) {
-        port = std::string_view(match[1].begin(), match[1].end());
+        port = std::string_view(&*match[1].begin(), match[1].length());
       }
       return StrCat("http://", *host, port);
     } else {
