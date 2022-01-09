@@ -24,9 +24,9 @@ inline std::string_view ToString(Theme theme) {
 inline Theme GetTheme(
     std::span<const std::pair<std::string, std::string>> headers) {
   if (auto cookie = http::GetHeader(headers, "Cookie")) {
-    if (cookie->find("theme=dark")) {
+    if (cookie->find("theme=dark") != std::string::npos) {
       return Theme::kDark;
-    } else if (cookie->find("theme=light")) {
+    } else if (cookie->find("theme=light") != std::string::npos) {
       return Theme::kLight;
     }
   }
