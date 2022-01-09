@@ -10,12 +10,14 @@
     <link rel="stylesheet"
           href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/3.2.1/controls.min.css"
           integrity="sha512-SYNKswp79a9ENEbm/jOfRxIsGQSoIOtNpNnjitsn912rcpGkYIl3uIxunsszTwrMcs+RPvKsQr0MNXj2muy91g=="
-          crossorigin="anonymous" />
+          crossorigin="anonymous"/>
     <script defer src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js"></script>
 </head>
 <body style='background-color:black; display: flex; margin: auto; justify-content: center; align-items: center; width: 100vw; height: 100%'>
 <div data-shaka-player-cast-receiver-id="1BA79154" data-shaka-player-container style='display: flex; max-height: 100%;'>
-    <video autoplay data-shaka-player id='video' style='max-height: 100%; width: 100vw;' src='{video_url}'></video>
+    <video autoplay data-shaka-player id='video' style='max-height: 100%; width: 100vw;'>
+        <source src='{video_url}'>
+    </video>
 </div>
 </body>
 </html>
