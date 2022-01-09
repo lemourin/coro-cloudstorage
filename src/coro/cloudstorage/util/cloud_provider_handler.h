@@ -8,7 +8,6 @@
 
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/handler_utils.h"
-#include "coro/cloudstorage/util/net_utils.h"
 #include "coro/cloudstorage/util/thumbnail_options.h"
 #include "coro/cloudstorage/util/webdav_handler.h"
 #include "coro/http/http_parse.h"
@@ -16,6 +15,9 @@
 #include "coro/util/regex.h"
 
 namespace coro::cloudstorage::util {
+
+std::string GetItemPathPrefix(
+    std::span<const std::pair<std::string, std::string>> headers);
 
 template <typename CloudProvider, typename ThumbnailGenerator>
 class CloudProviderHandler {
@@ -55,8 +57,8 @@ class CloudProviderHandler {
           co_return Response{
               .status = 200,
               .headers = {{"Content-Type", "text/html; charset=UTF-8"}},
-              .body = GetDashPlayer(
-                  StrCat(GetPathPrefix(request.headers), uri.path.value()))};
+              .body = GetDashPlayer(StrCat(GetItemPathPrefix(request.headers),
+                                           uri.path.value()))};
         }
       }
       co_return co_await std::visit(
@@ -78,58 +80,6 @@ class CloudProviderHandler {
   }
 
  private:
-  static std::string GetPathPrefix(
-      std::span<const std::pair<std::string, std::string>> headers) {
-    namespace re = coro::util::re;
-    std::optional<std::vector<std::string>> host_addresses;
-    auto host = [&]() -> std::string {
-      auto host = http::GetCookie(headers, "host");
-      if (!host || host->empty()) {
-        return "";
-      }
-      host_addresses = GetHostAddresses();
-      if (std::find(host_addresses->begin(), host_addresses->end(), *host) ==
-          host_addresses->end()) {
-        return "";
-      }
-      return *host;
-    }();
-    if (host.empty()) {
-      if (!host_addresses) {
-        host_addresses = GetHostAddresses();
-      }
-      std::optional<int> idx;
-      bool ambiguous = false;
-      for (size_t i = 0; i < host_addresses->size(); i++) {
-        if ((*host_addresses)[i] != "127.0.0.1") {
-          if (idx) {
-            ambiguous = true;
-            break;
-          }
-          idx = i;
-        }
-      }
-      if (!ambiguous && idx) {
-        host = std::move((*host_addresses)[*idx]);
-      }
-    }
-    if (host.empty()) {
-      return "";
-    }
-    auto port = [&]() -> std::string_view {
-      re::regex regex(R"((\:\d{1,5})$)");
-      re::match_results<std::string::const_iterator> match;
-      std::string_view port = "";
-      if (re::regex_search(http::GetHeader(headers, "host").value(), match,
-                           regex)) {
-        return std::string_view(&*match[1].begin(), match[1].length());
-      } else {
-        return "";
-      }
-    }();
-    return StrCat("http://", host, port);
-  }
-
   static Generator<std::string> GetDashPlayer(std::string path) {
     std::stringstream stream;
     stream << "<source src='" << path << "'>";
@@ -232,7 +182,7 @@ class CloudProviderHandler {
       co_return Response{.status = 200,
                          .headers = {{"Content-Type", "text/html"}},
                          .body = GetDirectoryContent(
-                             GetPathPrefix(request.headers),
+                             GetItemPathPrefix(request.headers),
                              provider_->ListDirectory(d, std::move(stop_token)),
                              directory_path)};
     } else {
