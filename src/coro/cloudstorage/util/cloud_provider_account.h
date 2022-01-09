@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 
+#include "coro/cloudstorage/util/settings_manager.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/util/type_list.h"
 
