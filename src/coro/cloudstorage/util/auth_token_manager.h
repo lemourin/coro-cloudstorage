@@ -1,7 +1,6 @@
 #ifndef CORO_CLOUDSTORAGE_AUTH_TOKEN_MANAGER_H
 #define CORO_CLOUDSTORAGE_AUTH_TOKEN_MANAGER_H
 
-#include <fstream>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
@@ -32,12 +31,7 @@ struct LoadToken<coro::util::TypeList<CloudProviders...>> {
 
   std::vector<AnyToken> operator()(std::string_view token_file) const {
     try {
-      std::ifstream file{std::string(token_file)};
-      if (!file) {
-        return {};
-      }
-      nlohmann::json json;
-      file >> json;
+      nlohmann::json json = ReadSettings(token_file);
       std::vector<AnyToken> result;
 
       for (const auto& entry : json["auth_token"]) {

@@ -16,15 +16,11 @@ std::string GetDirectoryPath(std::string_view path);
 void CreateDirectory(std::string_view path);
 void RemoveDirectory(std::string_view path);
 
+nlohmann::json ReadSettings(std::string_view path);
+
 template <typename F>
 void EditSettings(std::string_view path, const F& edit) {
-  nlohmann::json json;
-  {
-    std::ifstream input{std::string(path)};
-    if (input) {
-      input >> json;
-    }
-  }
+  nlohmann::json json = ReadSettings(path);
   json = edit(std::move(json));
   if (json.is_null()) {
     remove(std::string(path).c_str());
