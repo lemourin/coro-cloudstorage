@@ -21,8 +21,6 @@ std::string GetHostSelector(
     std::span<const std::pair<std::string, std::string>> headers) {
   auto host_addresses = GetHostAddresses();
   std::stringstream stream;
-  stream << "<select name='host' id='host'>";
-  stream << "<option value=''></option>";
   auto host = http::GetCookie(headers, "host");
   for (std::string_view address : GetHostAddresses()) {
     stream << "<option";
@@ -31,7 +29,6 @@ std::string GetHostSelector(
     }
     stream << " value='" << address << "'>" << address << "</option>";
   }
-  stream << "</select>";
   return std::move(stream).str();
 }
 
@@ -45,7 +42,7 @@ Task<Response> GetSettingsHandlerResponse(SettingsHandlerData d) {
     auto body = co_await http::GetBody(std::move(*d.request_body));
     auto query = http::ParseQuery(body);
     std::string cookie = [&] {
-      if (auto it = query.find("host");
+      if (auto it = query.find("value");
           it != query.end() && !it->second.empty()) {
         return StrCat("host=", http::EncodeUri(it->second),
                       ";path=/;Expires=Mon, 01 Jan 9999 00:00:00 GMT");
@@ -53,9 +50,8 @@ Task<Response> GetSettingsHandlerResponse(SettingsHandlerData d) {
         return StrCat("host=;path=/;Expires=Mon, 01 Jan 1970 00:00:00 GMT");
       }
     }();
-    co_return Response{.status = 302,
-                       .headers = {{"Location", "/settings"},
-                                   {"Set-Cookie", std::move(cookie)}}};
+    co_return Response{.status = 200,
+                       .headers = {{"Set-Cookie", std::move(cookie)}}};
   }
   co_return Response{.status = 200,
                      .body = http::CreateBody(fmt::format(

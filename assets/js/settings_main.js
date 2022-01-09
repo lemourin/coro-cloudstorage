@@ -1,9 +1,11 @@
 "use strict";
 
 function initialize() {
-    const public_network = document.querySelector("#public-network");
-    public_network.addEventListener('change', (event) => {
+    document.querySelector("#public-network").addEventListener('change', (event) => {
         fetch("/settings/public-network", { method: "POST", body: "value=" + event.target.checked });
+    });
+    document.querySelector("#host").addEventListener('change', (event) => {
+        fetch("/settings/host-set", { method: "POST", body: "value=" + event.target.value });
     });
 }
 

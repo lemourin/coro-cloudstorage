@@ -35,10 +35,10 @@
     <tr>
         <td><label for="host">HOST</label></td>
         <td class='host-switch setting'>
-            <form method="post" action="settings/host-set">
+            <select name='host' id='host'>
+                <option value=''></option>
                 {host_selector}
-                <button type="submit">OK</button>
-            </form>
+            </select>
         </td>
     </tr>
 </table>
