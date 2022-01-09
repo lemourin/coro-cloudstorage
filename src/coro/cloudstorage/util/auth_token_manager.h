@@ -81,35 +81,8 @@ class AuthTokenManager {
   template <typename CloudProvider>
   void SaveToken(typename CloudProvider::Auth::AuthToken token,
                  std::string_view id) const {
-    auto token_file = path_;
-    nlohmann::json json;
-    {
-      std::ifstream input_token_file{token_file};
-      if (input_token_file) {
-        input_token_file >> json;
-      }
-    }
-    bool found = false;
-    for (auto& entry : json["auth_token"]) {
-      if (entry["type"] == std::string(GetCloudProviderId<CloudProvider>()) &&
-          entry["id"] == std::string(id)) {
-        entry = ToJson(std::move(token));
-        entry["id"] = id;
-        entry["type"] = GetCloudProviderId<CloudProvider>();
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      auto token_json = ToJson(std::move(token));
-      token_json["id"] = id;
-      token_json["type"] = GetCloudProviderId<CloudProvider>();
-      json["auth_token"].emplace_back(std::move(token_json));
-    }
-    CreateDirectory(GetDirectoryPath(token_file));
-    std::ofstream stream{token_file};
-    stream.exceptions(std::ofstream::failbit | std::ofstream::badbit);
-    stream << json.dump(2);
+    SaveToken(ToJson(std::move(token)), id,
+              GetCloudProviderId<CloudProvider>());
   }
 
   template <typename CloudProvider>
@@ -118,6 +91,8 @@ class AuthTokenManager {
   }
 
  private:
+  void SaveToken(nlohmann::json token, std::string_view id,
+                 std::string_view provider_id) const;
   void RemoveToken(std::string_view id, std::string_view provider_id) const;
 
   std::string path_;
