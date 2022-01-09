@@ -430,11 +430,11 @@ std::function<std::string(std::string_view)> YouTube::GetDescrambler(
            {re::regex(StrCat(EscapeRegex(helper), R"(=\{([\s\S]*?)\};)"))})
           .value();
   std::unordered_map<std::string, TransformType> transform_type;
-  transform_type[Find(transforms, {re::regex(R"(([^:]{2}):.*reverse)")})
+  transform_type[Find(transforms, {re::regex(R"(([^:]{2}):[^:]*reverse)")})
                      .value()] = TransformType::kReverse;
-  transform_type[Find(transforms, {re::regex(R"(([^:]{2}):.*splice)")})
+  transform_type[Find(transforms, {re::regex(R"(([^:]{2}):[^:]*splice)")})
                      .value()] = TransformType::kSplice;
-  transform_type[Find(transforms, {re::regex(R"(([^:]{2}):.*\[0\])")})
+  transform_type[Find(transforms, {re::regex(R"(([^:]{2}):[^:]*\[0\])")})
                      .value()] = TransformType::kSwap;
 
   return [rules, helper, transform_type](std::string_view sig) {
