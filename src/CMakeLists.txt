@@ -37,8 +37,9 @@ if(CORO_CLOUDSTORAGE_HAVE_STRERROR_S)
     target_compile_definitions(coro-cloudstorage PRIVATE HAVE_STRERROR_S)
 endif()
 
-check_include_file(ifaddrs.h CORO_CLOUDSTORAGE_HAVE_IFADDRS_H)
-if(CORO_CLOUDSTORAGE_HAVE_IFADDRS_H)
+check_symbol_exists(getifaddrs "ifaddrs.h" HAVE_GETIFADDRS_H)
+check_symbol_exists(freeifaddrs "ifaddrs.h" HAVE_FREEIFADDRS_H)
+if(HAVE_GETIFADDRS_H AND HAVE_FREEIFADDRS_H)
     target_compile_definitions(coro-cloudstorage PRIVATE HAVE_IFADDRS_H)
 endif()
 
