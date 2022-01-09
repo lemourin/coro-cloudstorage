@@ -8,12 +8,12 @@
 
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_handler.h"
-#include "coro/cloudstorage/util/auth_token_manager.h"
 #include "coro/cloudstorage/util/cloud_provider_account.h"
 #include "coro/cloudstorage/util/cloud_provider_handler.h"
 #include "coro/cloudstorage/util/get_size_handler.h"
 #include "coro/cloudstorage/util/serialize_utils.h"
 #include "coro/cloudstorage/util/settings_handler.h"
+#include "coro/cloudstorage/util/settings_manager.h"
 #include "coro/cloudstorage/util/static_file_handler.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/cloudstorage/util/theme_handler.h"
@@ -27,21 +27,21 @@ namespace coro::cloudstorage::util {
 
 template <typename CloudProviderTypeList, typename CloudFactory,
           typename ThumbnailGenerator, typename AccountListener,
-          typename AuthTokenManagerT = AuthTokenManager>
+          typename SettingsManagerT = SettingsManager>
 class AccountManagerHandler;
 
 template <typename... CloudProviders, typename CloudFactory,
           typename ThumbnailGenerator, typename AccountListener,
-          typename AuthTokenManagerT>
+          typename SettingsManagerT>
 class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
                             CloudFactory, ThumbnailGenerator, AccountListener,
-                            AuthTokenManagerT> {
+                            SettingsManagerT> {
  public:
   using Request = coro::http::Request<>;
   using Response = coro::http::Response<>;
 
   using CloudProviderAccount = coro::cloudstorage::util::CloudProviderAccount<
-      coro::util::TypeList<CloudProviders...>, CloudFactory, AuthTokenManagerT>;
+      coro::util::TypeList<CloudProviders...>, CloudFactory, SettingsManagerT>;
 
   Task<> Quit() {
     std::vector<Task<>> tasks;
@@ -55,25 +55,25 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
     accounts_.clear();
   }
 
-  AccountManagerHandler(
-      const CloudFactory* factory,
-      const ThumbnailGenerator* thumbnail_generator,
-      AccountListener account_listener,
-      AuthTokenManagerT auth_token_manager = AuthTokenManagerT{})
+  AccountManagerHandler(const CloudFactory* factory,
+                        const ThumbnailGenerator* thumbnail_generator,
+                        AccountListener account_listener,
+                        SettingsManagerT settings_manager = SettingsManagerT{})
       : factory_(factory),
         thumbnail_generator_(thumbnail_generator),
         account_listener_(std::move(account_listener)),
-        auth_token_manager_(std::move(auth_token_manager)) {
+        settings_manager_(std::move(settings_manager)) {
     handlers_.emplace_back(
         Handler{.prefix = "/static/", .handler = StaticFileHandler{}});
     handlers_.emplace_back(
         Handler{.prefix = "/size", .handler = GetSizeHandler{&accounts_}});
     handlers_.emplace_back(
-        Handler{.prefix = "/settings", .handler = SettingsHandler()});
+        Handler{.prefix = "/settings",
+                .handler = SettingsHandlerT(&settings_manager_)});
     handlers_.emplace_back(
         Handler{.prefix = "/settings/theme-toggle", .handler = ThemeHandler{}});
     (AddAuthHandler<CloudProviders>(), ...);
-    for (const auto& any_token : auth_token_manager_.template LoadTokenData<
+    for (const auto& any_token : settings_manager_.template LoadTokenData<
                                  coro::util::TypeList<CloudProviders...>>()) {
       std::visit(
           [&]<typename AuthToken>(AuthToken token) {
@@ -102,6 +102,8 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   }
 
  private:
+  using SettingsHandlerT = SettingsHandler<SettingsManagerT>;
+
   Task<Response> HandleRequest(Request request,
                                coro::stdx::stop_token stop_token) {
     if (request.method == coro::http::Method::kOptions) {
@@ -168,7 +170,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
 
   template <typename CloudProvider>
   using OnAuthTokenChanged =
-      internal::OnAuthTokenChanged<AuthTokenManagerT, CloudProvider>;
+      internal::OnAuthTokenChanged<SettingsManagerT, CloudProvider>;
 
   Response GetWebDAVRootResponse(
       std::span<const std::pair<std::string, std::string>> headers) const {
@@ -214,7 +216,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
       if (predicate(*it) && !it->stop_token().stop_requested()) {
         it->stop_source_.request_stop();
         co_await account_listener_.OnDestroy(&*it);
-        auth_token_manager_.template RemoveToken<CloudProvider>(it->username());
+        settings_manager_.template RemoveToken<CloudProvider>(it->username());
         RemoveHandler(it->GetId());
         it = accounts_.erase(it);
       } else {
@@ -307,7 +309,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         username->value_or(""), version_++,
         factory_->template Create<CloudProvider>(
             std::move(auth_token),
-            OnAuthTokenChanged<CloudProvider>{&auth_token_manager_, username}));
+            OnAuthTokenChanged<CloudProvider>{&settings_manager_, username}));
   }
 
   template <typename CloudProvider>
@@ -334,7 +336,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
         if (entry.version_ == version) {
           OnCloudProviderCreated<CloudProvider>(account);
           on_create_called = true;
-          auth_token_manager_.template SaveToken<CloudProvider>(
+          settings_manager_.template SaveToken<CloudProvider>(
               std::move(auth_token), **username);
           break;
         }
@@ -357,7 +359,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   struct Handler {
     std::string id;
     std::string prefix;
-    std::variant<SettingsHandler, ThemeHandler, StaticFileHandler,
+    std::variant<SettingsHandlerT, ThemeHandler, StaticFileHandler,
                  GetSizeHandler, AuthHandler<CloudProviders>...,
                  OnRemoveHandler<CloudProviders>...,
                  CloudProviderHandler<CloudProviderT<CloudProviders>,
@@ -421,7 +423,7 @@ class AccountManagerHandler<coro::util::TypeList<CloudProviders...>,
   const ThumbnailGenerator* thumbnail_generator_;
   std::vector<Handler> handlers_;
   AccountListener account_listener_;
-  AuthTokenManagerT auth_token_manager_;
+  SettingsManagerT settings_manager_;
   std::list<CloudProviderAccount> accounts_;
   int64_t version_ = 0;
 };

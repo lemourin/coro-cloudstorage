@@ -84,6 +84,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/net_utils.cc
     coro/cloudstorage/util/settings_utils.h
     coro/cloudstorage/util/settings_utils.cc
+    coro/cloudstorage/util/settings_manager.h
     coro/cloudstorage/cloud_exception.h
     coro/cloudstorage/cloud_factory.h
     coro/cloudstorage/cloud_provider.h

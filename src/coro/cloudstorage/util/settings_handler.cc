@@ -10,9 +10,12 @@
 #include "coro/http/http.h"
 #include "coro/http/http_parse.h"
 
-namespace coro::cloudstorage::util {
+namespace coro::cloudstorage::util::internal {
 
 namespace {
+
+using Request = http::Request<>;
+using Response = http::Response<>;
 
 std::string GetHostSelector(
     std::span<const std::pair<std::string, std::string>> headers) {
@@ -33,9 +36,7 @@ std::string GetHostSelector(
 }
 
 }  // namespace
-
-auto SettingsHandler::operator()(Request request, stdx::stop_token) const
-    -> Task<Response> {
+Task<Response> GetSettingsHandlerResponse(Request request, stdx::stop_token) {
   auto uri = http::ParseUri(request.url);
   if (!uri.path) {
     co_return Response{.status = 400};
@@ -66,4 +67,4 @@ auto SettingsHandler::operator()(Request request, stdx::stop_token) const
           fmt::arg("host_selector", GetHostSelector(request.headers))))};
 }
 
-}  // namespace coro::cloudstorage::util
+}  // namespace coro::cloudstorage::util::internal
