@@ -15,8 +15,8 @@ vcpkg install \
   c-ares \
   pugixml
 
-mkdir build 
-cd build 
+mkdir build
+cd build
 
 cmake .. \
   -DUSE_BUNDLED_DEPENDENCIES=OFF \
