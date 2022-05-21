@@ -1,6 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_FUSE_AUTH_DATA_H
 #define CORO_CLOUDSTORAGE_FUSE_AUTH_DATA_H
 
+#include <string>
 #include <string_view>
 
 #include "coro/stdx/concepts.h"
@@ -12,8 +13,10 @@ typename CloudProvider::Auth::AuthData GetAuthData() = delete;
 
 template <typename T>
 concept HasRedirectUri = requires(T v) {
-  { v.redirect_uri } -> stdx::convertible_to<std::string>;
-};
+                           {
+                             v.redirect_uri
+                             } -> stdx::convertible_to<std::string>;
+                         };
 
 struct AuthData {
   static constexpr std::string_view kHostname = "http://localhost:12345";

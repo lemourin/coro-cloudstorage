@@ -16,7 +16,7 @@
 #include "coro/cloudstorage/providers/webdav.h"
 #include "coro/cloudstorage/providers/yandex_disk.h"
 #else
-#include "coro/cloudstorage/providers/dropbox.h"
+#include "coro/cloudstorage/providers/one_drive.h"
 #endif
 
 namespace coro::cloudstorage::util {
@@ -26,7 +26,7 @@ using CloudProviderTypeList =
     coro::util::TypeList<GoogleDrive, Mega, AmazonS3, Box, Dropbox, OneDrive,
                          PCloud, WebDAV, YandexDisk, HubiC, LocalFileSystem>;
 #else
-using CloudProviderTypeList = coro::util::TypeList<Dropbox>;
+using CloudProviderTypeList = coro::util::TypeList<OneDrive>;
 #endif
 
 }  // namespace coro::cloudstorage::util
