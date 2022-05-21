@@ -101,6 +101,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/providers/box.cc
     coro/cloudstorage/providers/yandex_disk.h
     coro/cloudstorage/providers/pcloud.h
+    coro/cloudstorage/providers/pcloud.cc
     coro/cloudstorage/providers/webdav.h
     coro/cloudstorage/providers/amazon_s3.h
     coro/cloudstorage/providers/open_stack.h

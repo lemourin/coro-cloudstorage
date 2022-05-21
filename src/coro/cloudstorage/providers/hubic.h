@@ -102,7 +102,6 @@ class HubiC : public OpenStack {
           .openstack_auth_token = std::move(openstack_auth_token)};
     }
 
-    template <http::HttpClient Http>
     struct RefreshAccessToken {
       Task<AuthToken> operator()(AuthToken auth_token,
                                  stdx::stop_token stop_token) const {
@@ -122,7 +121,7 @@ class HubiC : public OpenStack {
         co_return auth_token;
       }
 
-      const Http* http;
+      const coro::http::Http* http;
       const OpenStack::Auth::AuthToken* current_openstack_token;
       AuthData auth_data;
     };
@@ -132,8 +131,7 @@ class HubiC : public OpenStack {
     return util::StrCat("https://api.hubic.com/1.0", endpoint);
   }
 
-  template <typename Http = class HttpT,
-            typename OnAuthTokenUpdated = class OnAuthTokenUpdatedT>
+  template <typename OnAuthTokenUpdated = class OnAuthTokenUpdatedT>
   class CloudProvider;
 
   template <typename AuthManager>
@@ -158,13 +156,12 @@ class HubiC : public OpenStack {
   static inline constexpr auto& kIcon = util::kAssetsProvidersHubicPng;
 };
 
-template <typename Http, typename OnAuthTokenUpdated>
-class HubiC::CloudProvider
-    : public coro::cloudstorage::CloudProvider<
-          HubiC, CloudProvider<Http, OnAuthTokenUpdated>> {
+template <typename OnAuthTokenUpdated>
+class HubiC::CloudProvider : public coro::cloudstorage::CloudProvider<
+                                 HubiC, CloudProvider<OnAuthTokenUpdated>> {
  public:
-  using AuthManager = util::AuthManager<Http, Auth, OnAuthTokenUpdated,
-                                        Auth::RefreshAccessToken<Http>>;
+  using AuthManager =
+      util::AuthManager<Auth, OnAuthTokenUpdated, Auth::RefreshAccessToken>;
 
   struct OnOpenStackTokenUpdated {
     void operator()(OpenStack::Auth::AuthToken auth_token) const {
@@ -176,15 +173,15 @@ class HubiC::CloudProvider
   };
 
   using OpenStackAuthManager =
-      util::AuthManager<Http, OpenStack::Auth, OnOpenStackTokenUpdated,
+      util::AuthManager<OpenStack::Auth, OnOpenStackTokenUpdated,
                         RefreshOpenStackToken<AuthManager>, AuthorizeRequest>;
 
-  CloudProvider(const Http* http, Auth::AuthToken auth_token,
+  CloudProvider(const coro::http::Http* http, Auth::AuthToken auth_token,
                 Auth::AuthData auth_data,
                 OnAuthTokenUpdated on_auth_token_updated)
       : auth_manager_(http, std::move(auth_token),
                       std::move(on_auth_token_updated),
-                      Auth::RefreshAccessToken<Http>{
+                      Auth::RefreshAccessToken{
                           .http = http, .auth_data = std::move(auth_data)},
                       util::AuthorizeRequest{}),
         provider_(CreateOpenStackProvider()) {
