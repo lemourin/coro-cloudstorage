@@ -139,12 +139,7 @@ class YandexDisk::CloudProvider
 
 namespace util {
 template <>
-inline YandexDisk::Auth::AuthData GetAuthData<YandexDisk>() {
-  return {
-      .client_id = "04d700d432884c4381c07e760213ed8a",
-      .client_secret = "197f9693caa64f0ebb51d201110074f9",
-  };
-}
+YandexDisk::Auth::AuthData GetAuthData<YandexDisk>();
 }  // namespace util
 
 }  // namespace coro::cloudstorage

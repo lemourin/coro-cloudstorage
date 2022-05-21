@@ -312,6 +312,14 @@ auto OneDrive::CloudProvider::CreateUploadSession(Directory parent,
   co_return UploadSession{.upload_url = std::string(response["uploadUrl"])};
 }
 
+namespace util {
+template <>
+OneDrive::Auth::AuthData GetAuthData<OneDrive>() {
+  return {.client_id = "56a1d60f-ea71-40e9-a489-b87fba12a23e",
+          .client_secret = "zJRAsd0o4E9c33q4OLc7OhY"};
+}
+}  // namespace util
+
 template auto OneDrive::CloudProvider::RenameItem<OneDrive::File>(
     File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
 

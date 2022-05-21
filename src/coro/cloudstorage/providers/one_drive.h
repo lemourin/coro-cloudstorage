@@ -139,10 +139,7 @@ struct OneDrive::CloudProvider
 
 namespace util {
 template <>
-inline OneDrive::Auth::AuthData GetAuthData<OneDrive>() {
-  return {.client_id = "56a1d60f-ea71-40e9-a489-b87fba12a23e",
-          .client_secret = "zJRAsd0o4E9c33q4OLc7OhY"};
-}
+OneDrive::Auth::AuthData GetAuthData<OneDrive>();
 }  // namespace util
 
 }  // namespace coro::cloudstorage

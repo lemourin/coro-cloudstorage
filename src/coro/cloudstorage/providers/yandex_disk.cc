@@ -275,6 +275,16 @@ Task<nlohmann::json> YandexDisk::CloudProvider::FetchJson(
   return util::FetchJson(*http_, std::move(request), std::move(stop_token));
 }
 
+namespace util {
+template <>
+YandexDisk::Auth::AuthData GetAuthData<YandexDisk>() {
+  return {
+      .client_id = "04d700d432884c4381c07e760213ed8a",
+      .client_secret = "197f9693caa64f0ebb51d201110074f9",
+  };
+}
+}  // namespace util
+
 template auto YandexDisk::CloudProvider::RenameItem<YandexDisk::File>(
     File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
 

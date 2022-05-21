@@ -14,6 +14,8 @@ namespace coro::cloudstorage {
 
 namespace {
 
+constexpr const int kBufferSize = 4096;
+
 std::string GetHomeDirectory() {
 #ifdef WINRT
   return ".";
@@ -29,9 +31,7 @@ std::string GetHomeDirectory() {
 #endif
 }
 
-}  // namespace
-
-bool LocalFileSystem::IsFileHidden(const std::filesystem::directory_entry& e) {
+bool IsFileHidden(const std::filesystem::directory_entry& e) {
 #ifdef WIN32
   return GetFileAttributesW(e.path().c_str()) &
          (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
@@ -41,8 +41,7 @@ bool LocalFileSystem::IsFileHidden(const std::filesystem::directory_entry& e) {
 #endif
 }
 
-int64_t LocalFileSystem::GetTimestamp(
-    const std::filesystem::directory_entry& e) {
+int64_t GetTimestamp(const std::filesystem::directory_entry& e) {
 #if defined(WIN32)
   struct _stat64 file_info;
   if (_wstati64(e.path().wstring().c_str(), &file_info) != 0) {
@@ -63,6 +62,20 @@ int64_t LocalFileSystem::GetTimestamp(
   return file_info.st_mtim.tv_sec;
 #endif
 }
+
+template <typename T>
+T ToItem(const std::filesystem::directory_entry& entry) {
+  T item;
+  item.id = entry.path().string();
+  item.name = entry.path().filename().string();
+  if constexpr (std::is_same_v<T, LocalFileSystem::File>) {
+    item.size = std::filesystem::file_size(entry.path());
+  }
+  item.timestamp = GetTimestamp(entry);
+  return item;
+}
+
+}  // namespace
 
 namespace util {
 
@@ -105,4 +118,117 @@ LocalFileSystem::Auth::AuthHandler::operator()(http::Request<> request,
     co_return http::Response<>{.status = 400};
   }
 }
+
+auto LocalFileSystem::CloudProvider::GetRoot(stdx::stop_token) const
+    -> Task<Directory> {
+  Directory d{};
+  d.id = auth_token_.root;
+  d.name = "root";
+  co_return d;
+}
+
+auto LocalFileSystem::CloudProvider::ListDirectoryPage(
+    Directory directory, std::optional<std::string>, stdx::stop_token) const
+    -> Task<PageData> {
+  co_return co_await thread_pool_->Do([&] {
+    PageData page_data;
+    for (const auto& e : std::filesystem::directory_iterator(
+             std::filesystem::path(directory.id))) {
+      if (IsFileHidden(e)) {
+        continue;
+      }
+      if (std::filesystem::is_directory(e)) {
+        page_data.items.emplace_back(ToItem<Directory>(e));
+      } else {
+        page_data.items.emplace_back(ToItem<File>(e));
+      }
+    }
+    return page_data;
+  });
+}
+
+auto LocalFileSystem::CloudProvider::GetGeneralData(stdx::stop_token) const
+    -> Task<GeneralData> {
+  co_return co_await thread_pool_->Do([&] {
+    auto space = std::filesystem::space(auth_token_.root);
+    return GeneralData{
+        .username = auth_token_.root,
+        .space_used = static_cast<int64_t>(space.capacity - space.free),
+        .space_total = static_cast<int64_t>(space.capacity)};
+  });
+}
+
+Generator<std::string> LocalFileSystem::CloudProvider::GetFileContent(
+    File file, http::Range range, stdx::stop_token stop_token) const {
+  std::ifstream stream = co_await thread_pool_->Do(
+      [&] { return std::ifstream(file.id, std::ifstream::binary); });
+  if (!range.end) {
+    range.end = file.size - 1;
+  }
+  std::string buffer(kBufferSize, 0);
+  co_await thread_pool_->Do([&] { stream.seekg(range.start); });
+  int64_t bytes_read = 0;
+  int64_t size = *range.end - range.start + 1;
+  while (bytes_read < size) {
+    if (stop_token.stop_requested()) {
+      throw InterruptedException();
+    }
+    bool read_status = co_await thread_pool_->Do([&] {
+      return bool(stream.read(
+          buffer.data(), std::min<int64_t>(size - bytes_read, kBufferSize)));
+    });
+    if (!read_status) {
+      throw std::runtime_error("couldn't read file");
+    }
+    co_yield std::string(buffer.data(), stream.gcount());
+    bytes_read += stream.gcount();
+  }
+}
+
+template <typename Item>
+Task<Item> LocalFileSystem::CloudProvider::RenameItem(
+    Item item, std::string new_name, stdx::stop_token stop_token) {
+  throw std::runtime_error("unimplemented");
+}
+
+auto LocalFileSystem::CloudProvider::CreateDirectory(
+    Directory parent, std::string name, stdx::stop_token stop_token)
+    -> Task<Directory> {
+  throw std::runtime_error("unimplemented");
+}
+
+Task<> LocalFileSystem::CloudProvider::RemoveItem(Item item,
+                                                  stdx::stop_token stop_token) {
+  throw std::runtime_error("unimplemented");
+}
+
+template <typename ItemT>
+Task<ItemT> LocalFileSystem::CloudProvider::MoveItem(
+    ItemT source, Directory destination, stdx::stop_token stop_token) {
+  throw std::runtime_error("unimplemented");
+}
+
+auto LocalFileSystem::CloudProvider::CreateFile(Directory parent,
+                                                std::string_view name,
+                                                FileContent content,
+                                                stdx::stop_token stop_token)
+    -> Task<File> {
+  throw std::runtime_error("unimplemented");
+}
+
+template auto LocalFileSystem::CloudProvider::RenameItem<LocalFileSystem::File>(
+    File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
+
+template auto
+LocalFileSystem::CloudProvider::RenameItem<LocalFileSystem::Directory>(
+    Directory item, std::string new_name, stdx::stop_token stop_token)
+    -> Task<Directory>;
+
+template auto LocalFileSystem::CloudProvider::MoveItem<LocalFileSystem::File>(
+    File, Directory, stdx::stop_token) -> Task<File>;
+
+template auto
+    LocalFileSystem::CloudProvider::MoveItem<LocalFileSystem::Directory>(
+        Directory, Directory, stdx::stop_token) -> Task<Directory>;
+
 }  // namespace coro::cloudstorage
