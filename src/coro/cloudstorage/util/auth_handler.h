@@ -7,11 +7,10 @@
 
 namespace coro::cloudstorage::util {
 
-template <typename CloudProvider = class CloudProviderT,
-          typename HttpClient = class HttpT>
+template <typename CloudProvider = class CloudProviderT>
 class AuthHandler {
  public:
-  AuthHandler(const HttpClient* http,
+  AuthHandler(const http::Http* http,
               typename CloudProvider::Auth::AuthData auth_data)
       : http_(http), auth_data_(std::move(auth_data)) {}
 
@@ -29,7 +28,7 @@ class AuthHandler {
   }
 
  private:
-  const HttpClient* http_;
+  const http::Http* http_;
   typename CloudProvider::Auth::AuthData auth_data_;
 };
 

@@ -6,6 +6,7 @@
 #include "coro/cloudstorage/providers/local_filesystem.h"
 #include "coro/cloudstorage/util/account_manager_handler.h"
 #include "coro/cloudstorage/util/cloud_factory_context.h"
+#include "coro/cloudstorage/util/providers.h"
 #include "coro/cloudstorage/util/thumbnail_generator.h"
 #include "coro/http/cache_http.h"
 #include "coro/http/curl_http.h"
@@ -21,7 +22,7 @@ using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
 using ::coro::util::TypeList;
 
-using CloudProviders = TypeList<coro::cloudstorage::LocalFileSystem>;
+using CloudProviders = coro::cloudstorage::util::CloudProviderTypeList;
 
 template <typename CloudFactory, typename ThumbnailGenerator>
 class HttpHandler {

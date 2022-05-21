@@ -20,10 +20,10 @@ namespace coro::cloudstorage::util {
 std::string GenerateThumbnail(AVIOContext* io_context,
                               ThumbnailOptions options);
 
-template <typename ThreadPool, typename EventLoop>
 class ThumbnailGenerator {
  public:
-  ThumbnailGenerator(ThreadPool* thread_pool, EventLoop* event_loop)
+  ThumbnailGenerator(coro::util::ThreadPool* thread_pool,
+                     coro::util::EventLoop* event_loop)
       : thread_pool_(thread_pool), event_loop_(event_loop) {}
 
   template <typename CloudProvider, IsFile<CloudProvider> File>
@@ -40,25 +40,8 @@ class ThumbnailGenerator {
   }
 
  private:
-  ThreadPool* thread_pool_;
-  EventLoop* event_loop_;
-};
-
-class ThumbnailGeneratorF
-    : public std::function<Task<std::string>(
-          AbstractCloudProvider::CloudProvider*, AbstractCloudProvider::File,
-          ThumbnailOptions, stdx::stop_token)> {
- public:
-  template <typename F>
-  explicit ThumbnailGeneratorF(const F* f)
-      : std::function<Task<std::string>(AbstractCloudProvider::CloudProvider*,
-                                        AbstractCloudProvider::File,
-                                        ThumbnailOptions, stdx::stop_token)>(
-            [f](AbstractCloudProvider::CloudProvider* p,
-                AbstractCloudProvider::File file, ThumbnailOptions options,
-                stdx::stop_token stop_token) {
-              return (*f)(p, std::move(file), options, std::move(stop_token));
-            }) {}
+  coro::util::ThreadPool* thread_pool_;
+  coro::util::EventLoop* event_loop_;
 };
 
 }  // namespace coro::cloudstorage::util

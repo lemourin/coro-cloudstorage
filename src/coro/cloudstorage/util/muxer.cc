@@ -28,9 +28,11 @@ auto CreateMuxerIOContext(std::FILE* file) {
 
 }  // namespace
 
-MuxerContext::MuxerContext(AVIOContext* video, AVIOContext* audio,
+MuxerContext::MuxerContext(coro::util::ThreadPool* thread_pool,
+                           AVIOContext* video, AVIOContext* audio,
                            MediaContainer container)
-    : file_(CreateTmpFile()),
+    : thread_pool_(thread_pool),
+      file_(CreateTmpFile()),
       io_context_(CreateMuxerIOContext(file_.get())),
       format_context_([&] {
         AVFormatContext* format_context;
@@ -80,6 +82,67 @@ MuxerContext::Stream MuxerContext::CreateStream(AVIOContext* io_context,
   stream.stream->duration =
       stream.format_context->streams[stream.source_stream_index]->duration;
   return stream;
+}
+
+Generator<std::string> MuxerContext::GetContent() {
+  while (true) {
+    for (auto& stream : streams_) {
+      if (!stream.is_eof && !stream.packet) {
+        stream.packet = CreatePacket();
+        while (true) {
+          auto read_packet = co_await thread_pool_->Do(
+              av_read_frame, stream.format_context.get(), stream.packet.get());
+          if (read_packet != 0 && read_packet != AVERROR_EOF) {
+            CheckAVError(read_packet, "av_read_frame");
+          } else {
+            if (read_packet == 0 &&
+                stream.packet->stream_index != stream.source_stream_index) {
+              continue;
+            }
+            if (read_packet == AVERROR_EOF) {
+              stream.is_eof = true;
+              stream.packet.reset();
+            } else {
+              CheckAVError(av_packet_make_writable(stream.packet.get()),
+                           "av_packet_make_writable");
+              av_packet_rescale_ts(
+                  stream.packet.get(),
+                  stream.format_context->streams[stream.source_stream_index]
+                      ->time_base,
+                  stream.stream->time_base);
+              stream.packet->stream_index = stream.stream->index;
+            }
+            break;
+          }
+        }
+      }
+    }
+    Stream* picked_stream = nullptr;
+    for (auto& stream : streams_) {
+      if (stream.packet &&
+          (!picked_stream ||
+           av_compare_ts(stream.packet->dts, stream.stream->time_base,
+                         picked_stream->packet->dts,
+                         picked_stream->stream->time_base) == -1)) {
+        picked_stream = &stream;
+      }
+    }
+    if (!picked_stream) {
+      break;
+    }
+    CheckAVError(
+        av_write_frame(format_context_.get(), picked_stream->packet.get()),
+        "av_write_frame");
+    picked_stream->packet.reset();
+  }
+
+  CheckAVError(av_write_frame(format_context_.get(), nullptr),
+               "av_write_frame");
+  CheckAVError(av_write_trailer(format_context_.get()), "av_write_trailer");
+
+  FOR_CO_AWAIT(std::string & chunk, ReadFile(thread_pool_, file_.get())) {
+    co_yield std::move(chunk);
+  }
 }
 
 }  // namespace coro::cloudstorage::util
