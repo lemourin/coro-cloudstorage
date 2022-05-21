@@ -1,6 +1,7 @@
 #include "coro/cloudstorage/providers/webdav.h"
 
 #include <iomanip>
+#include <pugixml.hpp>
 #include <string>
 #include <utility>
 
@@ -11,6 +12,10 @@ namespace coro::cloudstorage {
 namespace {
 
 namespace re = ::coro::util::re;
+
+std::string ToAccessToken(const WebDAV::Auth::Credential& credential) {
+  return http::ToBase64(credential.username + ":" + credential.password);
+}
 
 int64_t ParseTime(std::string str) {
   std::stringstream stream(std::move(str));
@@ -27,6 +32,127 @@ Generator<std::string> GenerateLoginPage() {
   co_yield std::string(util::kAssetsHtmlWebdavLoginHtml);
 }
 
+std::string Concat(std::string parent, std::string_view name) {
+  if (parent.empty()) {
+    throw CloudException("invalid path");
+  }
+  if (parent.back() != '/') {
+    parent += '/';
+  }
+  parent += http::EncodeUri(name);
+  return parent;
+}
+
+std::optional<std::string> GetNamespace(const pugi::xml_node& node) {
+  pugi::xml_attribute attr =
+      node.find_attribute([](const pugi::xml_attribute& attr) {
+        return std::string_view(attr.as_string()) == "DAV:";
+      });
+  if (std::string_view(attr.name()) == "xmlns") {
+    return std::nullopt;
+  } else if (re::cmatch match; re::regex_match(attr.name(), match,
+                                               re::regex(R"(xmlns\:(\S+))"))) {
+    return match[1];
+  } else {
+    throw CloudException("invalid xml");
+  }
+}
+
+template <typename T>
+class XmlNode : public T {
+ public:
+  using T::T;
+
+  explicit XmlNode(T node) : T(std::move(node)) {}
+  XmlNode(T node, std::optional<std::string> ns)
+      : T(std::move(node)), namespace_(std::move(ns)) {}
+
+  auto child(std::string name) const {
+    if (namespace_) {
+      name = *namespace_ + ":" + std::move(name);
+    }
+    return XmlNode<pugi::xml_node>(T::child(name.c_str()), namespace_);
+  }
+
+  auto document_element() const {
+    return XmlNode<pugi::xml_node>(T::document_element(), namespace_);
+  }
+
+  std::optional<std::string> ns() const { return namespace_; }
+
+ protected:
+  std::optional<std::string> namespace_;
+};
+
+class XmlDocument : public XmlNode<pugi::xml_document> {
+ public:
+  explicit XmlDocument(std::string data) {
+    std::stringstream stream(std::move(data));
+    auto result = load(stream);
+    if (!result) {
+      throw CloudException(result.description());
+    }
+    namespace_ = GetNamespace(document_element());
+  }
+};
+
+template <typename T>
+T ToItemImpl(const XmlNode<pugi::xml_node>& node) {
+  T item{};
+  auto props = node.child("propstat").child("prop");
+  item.id = node.child("href").text().as_string();
+  item.name = http::DecodeUri(props.child("displayname").text().as_string());
+  if (auto timestamp = props.child("getlastmodified").text()) {
+    item.timestamp = ParseTime(timestamp.as_string());
+  }
+  if constexpr (std::is_same_v<T, WebDAV::File>) {
+    if (auto size = props.child("getcontentlength").text()) {
+      item.size = std::stoll(size.as_string());
+    }
+    if (auto mime_type = props.child("getcontenttype").text()) {
+      item.mime_type = mime_type.as_string();
+    }
+  }
+  return item;
+}
+
+WebDAV::Item ToItem(const XmlNode<pugi::xml_node>& node) {
+  if (node.child("propstat")
+          .child("prop")
+          .child("resourcetype")
+          .child("collection")) {
+    return ToItemImpl<WebDAV::Directory>(node);
+  } else {
+    return ToItemImpl<WebDAV::File>(node);
+  }
+}
+
+template <typename RequestT>
+Task<http::Response<>> Fetch(
+    const coro::http::Http& http,
+    const std::optional<WebDAV::Auth::Credential>& credential, RequestT request,
+    stdx::stop_token stop_token) {
+  if (credential) {
+    request.headers.emplace_back("Authorization",
+                                 "Basic " + ToAccessToken(*credential));
+  }
+  co_return co_await http.FetchOk(std::move(request), std::move(stop_token));
+}
+
+template <typename RequestT>
+auto FetchXml(const coro::http::Http& http,
+              const std::optional<WebDAV::Auth::Credential>& credential,
+              RequestT request, stdx::stop_token stop_token)
+    -> Task<XmlDocument> {
+  if (request.body) {
+    request.headers.emplace_back("Content-Type", "application/xml");
+  }
+  request.headers.emplace_back("Accept", "application/xml");
+  http::ResponseLike auto response = co_await Fetch(
+      http, credential, std::move(request), std::move(stop_token));
+  co_return XmlDocument(co_await http::GetBody(std::move(response.body)));
+}
+
 }  // namespace
 
 namespace util {
@@ -36,7 +162,7 @@ nlohmann::json ToJson<WebDAV::Auth::AuthToken>(WebDAV::Auth::AuthToken token) {
   nlohmann::json json;
   json["endpoint"] = std::move(token.endpoint);
   if (token.credential) {
-    json["access_token"] = WebDAV::Auth::ToAccessToken(*token.credential);
+    json["access_token"] = ToAccessToken(*token.credential);
   }
   return json;
 }
@@ -96,50 +222,212 @@ WebDAV::Auth::AuthHandler::operator()(http::Request<> request,
   }
 }
 
-std::optional<std::string> WebDAV::GetNamespace(const pugi::xml_node& node) {
-  pugi::xml_attribute attr =
-      node.find_attribute([](const pugi::xml_attribute& attr) {
-        return std::string_view(attr.as_string()) == "DAV:";
-      });
-  if (std::string_view(attr.name()) == "xmlns") {
-    return std::nullopt;
-  } else if (re::cmatch match; re::regex_match(attr.name(), match,
-                                               re::regex(R"(xmlns\:(\S+))"))) {
-    return match[1];
-  } else {
-    throw CloudException("invalid xml");
+auto WebDAV::CloudProvider::GetRoot(stdx::stop_token) const -> Task<Directory> {
+  Directory d{{.id = "/"}};
+  co_return d;
+}
+
+auto WebDAV::CloudProvider::GetGeneralData(stdx::stop_token stop_token) const
+    -> Task<GeneralData> {
+  std::string username;
+  auto uri = http::ParseUri(auth_token_.endpoint);
+  if (auth_token_.credential) {
+    username += auth_token_.credential->username + "@";
   }
+  username += std::move(uri.host).value();
+  if (uri.port) {
+    username += ":" + std::to_string(*uri.port);
+  }
+  Request request{.url = auth_token_.endpoint,
+                  .method = http::Method::kPropfind,
+                  .headers = {{"Depth", "0"}},
+                  .body = R"(
+                                 <D:propfind xmlns:D="DAV:">
+                                   <D:prop>
+                                     <D:quota-available-bytes/>
+                                     <D:quota-used-bytes/>
+                                   </D:prop>
+                                 </D:propfind>
+                            )"};
+  auto response = co_await FetchXml(*http_, auth_token_.credential,
+                                    std::move(request), std::move(stop_token));
+  auto stats = response.document_element()
+                   .child("response")
+                   .child("propstat")
+                   .child("prop");
+  GeneralData result{.username = std::move(username)};
+  if (auto text = stats.child("quota-used-bytes").text()) {
+    result.space_used = text.as_llong();
+  }
+  if (auto text = stats.child("quota-available-bytes").text();
+      text && result.space_used) {
+    result.space_total = text.as_llong() + *result.space_used;
+  }
+  co_return result;
+}
+
+auto WebDAV::CloudProvider::ListDirectoryPage(
+    Directory directory, std::optional<std::string> page_token,
+    stdx::stop_token stop_token) const -> Task<PageData> {
+  Request request{.url = GetEndpoint(directory.id),
+                  .method = http::Method::kPropfind,
+                  .headers = {{"Depth", "1"}}};
+  auto response = co_await FetchXml(*http_, auth_token_.credential,
+                                    std::move(request), std::move(stop_token));
+  auto root = response.document_element();
+  PageData page;
+  for (auto node = root.first_child().next_sibling(); node;
+       node = node.next_sibling()) {
+    page.items.emplace_back(
+        ToItem(XmlNode<pugi::xml_node>(node, response.ns())));
+  }
+  co_return page;
+}
+
+Generator<std::string> WebDAV::CloudProvider::GetFileContent(
+    File file, http::Range range, stdx::stop_token stop_token) const {
+  auto request = Request{.url = GetEndpoint(file.id),
+                         .headers = {http::ToRangeHeader(range)}};
+  if (auth_token_.credential) {
+    request.headers.emplace_back(
+        "Authorization", "Basic " + ToAccessToken(*auth_token_.credential));
+  }
+  auto response =
+      co_await http_->Fetch(std::move(request), std::move(stop_token));
+  FOR_CO_AWAIT(std::string & body, response.body) { co_yield std::move(body); }
+}
+
+template <typename Item>
+Task<Item> WebDAV::CloudProvider::RenameItem(
+    Item item, std::string new_name, stdx::stop_token stop_token) const {
+  std::string destination = item.id;
+  if (destination.empty()) {
+    throw CloudException("invalid path");
+  }
+  if (destination.back() == '/') {
+    destination.pop_back();
+  }
+  auto it = destination.find_last_of('/');
+  if (it == std::string::npos) {
+    throw CloudException("invalid path");
+  }
+  destination.resize(it);
+  destination += '/' + http::EncodeUri(new_name);
+  co_return co_await Move(std::move(item), std::move(destination),
+                          std::move(stop_token));
+}
+
+auto WebDAV::CloudProvider::CreateDirectory(Directory parent, std::string name,
+                                            stdx::stop_token stop_token) const
+    -> Task<Directory> {
+  auto endpoint = GetEndpoint(Concat(parent.id, name));
+  Request request{.url = endpoint, .method = http::Method::kMkcol};
+  co_await Fetch(*http_, auth_token_.credential, std::move(request),
+                 stop_token);
+  request = {.url = std::move(endpoint),
+             .method = http::Method::kPropfind,
+             .headers = {{"Depth", "0"}}};
+  auto response = co_await FetchXml(*http_, auth_token_.credential,
+                                    std::move(request), std::move(stop_token));
+  co_return std::get<Directory>(ToItem(XmlNode<pugi::xml_node>(
+      response.document_element().first_child(), response.ns())));
+}
+
+template <typename Item>
+Task<> WebDAV::CloudProvider::RemoveItem(Item item,
+                                         stdx::stop_token stop_token) const {
+  Request request{.url = GetEndpoint(item.id), .method = http::Method::kDelete};
+  co_await Fetch(*http_, auth_token_.credential, std::move(request),
+                 std::move(stop_token));
+}
+
+template <typename Item>
+Task<Item> WebDAV::CloudProvider::MoveItem(Item source, Directory destination,
+                                           stdx::stop_token stop_token) const {
+  co_return co_await Move(std::move(source),
+                          Concat(destination.id, source.name),
+                          std::move(stop_token));
+}
+
+auto WebDAV::CloudProvider::CreateFile(Directory parent, std::string_view name,
+                                       FileContent content,
+                                       stdx::stop_token stop_token) const
+    -> Task<File> {
+  auto endpoint = GetEndpoint(Concat(parent.id, name));
+  http::Request<> upload_request = {
+      .url = endpoint,
+      .method = http::Method::kPut,
+      .headers = {{"Content-Type", "application/octet-stream"}},
+      .body = std::move(content.data)};
+  if (content.size) {
+    upload_request.headers.emplace_back("Content-Length",
+                                        std::to_string(*content.size));
+  }
+  co_await Fetch(*http_, auth_token_.credential, std::move(upload_request),
+                 stop_token);
+  Request request{.url = std::move(endpoint),
+                  .method = http::Method::kPropfind,
+                  .headers = {{"Depth", "0"}}};
+  auto response = co_await FetchXml(*http_, auth_token_.credential,
+                                    std::move(request), std::move(stop_token));
+  co_return std::get<File>(ToItem(XmlNode<pugi::xml_node>(
+      response.document_element().first_child(), response.ns())));
 }
 
 template <typename T>
-T WebDAV::ToItemImpl(const WebDAV::XmlNode<pugi::xml_node>& node) {
-  T item{};
-  auto props = node.child("propstat").child("prop");
-  item.id = node.child("href").text().as_string();
-  item.name = http::DecodeUri(props.child("displayname").text().as_string());
-  if (auto timestamp = props.child("getlastmodified").text()) {
-    item.timestamp = ParseTime(timestamp.as_string());
-  }
-  if constexpr (std::is_same_v<T, WebDAV::File>) {
-    if (auto size = props.child("getcontentlength").text()) {
-      item.size = std::stoll(size.as_string());
-    }
-    if (auto mime_type = props.child("getcontenttype").text()) {
-      item.mime_type = mime_type.as_string();
-    }
-  }
-  return item;
+Task<T> WebDAV::CloudProvider::Move(T item, std::string destination,
+                                    stdx::stop_token stop_token) const {
+  Request request{.url = GetEndpoint(item.id),
+                  .method = http::Method::kMove,
+                  .headers = {{"Destination", destination}}};
+  co_await Fetch(*http_, auth_token_.credential, std::move(request),
+                 stop_token);
+  request = {.url = GetEndpoint(destination),
+             .method = http::Method::kPropfind,
+             .headers = {{"Depth", "0"}}};
+  auto response = co_await FetchXml(*http_, auth_token_.credential,
+                                    std::move(request), std::move(stop_token));
+  co_return std::get<T>(ToItem(XmlNode<pugi::xml_node>(
+      response.document_element().first_child(), response.ns())));
 }
 
-WebDAV::Item WebDAV::ToItem(const XmlNode<pugi::xml_node>& node) {
-  if (node.child("propstat")
-          .child("prop")
-          .child("resourcetype")
-          .child("collection")) {
-    return ToItemImpl<Directory>(node);
+std::string WebDAV::CloudProvider::GetEndpoint(std::string_view href) const {
+  auto uri = http::ParseUri(href);
+  if (uri.host) {
+    return std::string(href);
   } else {
-    return ToItemImpl<File>(node);
+    auto endpoint = http::ParseUri(auth_token_.endpoint);
+    std::string uri;
+    if (endpoint.scheme) {
+      uri += *endpoint.scheme + "://";
+    }
+    uri += endpoint.host.value();
+    if (endpoint.port) {
+      uri += ":" + std::to_string(*endpoint.port);
+    }
+    uri += std::string(href);
+    return uri;
   }
 }
+
+template auto WebDAV::CloudProvider::RenameItem<WebDAV::File>(
+    File item, std::string new_name, stdx::stop_token stop_token) const
+    -> Task<File>;
+
+template auto WebDAV::CloudProvider::RenameItem<WebDAV::Directory>(
+    Directory item, std::string new_name, stdx::stop_token stop_token) const
+    -> Task<Directory>;
+
+template auto WebDAV::CloudProvider::MoveItem<WebDAV::File>(
+    File, Directory, stdx::stop_token) const -> Task<File>;
+
+template auto WebDAV::CloudProvider::MoveItem<WebDAV::Directory>(
+    Directory, Directory, stdx::stop_token) const -> Task<Directory>;
+
+template auto WebDAV::CloudProvider::RemoveItem<WebDAV::File>(
+    File, stdx::stop_token) const -> Task<>;
+
+template auto WebDAV::CloudProvider::RemoveItem<WebDAV::Directory>(
+    Directory, stdx::stop_token) const -> Task<>;
 
 }  // namespace coro::cloudstorage
