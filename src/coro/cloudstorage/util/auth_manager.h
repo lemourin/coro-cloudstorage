@@ -156,6 +156,8 @@ class AuthManager2 {
 
   virtual Task<nlohmann::json> FetchJson(http::Request<std::string> request,
                                          stdx::stop_token stop_token) const = 0;
+
+  virtual void OnAuthTokenUpdated(typename Auth::AuthToken auth_token) = 0;
 };
 
 template <typename Auth>
@@ -179,6 +181,10 @@ class AuthManager3 : public AuthManager2<Auth> {
     return d_->FetchJson(std::move(request), std::move(stop_token));
   }
 
+  void OnAuthTokenUpdated(typename Auth::AuthToken auth_token) override {
+    d_->OnAuthTokenUpdated(std::move(auth_token));
+  }
+
  private:
   template <typename Impl>
   class AuthManager2Impl : public AuthManager2<Auth> {
@@ -197,6 +203,10 @@ class AuthManager3 : public AuthManager2<Auth> {
     Task<nlohmann::json> FetchJson(http::Request<std::string> request,
                                    stdx::stop_token stop_token) const override {
       return impl_.FetchJson(std::move(request), std::move(stop_token));
+    }
+
+    void OnAuthTokenUpdated(typename Auth::AuthToken auth_token) override {
+      impl_.OnAuthTokenUpdated(std::move(auth_token));
     }
 
    private:

@@ -67,6 +67,13 @@ class CloudFactory {
         return di::make_injector(
             di::bind<class OnAuthTokenUpdatedT>().template to<OnTokenUpdated>(
                 on_token_updated),
+            di::bind<
+                OnAuthTokenUpdated<typename CloudProvider::Auth::AuthToken>>()
+                .to([&](const auto&) {
+                  return OnAuthTokenUpdated<
+                      typename CloudProvider::Auth::AuthToken>(
+                      on_token_updated);
+                }),
             di::bind<class coro::cloudstorage::AuthManagerT>()
                 .template to<AuthManagerT<CloudProvider, OnTokenUpdated>>(),
             di::bind<coro::cloudstorage::util::AuthManager3<
