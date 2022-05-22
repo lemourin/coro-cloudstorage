@@ -6,9 +6,9 @@
 namespace coro::cloudstorage::util {
 
 template <typename RandomEngine>
-class RandomNumberGenerator {
+class RandomNumberGeneratorImpl {
  public:
-  explicit RandomNumberGenerator(RandomEngine* engine) : engine_(engine) {}
+  explicit RandomNumberGeneratorImpl(RandomEngine* engine) : engine_(engine) {}
 
   template <typename T>
   T Get() {
@@ -22,6 +22,9 @@ class RandomNumberGenerator {
  private:
   RandomEngine* engine_;
 };
+
+using RandomNumberGenerator =
+    RandomNumberGeneratorImpl<std::default_random_engine>;
 
 }  // namespace coro::cloudstorage::util
 

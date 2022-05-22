@@ -23,7 +23,7 @@ std::string GenerateThumbnail(AVIOContext* io_context,
 class ThumbnailGenerator {
  public:
   ThumbnailGenerator(coro::util::ThreadPool* thread_pool,
-                     coro::util::EventLoop* event_loop)
+                     const coro::util::EventLoop* event_loop)
       : thread_pool_(thread_pool), event_loop_(event_loop) {}
 
   template <typename CloudProvider, IsFile<CloudProvider> File>
@@ -41,7 +41,7 @@ class ThumbnailGenerator {
 
  private:
   coro::util::ThreadPool* thread_pool_;
-  coro::util::EventLoop* event_loop_;
+  const coro::util::EventLoop* event_loop_;
 };
 
 }  // namespace coro::cloudstorage::util

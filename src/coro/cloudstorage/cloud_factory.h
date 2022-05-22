@@ -133,8 +133,6 @@ class CloudFactory {
             event_loop_),
         di::bind<class coro::cloudstorage::ThreadPoolT>()
             .template to<ThreadPool>(thread_pool_),
-        di::bind<class coro::cloudstorage::ThumbnailGeneratorT>()
-            .template to<ThumbnailGenerator>(thumbnail_generator_),
         di::bind<class coro::cloudstorage::MuxerT>().template to<Muxer>(muxer_),
         di::bind<class coro::cloudstorage::RandomNumberGeneratorT>()
             .template to<RandomNumberGenerator>(random_number_generator_));

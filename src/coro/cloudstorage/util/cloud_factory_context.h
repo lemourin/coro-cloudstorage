@@ -21,8 +21,7 @@ class CloudFactoryContext {
   using ThreadPoolT = coro::util::ThreadPool;
   using ThumbnailGeneratorT = util::ThumbnailGenerator;
   using MuxerT = util::Muxer;
-  using RandomNumberGeneratorT =
-      util::RandomNumberGenerator<std::default_random_engine>;
+  using RandomNumberGeneratorT = util::RandomNumberGenerator;
   using CloudFactoryT =
       CloudFactory<EventLoopT, ThreadPoolT, HttpT, ThumbnailGeneratorT, MuxerT,
                    RandomNumberGeneratorT, AuthData>;
