@@ -20,14 +20,6 @@
 namespace coro::cloudstorage {
 
 class CloudProviderT;
-class HttpT;
-class AuthManagerT;
-class EventLoopT;
-class ThreadPoolT;
-class OnAuthTokenUpdatedT;
-class ThumbnailGeneratorT;
-class MuxerT;
-class RandomNumberGeneratorT;
 
 template <typename T>
 concept HasTimestamp = requires(T v) {

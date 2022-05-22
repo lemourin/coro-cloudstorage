@@ -13,19 +13,8 @@
 
 namespace coro::cloudstorage::util {
 
-template <typename AuthData = coro::cloudstorage::util::AuthData>
 class CloudFactoryContext {
  public:
-  using HttpT = http::CacheHttp<http::CurlHttp>;
-  using EventLoopT = coro::util::EventLoop;
-  using ThreadPoolT = coro::util::ThreadPool;
-  using ThumbnailGeneratorT = util::ThumbnailGenerator;
-  using MuxerT = util::Muxer;
-  using RandomNumberGeneratorT = util::RandomNumberGenerator;
-  using CloudFactoryT =
-      CloudFactory<EventLoopT, ThreadPoolT, HttpT, ThumbnailGeneratorT, MuxerT,
-                   RandomNumberGeneratorT, AuthData>;
-
   CloudFactoryContext(event_base* event_base)
       : event_loop_(event_base),
         thread_pool_(&event_loop_),
@@ -40,20 +29,20 @@ class CloudFactoryContext {
   CloudFactoryContext(CloudFactoryContext&&) = delete;
   CloudFactoryContext& operator=(CloudFactoryContext&&) = delete;
 
-  CloudFactoryT* factory() { return &factory_; }
-  EventLoopT* event_loop() { return &event_loop_; }
-  ThreadPoolT* thread_pool() { return &thread_pool_; }
-  ThumbnailGeneratorT* thumbnail_generator() { return &thumbnail_generator_; }
+  auto* factory() { return &factory_; }
+  auto* event_loop() { return &event_loop_; }
+  auto* thread_pool() { return &thread_pool_; }
+  auto* thumbnail_generator() { return &thumbnail_generator_; }
 
  private:
-  EventLoopT event_loop_;
-  ThreadPoolT thread_pool_;
-  HttpT http_;
-  ThumbnailGeneratorT thumbnail_generator_;
-  MuxerT muxer_;
+  coro::util::EventLoop event_loop_;
+  coro::util::ThreadPool thread_pool_;
+  http::HttpImpl<http::CacheHttp<http::CurlHttp>> http_;
+  util::ThumbnailGenerator thumbnail_generator_;
+  util::Muxer muxer_;
   std::default_random_engine random_engine_;
-  RandomNumberGeneratorT random_number_generator_;
-  CloudFactoryT factory_;
+  util::RandomNumberGenerator random_number_generator_;
+  CloudFactory factory_;
 };
 
 }  // namespace coro::cloudstorage::util

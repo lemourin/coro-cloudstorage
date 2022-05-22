@@ -15,16 +15,17 @@
 
 using ::coro::Promise;
 using ::coro::Task;
+using ::coro::cloudstorage::CloudFactory;
 using ::coro::cloudstorage::util::AccountManagerHandler;
 using ::coro::cloudstorage::util::CloudFactoryContext;
 using ::coro::cloudstorage::util::SettingsManager;
+using ::coro::cloudstorage::util::ThumbnailGenerator;
 using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
 using ::coro::util::TypeList;
 
 using CloudProviders = coro::cloudstorage::util::CloudProviderTypeList;
 
-template <typename CloudFactory, typename ThumbnailGenerator>
 class HttpHandler {
  public:
   using Request = coro::http::Request<>;
@@ -79,12 +80,10 @@ Task<> CoMain(event_base* event_base) noexcept {
     CloudFactoryContext factory_context(event_base);
     SettingsManager settings_manager;
     Promise<void> quit;
-    HttpServer<HttpHandler<CloudFactoryContext<>::CloudFactoryT,
-                           CloudFactoryContext<>::ThumbnailGeneratorT>>
-        http_server(event_base, settings_manager.GetHttpServerConfig(),
-                    factory_context.factory(),
-                    factory_context.thumbnail_generator(),
-                    std::move(settings_manager), &quit);
+    HttpServer<HttpHandler> http_server(
+        event_base, settings_manager.GetHttpServerConfig(),
+        factory_context.factory(), factory_context.thumbnail_generator(),
+        std::move(settings_manager), &quit);
     co_await quit;
     co_await http_server.Quit();
   } catch (const std::exception& exception) {

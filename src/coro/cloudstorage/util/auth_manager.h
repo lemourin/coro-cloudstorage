@@ -96,7 +96,6 @@ class AuthManager {
   }
 
   const AuthToken& GetAuthToken() const { return auth_token_; }
-  const coro::http::Http& GetHttp() const { return *http_; }
 
   void OnAuthTokenUpdated(AuthToken auth_token) {
     auth_token_ = std::move(auth_token);
