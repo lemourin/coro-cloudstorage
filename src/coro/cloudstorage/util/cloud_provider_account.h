@@ -29,50 +29,42 @@ struct OnAuthTokenChanged {
 };
 }  // namespace internal
 
-template <typename CloudProviderTypeList, typename CloudFactory,
-          typename AuthTokenManagerT = SettingsManager>
-class CloudProviderAccount;
-
-template <typename... CloudProviders, typename CloudFactory,
-          typename AuthTokenManagerT>
-class CloudProviderAccount<coro::util::TypeList<CloudProviders...>,
-                           CloudFactory, AuthTokenManagerT> {
+class CloudProviderAccount {
  public:
-  template <typename T>
-  using CloudProviderT =
-      decltype(std::declval<CloudFactory>().template Create<T>(
-          std::declval<typename T::Auth::AuthToken>(),
-          std::declval<internal::OnAuthTokenChanged<AuthTokenManagerT, T>>()));
-
-  using Ts = coro::util::TypeList<CloudProviderT<CloudProviders>...>;
-
   template <typename CloudProvider>
   explicit CloudProviderAccount(std::string username, int64_t version,
                                 CloudProvider account)
       : username_(std::move(username)),
         version_(version),
-        provider_(std::move(account)) {}
+        provider_(new CloudProvider(std::move(account)),
+                  [](void* d) { delete reinterpret_cast<CloudProvider*>(d); }),
+        type_(CloudProvider::Type::kId),
+        id_(GetAccountId<typename CloudProvider::Type>(username_)),
+        iprovider_(std::make_unique<
+                   AbstractCloudProvider::CloudProviderImpl<CloudProvider>>(
+            reinterpret_cast<CloudProvider*>(provider_.get()))) {}
 
-  std::string GetId() const {
-    return std::visit(
-        [&]<typename CloudProvider>(const CloudProvider&) {
-          return GetAccountId<typename CloudProvider::Type>(username_);
-        },
-        provider_);
-  }
+  CloudProviderAccount(const CloudProviderAccount&) = delete;
+  CloudProviderAccount(CloudProviderAccount&&) = delete;
+  CloudProviderAccount& operator=(const CloudProviderAccount&) = delete;
+  CloudProviderAccount& operator=(CloudProviderAccount&&) = delete;
 
+  std::string_view type() const { return type_; }
+  std::string_view id() const { return id_; }
   std::string_view username() const { return username_; }
-  auto& provider() { return provider_; }
-  const auto& provider() const { return provider_; }
+  auto& provider() { return *iprovider_; }
+  const auto& provider() const { return *iprovider_; }
   stdx::stop_token stop_token() const { return stop_source_.get_token(); }
 
  private:
-  template <typename, typename, typename, typename, typename>
   friend class AccountManagerHandler;
 
   std::string username_;
   int64_t version_;
-  std::variant<CloudProviderT<CloudProviders>...> provider_;
+  std::unique_ptr<void, stdx::any_invocable<void(void*)>> provider_;
+  std::string type_;
+  std::string id_;
+  std::unique_ptr<AbstractCloudProvider::CloudProvider> iprovider_;
   stdx::stop_source stop_source_;
 };
 

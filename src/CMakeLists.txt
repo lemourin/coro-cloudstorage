@@ -46,9 +46,11 @@ endif()
 target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/fetch_json.h
     coro/cloudstorage/util/account_manager_handler.h
+    coro/cloudstorage/util/account_manager_handler.cc
     coro/cloudstorage/util/static_file_handler.h
     coro/cloudstorage/util/cloud_provider_account.h
     coro/cloudstorage/util/get_size_handler.h
+    coro/cloudstorage/util/get_size_handler.cc
     coro/cloudstorage/util/theme_handler.h
     coro/cloudstorage/util/theme_handler.cc
     coro/cloudstorage/util/settings_handler.h

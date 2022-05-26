@@ -18,6 +18,7 @@ using ::coro::Task;
 using ::coro::cloudstorage::CloudFactory;
 using ::coro::cloudstorage::util::AccountManagerHandler;
 using ::coro::cloudstorage::util::CloudFactoryContext;
+using ::coro::cloudstorage::util::CloudProviderAccount;
 using ::coro::cloudstorage::util::SettingsManager;
 using ::coro::cloudstorage::util::ThumbnailGenerator;
 using ::coro::http::CurlHttp;
@@ -34,7 +35,8 @@ class HttpHandler {
   HttpHandler(const CloudFactory* factory,
               const ThumbnailGenerator* thumbnail_generator,
               SettingsManager settings_manager, Promise<void>* quit)
-      : account_manager_handler_(factory, thumbnail_generator,
+      : account_manager_handler_(AccountManagerHandler::Id<CloudProviders>{},
+                                 factory, thumbnail_generator,
                                  AccountListener{},
                                  std::move(settings_manager)),
         quit_(quit) {}
@@ -58,20 +60,16 @@ class HttpHandler {
 
  private:
   struct AccountListener {
-    template <typename CloudAccount>
-    void OnCreate(CloudAccount* d) {
-      std::cerr << "CREATED " << d->GetId() << "\n";
+    void OnCreate(CloudProviderAccount* d) {
+      std::cerr << "CREATED " << d->id() << "\n";
     }
-    template <typename CloudAccount>
-    Task<> OnDestroy(CloudAccount* d) {
-      std::cerr << "REMOVED " << d->GetId() << "\n";
+    Task<> OnDestroy(CloudProviderAccount* d) {
+      std::cerr << "REMOVED " << d->id() << "\n";
       co_return;
     }
   };
 
-  AccountManagerHandler<CloudProviders, CloudFactory, ThumbnailGenerator,
-                        AccountListener>
-      account_manager_handler_;
+  AccountManagerHandler account_manager_handler_;
   Promise<void>* quit_;
 };
 

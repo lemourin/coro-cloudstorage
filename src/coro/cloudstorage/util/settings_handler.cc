@@ -10,12 +10,21 @@
 #include "coro/http/http.h"
 #include "coro/http/http_parse.h"
 
-namespace coro::cloudstorage::util::internal {
+namespace coro::cloudstorage::util {
 
 namespace {
 
 using Request = http::Request<>;
 using Response = http::Response<>;
+
+struct SettingsHandlerData {
+  std::string_view path;
+  std::span<const std::pair<std::string, std::string>> headers;
+  std::optional<Generator<std::string>> request_body;
+  bool public_network;
+  bool effective_public_network;
+  stdx::stop_token stop_token;
+};
 
 std::string GetHostSelector(
     std::span<const std::pair<std::string, std::string>> headers) {
@@ -31,8 +40,6 @@ std::string GetHostSelector(
   }
   return std::move(stream).str();
 }
-
-}  // namespace
 
 Task<Response> GetSettingsHandlerResponse(SettingsHandlerData d) {
   if (d.path == "/settings/host-set") {
@@ -67,4 +74,35 @@ Task<Response> GetSettingsHandlerResponse(SettingsHandlerData d) {
                                                                   : "")))};
 }
 
-}  // namespace coro::cloudstorage::util::internal
+}  // namespace
+
+auto SettingsHandler::operator()(Request request,
+                                 stdx::stop_token stop_token) const
+    -> Task<Response> {
+  auto uri = http::ParseUri(request.url);
+  if (!uri.path) {
+    co_return Response{.status = 400};
+  }
+  if (request.method == http::Method::kPost) {
+    if (*uri.path == "/settings/public-network") {
+      auto body = co_await http::GetBody(std::move(request.body).value());
+      auto query = http::ParseQuery(body);
+      if (auto it = query.find("value"); it != query.end()) {
+        settings_manager_->SetEnablePublicNetwork(it->second == "true");
+        co_return Response{.status = 200};
+      } else {
+        co_return Response{.status = 400};
+      }
+    }
+  }
+  co_return co_await GetSettingsHandlerResponse(SettingsHandlerData{
+      .path = *uri.path,
+      .headers = request.headers,
+      .request_body = std::move(request.body),
+      .public_network = settings_manager_->IsPublicNetworkEnabled(),
+      .effective_public_network =
+          settings_manager_->EffectiveIsPublicNetworkEnabled(),
+      .stop_token = std::move(stop_token)});
+}
+
+}  // namespace coro::cloudstorage::util
