@@ -83,8 +83,8 @@ auto OpenStack::CloudProvider::CreateDirectory(Directory parent,
   co_return co_await GetItem<Directory>(new_id, std::move(stop_token));
 }
 
-template <typename Item>
-Task<> OpenStack::CloudProvider::RemoveItem(Item item,
+template <typename ItemT>
+Task<> OpenStack::CloudProvider::RemoveItem(ItemT item,
                                             stdx::stop_token stop_token) {
   co_await Visit(
       item,
@@ -94,29 +94,30 @@ Task<> OpenStack::CloudProvider::RemoveItem(Item item,
       stop_token);
 }
 
-template <typename Item>
-Task<Item> OpenStack::CloudProvider::MoveItem(Item source,
-                                              Directory destination,
-                                              stdx::stop_token stop_token) {
+template <typename ItemT>
+Task<ItemT> OpenStack::CloudProvider::MoveItem(ItemT source,
+                                               Directory destination,
+                                               stdx::stop_token stop_token) {
   std::string destination_path = destination.id;
   if (!destination_path.empty()) {
     destination_path += "/";
   }
   destination_path += source.name;
   co_await Move(source, destination_path, stop_token);
-  co_return co_await GetItem<Item>(destination_path, std::move(stop_token));
+  co_return co_await GetItem<ItemT>(destination_path, std::move(stop_token));
 }
 
-template <typename Item>
-Task<Item> OpenStack::CloudProvider::RenameItem(Item item, std::string new_name,
-                                                stdx::stop_token stop_token) {
+template <typename ItemT>
+Task<ItemT> OpenStack::CloudProvider::RenameItem(ItemT item,
+                                                 std::string new_name,
+                                                 stdx::stop_token stop_token) {
   auto destination_path = util::GetDirectoryPath(item.id);
   if (!destination_path.empty()) {
     destination_path += "/";
   }
   destination_path += new_name;
   co_await Move(item, destination_path, stop_token);
-  co_return co_await GetItem<Item>(destination_path, std::move(stop_token));
+  co_return co_await GetItem<ItemT>(destination_path, std::move(stop_token));
 }
 
 template <typename Item>
@@ -164,8 +165,8 @@ Task<> OpenStack::CloudProvider::RemoveItemImpl(std::string_view id,
       std::move(stop_token));
 }
 
-template <typename Item>
-Task<> OpenStack::CloudProvider::Move(const Item& root,
+template <typename ItemT>
+Task<> OpenStack::CloudProvider::Move(const ItemT& root,
                                       std::string_view destination,
                                       stdx::stop_token stop_token) {
   co_await Visit(
@@ -179,8 +180,8 @@ Task<> OpenStack::CloudProvider::Move(const Item& root,
       stop_token);
 }
 
-template <typename Item>
-Task<> OpenStack::CloudProvider::MoveItemImpl(const Item& source,
+template <typename ItemT>
+Task<> OpenStack::CloudProvider::MoveItemImpl(const ItemT& source,
                                               std::string_view destination,
                                               stdx::stop_token stop_token) {
   Request request{
@@ -193,8 +194,8 @@ Task<> OpenStack::CloudProvider::MoveItemImpl(const Item& source,
   co_await RemoveItemImpl(source.id, std::move(stop_token));
 }
 
-template <typename Item, typename F>
-Task<> OpenStack::CloudProvider::Visit(Item item, const F& func,
+template <typename ItemT, typename F>
+Task<> OpenStack::CloudProvider::Visit(ItemT item, const F& func,
                                        stdx::stop_token stop_token) {
   return util::RecursiveVisit(this, std::move(item), func,
                               std::move(stop_token));

@@ -307,8 +307,8 @@ auto GoogleDrive::CloudProvider::CreateFileImpl(Directory parent,
   co_return ToItemImpl<File>(response);
 }
 
-template <typename Item>
-auto GoogleDrive::CloudProvider::GetItemThumbnail(Item item, http::Range range,
+template <typename ItemT>
+auto GoogleDrive::CloudProvider::GetItemThumbnail(ItemT item, http::Range range,
                                                   stdx::stop_token stop_token)
     -> Task<Thumbnail> {
   Request request{.url = std::move(item.thumbnail_url),
@@ -346,10 +346,9 @@ auto GoogleDrive::CloudProvider::MoveItem(ItemT source, Directory destination,
   co_return ToItemImpl<ItemT>(response);
 }
 
-template <typename Item>
-Task<Item> GoogleDrive::CloudProvider::RenameItem(Item item,
-                                                  std::string new_name,
-                                                  stdx::stop_token stop_token) {
+template <typename ItemT>
+Task<ItemT> GoogleDrive::CloudProvider::RenameItem(
+    ItemT item, std::string new_name, stdx::stop_token stop_token) {
   auto request =
       Request{.url = GetEndpoint("/files/" + item.id) + "?" +
                      http::FormDataToString({{"fields", kFileProperties}}),
@@ -360,7 +359,7 @@ Task<Item> GoogleDrive::CloudProvider::RenameItem(Item item,
   request.body = json.dump();
   auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                    std::move(stop_token));
-  co_return ToItemImpl<Item>(response);
+  co_return ToItemImpl<ItemT>(response);
 }
 
 namespace util {

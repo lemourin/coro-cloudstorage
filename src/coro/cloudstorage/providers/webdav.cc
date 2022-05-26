@@ -298,9 +298,9 @@ Generator<std::string> WebDAV::CloudProvider::GetFileContent(
   FOR_CO_AWAIT(std::string & body, response.body) { co_yield std::move(body); }
 }
 
-template <typename Item>
-Task<Item> WebDAV::CloudProvider::RenameItem(
-    Item item, std::string new_name, stdx::stop_token stop_token) const {
+template <typename ItemT>
+Task<ItemT> WebDAV::CloudProvider::RenameItem(
+    ItemT item, std::string new_name, stdx::stop_token stop_token) const {
   std::string destination = item.id;
   if (destination.empty()) {
     throw CloudException("invalid path");
@@ -334,17 +334,17 @@ auto WebDAV::CloudProvider::CreateDirectory(Directory parent, std::string name,
       response.document_element().first_child(), response.ns())));
 }
 
-template <typename Item>
-Task<> WebDAV::CloudProvider::RemoveItem(Item item,
+template <typename ItemT>
+Task<> WebDAV::CloudProvider::RemoveItem(ItemT item,
                                          stdx::stop_token stop_token) const {
   Request request{.url = GetEndpoint(item.id), .method = http::Method::kDelete};
   co_await Fetch(*http_, auth_token_.credential, std::move(request),
                  std::move(stop_token));
 }
 
-template <typename Item>
-Task<Item> WebDAV::CloudProvider::MoveItem(Item source, Directory destination,
-                                           stdx::stop_token stop_token) const {
+template <typename ItemT>
+Task<ItemT> WebDAV::CloudProvider::MoveItem(ItemT source, Directory destination,
+                                            stdx::stop_token stop_token) const {
   co_return co_await Move(std::move(source),
                           Concat(destination.id, source.name),
                           std::move(stop_token));

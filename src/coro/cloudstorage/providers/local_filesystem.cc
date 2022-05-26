@@ -187,9 +187,9 @@ Generator<std::string> LocalFileSystem::CloudProvider::GetFileContent(
   }
 }
 
-template <typename Item>
-Task<Item> LocalFileSystem::CloudProvider::RenameItem(
-    Item item, std::string new_name, stdx::stop_token stop_token) {
+template <typename ItemT>
+Task<ItemT> LocalFileSystem::CloudProvider::RenameItem(
+    ItemT item, std::string new_name, stdx::stop_token stop_token) {
   throw std::runtime_error("unimplemented");
 }
 

@@ -644,7 +644,7 @@ Task<> Mega::CloudProvider::RemoveItem(ItemT item,
   HandleRemoveItemEvent(item.id);
 }
 
-template <typename ItemT, IsDirectory<Mega::CloudProvider> DirectoryT, typename>
+template <typename ItemT, typename DirectoryT, typename>
 Task<ItemT> Mega::CloudProvider::MoveItem(ItemT source, DirectoryT destination,
                                           stdx::stop_token stop_token) {
   nlohmann::json command;

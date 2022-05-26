@@ -157,7 +157,7 @@ class Mega::CloudProvider
                                         std::is_same_v<ItemT, Directory>>>
   Task<> RemoveItem(ItemT item, stdx::stop_token stop_token);
 
-  template <typename ItemT, IsDirectory<CloudProvider> DirectoryT,
+  template <typename ItemT, typename DirectoryT,
             typename = std::enable_if_t<std::is_same_v<ItemT, File> ||
                                         std::is_same_v<ItemT, Directory>>>
   Task<ItemT> MoveItem(ItemT source, DirectoryT destination,

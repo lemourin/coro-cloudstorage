@@ -195,22 +195,22 @@ auto HubiC::CloudProvider::CreateDirectory(Directory parent,
                                    std::move(stop_token));
 }
 
-template <typename Item>
-Task<> HubiC::CloudProvider::RemoveItem(Item item,
+template <typename ItemT>
+Task<> HubiC::CloudProvider::RemoveItem(ItemT item,
                                         stdx::stop_token stop_token) {
   return provider_.RemoveItem(std::move(item), std::move(stop_token));
 }
 
-template <typename Item>
-Task<Item> HubiC::CloudProvider::MoveItem(Item source, Directory destination,
-                                          stdx::stop_token stop_token) {
+template <typename ItemT>
+Task<ItemT> HubiC::CloudProvider::MoveItem(ItemT source, Directory destination,
+                                           stdx::stop_token stop_token) {
   return provider_.MoveItem(std::move(source), std::move(destination),
                             std::move(stop_token));
 }
 
-template <typename Item>
-Task<Item> HubiC::CloudProvider::RenameItem(Item item, std::string new_name,
-                                            stdx::stop_token stop_token) {
+template <typename ItemT>
+Task<ItemT> HubiC::CloudProvider::RenameItem(ItemT item, std::string new_name,
+                                             stdx::stop_token stop_token) {
   return provider_.RenameItem(std::move(item), std::move(new_name),
                               std::move(stop_token));
 }

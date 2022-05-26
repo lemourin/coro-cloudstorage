@@ -272,8 +272,8 @@ auto OneDrive::CloudProvider::CreateFile(Directory parent,
   }
 }
 
-template <typename Item>
-auto OneDrive::CloudProvider::GetItemThumbnail(Item item, http::Range range,
+template <typename ItemT>
+auto OneDrive::CloudProvider::GetItemThumbnail(ItemT item, http::Range range,
                                                stdx::stop_token stop_token)
     -> Task<Thumbnail> {
   if (!item.thumbnail_url) {
