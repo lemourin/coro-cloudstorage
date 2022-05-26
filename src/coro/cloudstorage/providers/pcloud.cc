@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/providers/pcloud.h"
 
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+
 namespace coro::cloudstorage {
 
 namespace {
@@ -329,6 +331,12 @@ PCloud::Auth::AuthData GetAuthData<PCloud>() {
       .client_id = "rjR7bUpwgdz",
       .client_secret = "zNtirCfoYfmX5aFzoavWikKWyMlV",
   };
+}
+
+template <>
+auto AbstractCloudProvider::Create<PCloud::CloudProvider>(
+    PCloud::CloudProvider* p) -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<AbstractCloudProviderImpl<PCloud::CloudProvider>>(p);
 }
 
 }  // namespace util

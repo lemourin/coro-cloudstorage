@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
 #include "coro/util/regex.h"
 
 namespace coro::cloudstorage {
@@ -409,6 +410,16 @@ std::string WebDAV::CloudProvider::GetEndpoint(std::string_view href) const {
     return uri;
   }
 }
+
+namespace util {
+
+template <>
+auto AbstractCloudProvider::Create<WebDAV::CloudProvider>(
+    WebDAV::CloudProvider* p) -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<AbstractCloudProviderImpl<WebDAV::CloudProvider>>(p);
+}
+
+}  // namespace util
 
 template auto WebDAV::CloudProvider::RenameItem<WebDAV::File>(
     File item, std::string new_name, stdx::stop_token stop_token) const

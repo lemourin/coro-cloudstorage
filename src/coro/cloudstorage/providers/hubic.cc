@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/providers/hubic.h"
 
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+
 namespace coro::cloudstorage {
 
 namespace {
@@ -273,6 +275,12 @@ HubiC::Auth::AuthData GetAuthData<HubiC>() {
       .client_id = "api_hubic_kHQ5NUmE2yAAeiWfXPwQy2T53M6RP2fe",
       .client_secret =
           "Xk1ezMMSGNeU4r0wv3jutleYX9XvXmgg8XVElJjqoDvlDw0KsC9U2tkSxJxYof8V"};
+}
+
+template <>
+auto AbstractCloudProvider::Create<HubiC::CloudProvider>(
+    HubiC::CloudProvider* p) -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<AbstractCloudProviderImpl<HubiC::CloudProvider>>(p);
 }
 
 }  // namespace util

@@ -40,8 +40,7 @@ class CloudProviderAccount {
                   [](void* d) { delete reinterpret_cast<CloudProvider*>(d); }),
         type_(CloudProvider::Type::kId),
         id_(GetAccountId<typename CloudProvider::Type>(username_)),
-        iprovider_(std::make_unique<
-                   AbstractCloudProvider::CloudProviderImpl<CloudProvider>>(
+        iprovider_(AbstractCloudProvider::Create(
             reinterpret_cast<CloudProvider*>(provider_.get()))) {}
 
   CloudProviderAccount(const CloudProviderAccount&) = delete;

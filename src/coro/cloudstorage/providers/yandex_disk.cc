@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/providers/yandex_disk.h"
 
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+
 namespace coro::cloudstorage {
 
 namespace {
@@ -276,6 +278,7 @@ Task<nlohmann::json> YandexDisk::CloudProvider::FetchJson(
 }
 
 namespace util {
+
 template <>
 YandexDisk::Auth::AuthData GetAuthData<YandexDisk>() {
   return {
@@ -283,6 +286,14 @@ YandexDisk::Auth::AuthData GetAuthData<YandexDisk>() {
       .client_secret = "197f9693caa64f0ebb51d201110074f9",
   };
 }
+
+template <>
+auto AbstractCloudProvider::Create<YandexDisk::CloudProvider>(
+    YandexDisk::CloudProvider* p) -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<AbstractCloudProviderImpl<YandexDisk::CloudProvider>>(
+      p);
+}
+
 }  // namespace util
 
 template auto YandexDisk::CloudProvider::RenameItem<YandexDisk::File>(

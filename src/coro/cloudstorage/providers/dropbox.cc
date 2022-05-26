@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/providers/dropbox.h"
 
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+
 namespace coro::cloudstorage {
 
 namespace {
@@ -361,6 +363,12 @@ Dropbox::Auth::AuthData GetAuthData<Dropbox>() {
       .client_id = "ktryxp68ae5cicj",
       .client_secret = "6evu94gcxnmyr59",
   };
+}
+
+template <>
+auto AbstractCloudProvider::Create<Dropbox::CloudProvider>(
+    Dropbox::CloudProvider* p) -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<AbstractCloudProviderImpl<Dropbox::CloudProvider>>(p);
 }
 
 }  // namespace util

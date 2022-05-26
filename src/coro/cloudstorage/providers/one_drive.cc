@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/providers/one_drive.h"
 
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+
 namespace coro::cloudstorage {
 
 namespace {
@@ -313,11 +315,20 @@ auto OneDrive::CloudProvider::CreateUploadSession(Directory parent,
 }
 
 namespace util {
+
 template <>
 OneDrive::Auth::AuthData GetAuthData<OneDrive>() {
   return {.client_id = "56a1d60f-ea71-40e9-a489-b87fba12a23e",
           .client_secret = "zJRAsd0o4E9c33q4OLc7OhY"};
 }
+
+template <>
+auto AbstractCloudProvider::Create<OneDrive::CloudProvider>(
+    OneDrive::CloudProvider* p) -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<AbstractCloudProviderImpl<OneDrive::CloudProvider>>(
+      p);
+}
+
 }  // namespace util
 
 template auto OneDrive::CloudProvider::RenameItem<OneDrive::File>(

@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/providers/google_drive.h"
 
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+
 namespace coro::cloudstorage {
 
 namespace {
@@ -369,6 +371,13 @@ GoogleDrive::Auth::AuthData GetAuthData<GoogleDrive>() {
       .client_id =
           R"(646432077068-hmvk44qgo6d0a64a5h9ieue34p3j2dcv.apps.googleusercontent.com)",
       .client_secret = "1f0FG5ch-kKOanTAv1Bqdp9U"};
+}
+
+template <>
+auto AbstractCloudProvider::Create<GoogleDrive::CloudProvider>(
+    GoogleDrive::CloudProvider* p) -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<
+      AbstractCloudProviderImpl<GoogleDrive::CloudProvider>>(p);
 }
 
 }  // namespace util

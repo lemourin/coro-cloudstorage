@@ -79,6 +79,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/timing_out_stop_token.h
     coro/cloudstorage/util/timing_out_stop_token.cc
     coro/cloudstorage/util/abstract_cloud_provider.h
+    coro/cloudstorage/util/abstract_cloud_provider_impl.h
     coro/cloudstorage/util/random_number_generator.h
     coro/cloudstorage/util/cloud_factory_context.h
     coro/cloudstorage/util/providers.h

@@ -11,6 +11,8 @@
 #include <tuple>
 #include <vector>
 
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+
 namespace coro::cloudstorage {
 
 namespace {
@@ -1253,6 +1255,12 @@ Mega::Auth::AuthToken ToAuthToken<Mega::Auth::AuthToken>(
 template <>
 Mega::Auth::AuthData GetAuthData<Mega>() {
   return {.api_key = "ZVhB0Czb", .app_name = "coro-cloudstorage"};
+}
+
+template <>
+auto AbstractCloudProvider::Create<Mega::CloudProvider>(Mega::CloudProvider* p)
+    -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<AbstractCloudProviderImpl<Mega::CloudProvider>>(p);
 }
 
 }  // namespace util

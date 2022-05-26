@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
 #include "coro/cloudstorage/util/crypto_utils.h"
 #include "coro/cloudstorage/util/file_utils.h"
 #include "coro/http/http_parse.h"
@@ -472,6 +473,13 @@ AmazonS3::Auth::AuthToken ToAuthToken<AmazonS3::Auth::AuthToken>(
 template <>
 AmazonS3::Auth::AuthData GetAuthData<AmazonS3>() {
   return {};
+}
+
+template <>
+auto AbstractCloudProvider::Create<AmazonS3::CloudProvider>(
+    AmazonS3::CloudProvider* p) -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<AbstractCloudProviderImpl<AmazonS3::CloudProvider>>(
+      p);
 }
 
 }  // namespace util

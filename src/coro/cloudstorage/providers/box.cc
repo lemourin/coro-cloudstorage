@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/providers/box.h"
 
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+
 namespace coro::cloudstorage {
 
 namespace {
@@ -284,6 +286,7 @@ auto Box::CloudProvider::GetItemThumbnail(File file, http::Range range,
 }
 
 namespace util {
+
 template <>
 Box::Auth::AuthData GetAuthData<Box>() {
   return {
@@ -291,6 +294,13 @@ Box::Auth::AuthData GetAuthData<Box>() {
       .client_secret = "IZ0T8WsUpJin7Qt3rHMf7qDAIFAkYZ0R",
   };
 }
+
+template <>
+auto AbstractCloudProvider::Create<Box::CloudProvider>(Box::CloudProvider* p)
+    -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<AbstractCloudProviderImpl<Box::CloudProvider>>(p);
+}
+
 }  // namespace util
 
 }  // namespace coro::cloudstorage

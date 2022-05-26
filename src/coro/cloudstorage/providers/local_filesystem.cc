@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/providers/local_filesystem.h"
 
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+
 #ifdef WIN32
 #include <windows.h>
 #else
@@ -215,6 +217,17 @@ auto LocalFileSystem::CloudProvider::CreateFile(Directory parent,
     -> Task<File> {
   throw std::runtime_error("unimplemented");
 }
+
+namespace util {
+
+template <>
+auto AbstractCloudProvider::Create<LocalFileSystem::CloudProvider>(
+    LocalFileSystem::CloudProvider* p) -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<
+      AbstractCloudProviderImpl<LocalFileSystem::CloudProvider>>(p);
+}
+
+}  // namespace util
 
 template auto LocalFileSystem::CloudProvider::RenameItem<LocalFileSystem::File>(
     File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
