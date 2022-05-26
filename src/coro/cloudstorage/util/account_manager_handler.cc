@@ -152,4 +152,33 @@ Generator<std::string> AccountManagerHandler::GetHomePage() const {
       fmt::arg("content_table", std::move(content_table).str()));
 }
 
+void AccountManagerHandler::OnCloudProviderCreated(CloudProviderAccount* account) {
+  std::string account_id = std::string(account->id());
+  try {
+    handlers_.emplace_back(Handler{
+        .id = std::string(account_id),
+        .prefix = StrCat("/remove/", account_id),
+        .handler = OnRemoveHandler{.d = this, .account_id = account_id}});
+
+    auto& provider = account->provider();
+    handlers_.emplace_back(
+        Handler{.id = std::string(account_id),
+                .prefix = StrCat("/", account_id),
+                .handler = CloudProviderHandler(
+                    &provider, thumbnail_generator_, &settings_manager_)});
+
+    account_listener_->OnCreate(account);
+  } catch (...) {
+    RemoveHandler(account_id);
+    throw;
+  }
+}
+
+auto AccountManagerHandler::OnRemoveHandler::operator()(
+    Request request, stdx::stop_token stop_token) const -> Task<Response> {
+  co_await d->RemoveCloudProvider(
+      [&](const auto& account) { return account.id() == account_id; });
+  co_return Response{.status = 302, .headers = {{"Location", "/"}}};
+}
+
 }  // namespace coro::cloudstorage::util

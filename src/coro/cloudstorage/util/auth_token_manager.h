@@ -84,11 +84,11 @@ class AuthTokenManager {
     RemoveToken(id, GetCloudProviderId<CloudProvider>());
   }
 
- private:
   void SaveToken(nlohmann::json token, std::string_view id,
                  std::string_view provider_id) const;
   void RemoveToken(std::string_view id, std::string_view provider_id) const;
 
+ private:
   std::string path_;
 };
 

@@ -12,21 +12,23 @@
 namespace coro::cloudstorage::util {
 
 template <typename CloudProvider>
-static std::string GetAccountId(std::string_view username) {
+std::string GetAccountId(std::string_view username) {
   return StrCat("[", CloudProvider::kId, "] ", username);
 }
 
 namespace internal {
-template <typename AuthTokenManagerT, typename CloudProvider>
+
+template <typename CloudProvider>
 struct OnAuthTokenChanged {
   void operator()(typename CloudProvider::Auth::AuthToken auth_token) {
     if (*account_id) {
       d->template SaveToken<CloudProvider>(std::move(auth_token), **account_id);
     }
   }
-  AuthTokenManagerT* d;
+  SettingsManager* d;
   std::shared_ptr<std::optional<std::string>> account_id;
 };
+
 }  // namespace internal
 
 class CloudProviderAccount {
@@ -60,7 +62,7 @@ class CloudProviderAccount {
 
   std::string username_;
   int64_t version_;
-  std::unique_ptr<void, stdx::any_invocable<void(void*)>> provider_;
+  std::unique_ptr<void, void (*)(void*)> provider_;
   std::string type_;
   std::string id_;
   std::unique_ptr<AbstractCloudProvider::CloudProvider> iprovider_;

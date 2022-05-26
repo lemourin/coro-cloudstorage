@@ -25,9 +25,8 @@ class SettingsManager {
     auth_token_manager_.SaveToken<CloudProvider>(std::move(token), id);
   }
 
-  template <typename CloudProvider>
-  void RemoveToken(std::string_view id) const {
-    auth_token_manager_.RemoveToken<CloudProvider>(id);
+  void RemoveToken(std::string_view type, std::string_view id) const {
+    auth_token_manager_.RemoveToken(type, id);
   }
 
   void SetEnablePublicNetwork(bool enable) const;

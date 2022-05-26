@@ -40,18 +40,7 @@ class AccountManagerHandler {
   };
 
   template <typename Impl>
-  class AccountListenerImpl : public AccountListener {
-   public:
-    explicit AccountListenerImpl(Impl impl) : impl_(std::move(impl)) {}
-
-    void OnCreate(CloudProviderAccount* d) override { impl_.OnCreate(d); }
-    Task<> OnDestroy(CloudProviderAccount* d) override {
-      return impl_.OnDestroy(d);
-    }
-
-   private:
-    Impl impl_;
-  };
+  class AccountListenerImpl;
 
   template <typename T>
   struct Id {};
@@ -92,7 +81,7 @@ class AccountManagerHandler {
             auto* account = CreateAccount<CloudProvider>(
                 std::move(token),
                 std::make_shared<std::optional<std::string>>(id));
-            OnCloudProviderCreated<CloudProvider>(account);
+            OnCloudProviderCreated(account);
           },
           any_token);
     }
@@ -109,22 +98,18 @@ class AccountManagerHandler {
   Task<Response> HandleRequest(Request request,
                                coro::stdx::stop_token stop_token);
 
-  template <typename CloudProvider>
-  using OnAuthTokenChanged =
-      internal::OnAuthTokenChanged<SettingsManager, CloudProvider>;
-
   Response GetWebDAVRootResponse(
       std::span<const std::pair<std::string, std::string>> headers) const;
 
   void RemoveHandler(std::string_view account_id);
 
-  template <typename CloudProvider, typename F>
+  template <typename F>
   Task<> RemoveCloudProvider(const F& predicate) {
     for (auto it = std::begin(accounts_); it != std::end(accounts_);) {
       if (predicate(*it) && !it->stop_token().stop_requested()) {
         it->stop_source_.request_stop();
         co_await account_listener_->OnDestroy(&*it);
-        settings_manager_.template RemoveToken<CloudProvider>(it->username());
+        settings_manager_.RemoveToken(it->type(), it->username());
         RemoveHandler(it->id());
         it = accounts_.erase(it);
       } else {
@@ -139,9 +124,8 @@ class AccountManagerHandler {
 
     Task<Response> operator()(Request request,
                               stdx::stop_token stop_token) const {
-      auto result =
-          co_await d->factory_->template CreateAuthHandler<CloudProvider>()(
-              std::move(request), stop_token);
+      auto result = co_await d->factory_->CreateAuthHandler<CloudProvider>()(
+          std::move(request), stop_token);
       AuthToken auth_token;
       if constexpr (std::is_same_v<decltype(result), AuthToken>) {
         auth_token = std::move(result);
@@ -164,18 +148,11 @@ class AccountManagerHandler {
     AccountManagerHandler* d;
   };
 
-  template <typename CloudProvider>
   struct OnRemoveHandler {
     Task<Response> operator()(Request request,
-                              stdx::stop_token stop_token) const {
-      co_await d->template RemoveCloudProvider<CloudProvider>(
-          [id = GetAccountId<CloudProvider>(username)](const auto& account) {
-            return account.id() == id;
-          });
-      co_return Response{.status = 302, .headers = {{"Location", "/"}}};
-    }
+                              stdx::stop_token stop_token) const;
     AccountManagerHandler* d;
-    std::string username;
+    std::string account_id;
   };
 
   template <typename CloudProvider>
@@ -185,29 +162,7 @@ class AccountManagerHandler {
         .handler = AuthHandler<CloudProvider>{this}});
   }
 
-  template <typename CloudProvider>
-  void OnCloudProviderCreated(CloudProviderAccount* account) {
-    std::string account_id = GetAccountId<CloudProvider>(account->username());
-    try {
-      handlers_.emplace_back(Handler{
-          .id = std::string(account_id),
-          .prefix = StrCat("/remove/", account_id),
-          .handler = OnRemoveHandler<CloudProvider>{
-              .d = this, .username = std::string(account->username())}});
-
-      auto& provider = account->provider();
-      handlers_.emplace_back(
-          Handler{.id = std::string(account_id),
-                  .prefix = StrCat("/", account_id),
-                  .handler = CloudProviderHandler(
-                      &provider, thumbnail_generator_, &settings_manager_)});
-
-      account_listener_->OnCreate(account);
-    } catch (...) {
-      RemoveHandler(account_id);
-      throw;
-    }
-  }
+  void OnCloudProviderCreated(CloudProviderAccount* account);
 
   template <typename CloudProvider>
   CloudProviderAccount* CreateAccount(
@@ -216,8 +171,8 @@ class AccountManagerHandler {
     return &accounts_.emplace_back(
         username->value_or(""), version_++,
         factory_->template Create<CloudProvider>(
-            std::move(auth_token),
-            OnAuthTokenChanged<CloudProvider>{&settings_manager_, username}));
+            std::move(auth_token), internal::OnAuthTokenChanged<CloudProvider>{
+                                       &settings_manager_, username}));
   }
 
   template <typename CloudProvider>
@@ -235,13 +190,13 @@ class AccountManagerHandler {
           co_await provider.GetGeneralData(std::move(stop_token));
       *username = std::move(general_data.username);
       account->username_ = **username;
-      co_await RemoveCloudProvider<CloudProvider>([&](const auto& entry) {
+      co_await RemoveCloudProvider([&](const auto& entry) {
         return entry.version_ < version &&
                entry.id() == GetAccountId<CloudProvider>(**username);
       });
       for (const auto& entry : accounts_) {
         if (entry.version_ == version) {
-          OnCloudProviderCreated<CloudProvider>(account);
+          OnCloudProviderCreated(account);
           on_create_called = true;
           settings_manager_.template SaveToken<CloudProvider>(
               std::move(auth_token), **username);
@@ -252,7 +207,7 @@ class AccountManagerHandler {
     } catch (...) {
       exception = std::current_exception();
     }
-    co_await RemoveCloudProvider<CloudProvider>(
+    co_await RemoveCloudProvider(
         [&](const auto& entry) { return entry.version_ == version; });
     std::rethrow_exception(exception);
   }
@@ -291,6 +246,20 @@ class AccountManagerHandler {
   int64_t version_ = 0;
   stdx::any_invocable<void(const CloudFactory*, std::stringstream&) const>
       append_auth_urls_;
+};
+
+template <typename Impl>
+class AccountManagerHandler::AccountListenerImpl : public AccountListener {
+ public:
+  explicit AccountListenerImpl(Impl impl) : impl_(std::move(impl)) {}
+
+  void OnCreate(CloudProviderAccount* d) override { impl_.OnCreate(d); }
+  Task<> OnDestroy(CloudProviderAccount* d) override {
+    return impl_.OnDestroy(d);
+  }
+
+ private:
+  Impl impl_;
 };
 
 }  // namespace coro::cloudstorage::util
