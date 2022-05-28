@@ -6,7 +6,6 @@
 #include "coro/cloudstorage/providers/local_filesystem.h"
 #include "coro/cloudstorage/util/account_manager_handler.h"
 #include "coro/cloudstorage/util/cloud_factory_context.h"
-#include "coro/cloudstorage/util/providers.h"
 #include "coro/cloudstorage/util/thumbnail_generator.h"
 #include "coro/http/cache_http.h"
 #include "coro/http/curl_http.h"
@@ -27,8 +26,6 @@ using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
 using ::coro::util::TypeList;
 
-using CloudProviders = coro::cloudstorage::util::CloudProviderTypeList;
-
 class HttpHandler {
  public:
   using Request = coro::http::Request<>;
@@ -37,8 +34,7 @@ class HttpHandler {
   HttpHandler(const CloudFactory* factory, const AbstractCloudFactory* factory2,
               const ThumbnailGenerator* thumbnail_generator,
               SettingsManager settings_manager, Promise<void>* quit)
-      : account_manager_handler_(AccountManagerHandler::Id<CloudProviders>{},
-                                 factory, factory2, thumbnail_generator,
+      : account_manager_handler_(factory, factory2, thumbnail_generator,
                                  AccountListener{},
                                  std::move(settings_manager)),
         quit_(quit) {}

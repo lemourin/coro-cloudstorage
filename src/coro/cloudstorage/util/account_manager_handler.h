@@ -45,9 +45,8 @@ class AccountManagerHandler {
   template <typename T>
   struct Id {};
 
-  template <typename... CloudProviders, typename AccountListenerT>
-  AccountManagerHandler(Id<coro::util::TypeList<CloudProviders...>>,
-                        const CloudFactory* factory,
+  template <typename AccountListenerT>
+  AccountManagerHandler(const CloudFactory* factory,
                         const AbstractCloudFactory* factory2,
                         const ThumbnailGenerator* thumbnail_generator,
                         AccountListenerT account_listener,
