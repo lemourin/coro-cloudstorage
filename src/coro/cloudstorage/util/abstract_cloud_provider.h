@@ -62,6 +62,8 @@ class AbstractCloudProvider {
 
     virtual std::string_view GetId() const = 0;
 
+    virtual std::string_view GetIcon() const = 0;
+
     virtual nlohmann::json ToJson(const AuthToken&) const = 0;
 
     virtual AuthToken ToAuthToken(const nlohmann::json&) const = 0;

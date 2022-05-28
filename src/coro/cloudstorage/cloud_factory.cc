@@ -78,6 +78,8 @@ class AuthImpl : public AbstractCloudProvider::Auth {
 
   std::string_view GetId() const override { return CloudProvider::kId; }
 
+  std::string_view GetIcon() const override { return CloudProvider::kIcon; }
+
   nlohmann::json ToJson(const AuthToken& auth_token) const override {
     return util::ToJson(
         std::any_cast<const typename CloudProvider::Auth::AuthToken&>(

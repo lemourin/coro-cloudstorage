@@ -59,10 +59,8 @@ class AccountManagerHandler {
             std::make_unique<AccountListenerImpl<AccountListenerT>>(
                 std::move(account_listener))),
         settings_manager_(std::move(settings_manager)) {
-    using StaticFileHandler =
-        coro::cloudstorage::util::StaticFileHandler<CloudProviders...>;
     handlers_.emplace_back(
-        Handler{.prefix = "/static/", .handler = StaticFileHandler{}});
+        Handler{.prefix = "/static/", .handler = StaticFileHandler{factory2_}});
     handlers_.emplace_back(
         Handler{.prefix = "/size", .handler = GetSizeHandler{&accounts_}});
     handlers_.emplace_back(Handler{
