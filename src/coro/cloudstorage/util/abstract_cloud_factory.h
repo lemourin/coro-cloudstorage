@@ -14,11 +14,11 @@ class AbstractCloudFactory {
       std::function<void(const AbstractCloudProvider::Auth::AuthToken&)>
           on_token_updated) const = 0;
 
-  virtual std::unique_ptr<AbstractCloudProvider::Auth> CreateAuth(
+  virtual const AbstractCloudProvider::Auth& GetAuth(
       AbstractCloudProvider::Type) const = 0;
 
-  virtual std::vector<AbstractCloudProvider::Type> GetSupportedCloudProviders()
-      const = 0;
+  virtual std::span<const AbstractCloudProvider::Type>
+  GetSupportedCloudProviders() const = 0;
 };
 
 }  // namespace coro::cloudstorage::util

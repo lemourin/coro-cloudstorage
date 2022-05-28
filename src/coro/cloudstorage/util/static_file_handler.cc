@@ -28,9 +28,9 @@ Task<Response> StaticFileHandler::operator()(Request request,
   Theme theme = GetTheme(request.headers);
 
   for (auto type : factory_->GetSupportedCloudProviders()) {
-    auto auth = factory_->CreateAuth(type);
-    if (request.url == util::StrCat("/static/", auth->GetId(), ".png")) {
-      content = auth->GetIcon();
+    const auto& auth = factory_->GetAuth(type);
+    if (request.url == util::StrCat("/static/", auth.GetId(), ".png")) {
+      content = auth.GetIcon();
     }
   }
 

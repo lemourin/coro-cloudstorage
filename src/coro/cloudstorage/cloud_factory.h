@@ -26,25 +26,18 @@ class CloudFactory : public util::AbstractCloudFactory {
                const util::ThumbnailGenerator* thumbnail_generator,
                const util::Muxer* muxer,
                util::RandomNumberGenerator* random_number_generator,
-               util::AuthData auth_data = util::AuthData{})
-      : event_loop_(event_loop),
-        thread_pool_(thread_pool),
-        http_(http),
-        thumbnail_generator_(thumbnail_generator),
-        muxer_(muxer),
-        random_number_generator_(random_number_generator),
-        auth_data_(auth_data) {}
+               util::AuthData auth_data = util::AuthData{});
 
   std::unique_ptr<util::AbstractCloudProvider::CloudProvider> Create(
       util::AbstractCloudProvider::Auth::AuthToken auth_token,
       std::function<void(const util::AbstractCloudProvider::Auth::AuthToken&)>
           on_token_updated) const override;
 
-  std::unique_ptr<util::AbstractCloudProvider::Auth> CreateAuth(
+  const util::AbstractCloudProvider::Auth& GetAuth(
       util::AbstractCloudProvider::Type) const override;
 
-  std::vector<util::AbstractCloudProvider::Type> GetSupportedCloudProviders()
-      const override;
+  std::span<const util::AbstractCloudProvider::Type>
+  GetSupportedCloudProviders() const override;
 
  private:
   std::unique_ptr<util::AbstractCloudFactory> CreateCloudFactory(
@@ -57,6 +50,7 @@ class CloudFactory : public util::AbstractCloudFactory {
   const util::Muxer* muxer_;
   util::RandomNumberGenerator* random_number_generator_;
   util::AuthData auth_data_;
+  std::vector<std::unique_ptr<util::AbstractCloudFactory>> factory_;
 };
 
 }  // namespace coro::cloudstorage

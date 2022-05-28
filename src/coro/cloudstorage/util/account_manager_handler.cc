@@ -26,8 +26,8 @@ Generator<std::string> GetResponse(Generator<std::string> body,
 void AppendAuthUrl(AbstractCloudProvider::Type type,
                    const AbstractCloudFactory* factory,
                    std::stringstream& stream) {
-  std::string id(factory->CreateAuth(type)->GetId());
-  std::string url = factory->CreateAuth(type)->GetAuthorizationUrl().value_or(
+  std::string id(factory->GetAuth(type).GetId());
+  std::string url = factory->GetAuth(type).GetAuthorizationUrl().value_or(
       util::StrCat("/auth/", id));
   stream << fmt::format(
       fmt::runtime(kAssetsHtmlProviderEntryHtml), fmt::arg("provider_url", url),
@@ -57,7 +57,7 @@ AccountManagerHandler::AccountManagerHandler(
   for (AbstractCloudProvider::Type type :
        factory->GetSupportedCloudProviders()) {
     handlers_.emplace_back(Handler{
-        .prefix = util::StrCat("/auth/", factory->CreateAuth(type)->GetId()),
+        .prefix = util::StrCat("/auth/", factory->GetAuth(type).GetId()),
         .handler = AuthHandler{type, this}});
   }
 
@@ -293,7 +293,7 @@ Task<CloudProviderAccount*> AccountManagerHandler::Create(
 auto AccountManagerHandler::AuthHandler::operator()(
     Request request, stdx::stop_token stop_token) const -> Task<Response> {
   auto result =
-      co_await d->factory_->CreateAuth(type)->CreateAuthHandler()->OnRequest(
+      co_await d->factory_->GetAuth(type).CreateAuthHandler()->OnRequest(
           std::move(request), stop_token);
   if (std::holds_alternative<Response>(result)) {
     co_return std::move(std::get<Response>(result));

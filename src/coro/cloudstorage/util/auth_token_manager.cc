@@ -55,9 +55,9 @@ std::vector<AuthToken2> AuthTokenManager::LoadTokenData2() const {
     for (const auto& entry : json["auth_token"]) {
       try {
         for (auto type : factory_->GetSupportedCloudProviders()) {
-          auto auth = factory_->CreateAuth(type);
-          if (entry["type"] == auth->GetId()) {
-            AuthToken2 auth_token{{auth->ToAuthToken(entry)}, entry["id"]};
+          const auto& auth = factory_->GetAuth(type);
+          if (entry["type"] == auth.GetId()) {
+            AuthToken2 auth_token{{auth.ToAuthToken(entry)}, entry["id"]};
             result.emplace_back(std::move(auth_token));
           }
         }
@@ -72,8 +72,8 @@ std::vector<AuthToken2> AuthTokenManager::LoadTokenData2() const {
 
 void AuthTokenManager::SaveToken2(AbstractCloudProvider::Auth::AuthToken token,
                                   std::string_view id) const {
-  SaveToken(factory_->CreateAuth(token.type)->ToJson(token), id,
-            factory_->CreateAuth(token.type)->GetId());
+  SaveToken(factory_->GetAuth(token.type).ToJson(token), id,
+            factory_->GetAuth(token.type).GetId());
 }
 
 }  // namespace coro::cloudstorage::util
