@@ -19,8 +19,6 @@
 
 namespace coro::cloudstorage {
 
-class CloudProviderT;
-
 template <typename T>
 concept HasTimestamp = requires(T v) {
                          {

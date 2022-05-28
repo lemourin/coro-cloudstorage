@@ -69,11 +69,9 @@ struct RefreshOpenStackToken {
         std::move(stop_token));
   }
 
-  util::AuthManager3<HubiC::Auth>* auth_manager;
+  util::AuthManager<HubiC::Auth>* auth_manager;
   const coro::http::Http* http;
 };
-
-using OnAuthTokenUpdatedT = OnAuthTokenUpdated<HubiC::Auth::AuthToken>;
 
 struct OnOpenStackTokenUpdated {
   void operator()(OpenStack::Auth::AuthToken auth_token) const {
@@ -81,14 +79,8 @@ struct OnOpenStackTokenUpdated {
     new_auth_token.openstack_auth_token = std::move(auth_token);
     auth_manager->OnAuthTokenUpdated(std::move(new_auth_token));
   }
-  util::AuthManager3<HubiC::Auth>* auth_manager;
+  util::AuthManager<HubiC::Auth>* auth_manager;
 };
-
-using OpenStackAuthManager =
-    util::AuthManager<OpenStack::Auth, RefreshOpenStackToken,
-                      HubiC::AuthorizeRequest>;
-
-using HubiCAuthManager = util::AuthManager<HubiC::Auth, RefreshAccessToken>;
 
 }  // namespace
 
@@ -136,15 +128,16 @@ auto HubiC::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,
 HubiC::CloudProvider::CloudProvider(
     const coro::http::Http* http, Auth::AuthToken auth_token,
     Auth::AuthData auth_data,
-    OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated)
+    OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
+    util::AuthorizeRequest<Auth> authorize_request)
     : http_(http),
-      auth_manager_(HubiCAuthManager(
+      auth_manager_(
           http, std::move(auth_token), std::move(on_auth_token_updated),
-          RefreshAccessToken{
+          util::RefreshToken<Auth>(RefreshAccessToken{
               .http = http,
               .current_openstack_token = current_openstack_token_.get(),
-              .auth_data = std::move(auth_data)},
-          util::AuthorizeRequest{})),
+              .auth_data = std::move(auth_data)}),
+          std::move(authorize_request)),
       provider_(CreateOpenStackProvider()) {
   *current_openstack_token_ = &provider_.auth_token();
 }
@@ -238,12 +231,14 @@ auto HubiC::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
 
 OpenStack::CloudProvider HubiC::CloudProvider::CreateOpenStackProvider() {
   return OpenStack::CloudProvider(
-      util::AuthManager3<OpenStack::Auth>(OpenStackAuthManager(
+      util::AuthManager<OpenStack::Auth>(
           http_, auth_manager_.GetAuthToken().openstack_auth_token,
           OnAuthTokenUpdated<OpenStack::Auth::AuthToken>(
               OnOpenStackTokenUpdated{&auth_manager_}),
-          RefreshOpenStackToken{&auth_manager_, http_},
-          OpenStack::AuthorizeRequest{})),
+          util::RefreshToken<OpenStack::Auth>(
+              RefreshOpenStackToken{&auth_manager_, http_}),
+          util::AuthorizeRequest<OpenStack::Auth>(
+              OpenStack::AuthorizeRequest{})),
       http_);
 }
 

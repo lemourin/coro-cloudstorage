@@ -91,9 +91,8 @@ struct OneDrive::CloudProvider
     : coro::cloudstorage::CloudProvider<OneDrive, CloudProvider> {
   using Request = http::Request<std::string>;
 
-  explicit CloudProvider(
-      coro::cloudstorage::util::AuthManager3<Auth> auth_manager,
-      const coro::http::Http* http)
+  CloudProvider(util::AuthManager<Auth> auth_manager,
+                const coro::http::Http* http)
       : auth_manager_(std::move(auth_manager)), http_(http) {}
 
   Task<Directory> GetRoot(stdx::stop_token);
@@ -134,7 +133,7 @@ struct OneDrive::CloudProvider
                                           std::string_view name,
                                           stdx::stop_token stop_token);
 
-  coro::cloudstorage::util::AuthManager3<Auth> auth_manager_;
+  util::AuthManager<Auth> auth_manager_;
   const coro::http::Http* http_;
 };
 

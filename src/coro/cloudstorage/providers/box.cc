@@ -11,7 +11,7 @@ constexpr std::string_view kSeparator = "Thnlg1ecwyUJHyhYYGrQ";
 constexpr std::string_view kFileProperties = "name,id,size,modified_at";
 constexpr std::string_view kEndpoint = "https://api.box.com/2.0";
 
-using AuthManager3 = ::coro::cloudstorage::util::AuthManager3<Box::Auth>;
+using AuthManager = ::coro::cloudstorage::util::AuthManager<Box::Auth>;
 
 std::string GetEndpoint(std::string_view path) {
   return std::string(kEndpoint) + std::string(path);
@@ -56,12 +56,11 @@ Generator<std::string> GetUploadStream(Box::Directory parent,
 }
 
 template <typename T>
-Task<T> RenameItemImpl(const AuthManager3& auth_manager, std::string endpoint,
-                       T item, std::string new_name,
-                       stdx::stop_token stop_token) {
+Task<T> RenameItemImpl(AuthManager* auth_manager, std::string endpoint, T item,
+                       std::string new_name, stdx::stop_token stop_token) {
   nlohmann::json request;
   request["name"] = std::move(new_name);
-  auto response = co_await auth_manager.FetchJson(
+  auto response = co_await auth_manager->FetchJson(
       http::Request<std::string>{.url = GetEndpoint(endpoint + item.id),
                                  .method = http::Method::kPut,
                                  .body = request.dump()},
@@ -70,12 +69,11 @@ Task<T> RenameItemImpl(const AuthManager3& auth_manager, std::string endpoint,
 }
 
 template <typename T>
-Task<T> MoveItemImpl(const AuthManager3& auth_manager, std::string endpoint,
-                     T source, Box::Directory destination,
-                     stdx::stop_token stop_token) {
+Task<T> MoveItemImpl(AuthManager* auth_manager, std::string endpoint, T source,
+                     Box::Directory destination, stdx::stop_token stop_token) {
   nlohmann::json request;
   request["parent"]["id"] = std::move(destination.id);
-  auto response = co_await auth_manager.FetchJson(
+  auto response = co_await auth_manager->FetchJson(
       http::Request<std::string>{.url = GetEndpoint(endpoint + source.id),
                                  .method = http::Method::kPut,
                                  .body = request.dump()},
@@ -188,13 +186,13 @@ Generator<std::string> Box::CloudProvider::GetFileContent(
 auto Box::CloudProvider::RenameItem(Directory item, std::string new_name,
                                     stdx::stop_token stop_token)
     -> Task<Directory> {
-  return RenameItemImpl<Directory>(auth_manager_, "/folders/", std::move(item),
+  return RenameItemImpl<Directory>(&auth_manager_, "/folders/", std::move(item),
                                    std::move(new_name), std::move(stop_token));
 }
 
 auto Box::CloudProvider::RenameItem(File item, std::string new_name,
                                     stdx::stop_token stop_token) -> Task<File> {
-  return RenameItemImpl<File>(auth_manager_, "/files/", std::move(item),
+  return RenameItemImpl<File>(&auth_manager_, "/files/", std::move(item),
                               std::move(new_name), std::move(stop_token));
 }
 
@@ -229,13 +227,13 @@ Task<> Box::CloudProvider::RemoveItem(Directory item,
 auto Box::CloudProvider::MoveItem(Directory source, Directory destination,
                                   stdx::stop_token stop_token)
     -> Task<Directory> {
-  return MoveItemImpl<Directory>(auth_manager_, "/folders/", std::move(source),
+  return MoveItemImpl<Directory>(&auth_manager_, "/folders/", std::move(source),
                                  std::move(destination), std::move(stop_token));
 }
 
 auto Box::CloudProvider::MoveItem(File source, Directory destination,
                                   stdx::stop_token stop_token) -> Task<File> {
-  return MoveItemImpl<File>(auth_manager_, "/files/", std::move(source),
+  return MoveItemImpl<File>(&auth_manager_, "/files/", std::move(source),
                             std::move(destination), std::move(stop_token));
 }
 

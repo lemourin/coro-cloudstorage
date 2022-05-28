@@ -20,8 +20,6 @@ namespace di = boost::di;
 
 using ::coro::cloudstorage::util::AbstractCloudFactory;
 using ::coro::cloudstorage::util::AbstractCloudProvider;
-using ::coro::cloudstorage::util::AuthManager;
-using ::coro::cloudstorage::util::AuthManager3;
 
 template <typename T>
 concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
@@ -32,6 +30,36 @@ concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
 
 template <typename T>
 concept HasAuthHandler = requires { typename T::Auth::AuthHandler; };
+
+template <typename Auth>
+class RefreshTokenImpl {
+ public:
+  using AuthToken = typename Auth::AuthToken;
+  using AuthData = typename Auth::AuthData;
+
+  RefreshTokenImpl(const coro::http::Http* http, AuthData auth_data)
+      : http_(http), auth_data_(std::move(auth_data)) {}
+
+  Task<AuthToken> operator()(AuthToken auth_token,
+                             stdx::stop_token stop_token) const {
+    return Auth::RefreshAccessToken(*http_, auth_data_, auth_token, stop_token);
+  }
+
+ private:
+  const coro::http::Http* http_;
+  AuthData auth_data_;
+};
+
+template <typename Auth>
+struct AuthorizeRequestImpl {
+  http::Request<std::string> operator()(
+      http::Request<std::string> request,
+      const typename Auth::AuthToken& auth_token) const {
+    request.headers.emplace_back(
+        "Authorization", util::StrCat("Bearer ", auth_token.access_token));
+    return request;
+  }
+};
 
 template <typename CloudProvider, typename Impl>
 class AuthHandlerImpl : public AbstractCloudProvider::Auth::AuthHandler {
@@ -142,23 +170,27 @@ class CloudFactoryUtil {
   auto Create(AuthToken auth_token, OnTokenUpdated on_token_updated) const {
     namespace di = boost::di;
 
-    auto injector = [&] {
-      auto base_injector =
-          di::make_injector(di::bind<AuthToken>().to(auth_token), GetConfig());
-      if constexpr (HasAuthData<typename CloudProvider::Auth>) {
+    auto auth_injector = [&] {
+      if constexpr (HasAuthData<Auth>) {
         return di::make_injector(
             di::bind<OnAuthTokenUpdated<AuthToken>>().to([&](const auto&) {
               return OnAuthTokenUpdated<AuthToken>(on_token_updated);
             }),
-            di::bind<AuthManager3<Auth>>().to([&](const auto& injector) {
-              return AuthManager3<Auth>(
-                  injector.template create<AuthManager<Auth>>());
+            di::bind<util::RefreshToken<Auth>>().to([](const auto& injector) {
+              return util::RefreshToken<Auth>(
+                  injector.template create<RefreshTokenImpl<Auth>>());
             }),
-            std::move(base_injector));
+            di::bind<util::AuthorizeRequest<Auth>>().to(
+                [](const auto& injector) {
+                  return util::AuthorizeRequest<Auth>(
+                      injector.template create<AuthorizeRequestImpl<Auth>>());
+                }));
       } else {
-        return base_injector;
+        return di::make_injector();
       }
     }();
+    auto injector = di::make_injector(di::bind<AuthToken>().to(auth_token),
+                                      GetConfig(), std::move(auth_injector));
     return injector.template create<typename CloudProvider::CloudProvider>();
   }
 
@@ -168,17 +200,16 @@ class CloudFactoryUtil {
 
   auto GetConfig() const {
     auto injector = di::make_injector(
-        di::bind<class coro::cloudstorage::CloudProviderT>.template to<CloudProvider>(),
         di::bind<coro::http::Http>.to(http_),
         di::bind<coro::util::EventLoop>().to(event_loop_),
         di::bind<coro::util::ThreadPool>().to(thread_pool_),
         di::bind<coro::cloudstorage::util::RandomNumberGenerator>().to(
             random_number_generator_));
 
-    if constexpr (HasAuthData<typename CloudProvider::Auth>) {
+    if constexpr (HasAuthData<Auth>) {
       return di::make_injector(
           std::move(injector),
-          di::bind<typename CloudProvider::Auth::AuthData>().to(GetAuthData()));
+          di::bind<typename Auth::AuthData>().to(GetAuthData()));
     } else {
       return injector;
     }
@@ -187,10 +218,9 @@ class CloudFactoryUtil {
   auto CreateAuthHandlerImpl() const {
     auto injector = GetConfig();
     if constexpr (HasAuthHandler<CloudProvider>) {
-      return injector
-          .template create<typename CloudProvider::Auth::AuthHandler>();
+      return injector.template create<typename Auth::AuthHandler>();
     } else {
-      return injector.template create<util::AuthHandler>();
+      return injector.template create<util::AuthHandler<Auth>>();
     }
   }
 

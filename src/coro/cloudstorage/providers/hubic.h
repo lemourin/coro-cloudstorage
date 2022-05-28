@@ -55,7 +55,8 @@ class HubiC::CloudProvider
  public:
   CloudProvider(const coro::http::Http* http, Auth::AuthToken auth_token,
                 Auth::AuthData auth_data,
-                OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated);
+                OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
+                util::AuthorizeRequest<Auth> authorizer_request);
 
   CloudProvider(CloudProvider&& other) noexcept;
   CloudProvider(const CloudProvider&) = delete;
@@ -97,7 +98,7 @@ class HubiC::CloudProvider
   const coro::http::Http* http_;
   std::unique_ptr<const OpenStack::Auth::AuthToken*> current_openstack_token_ =
       std::make_unique<const OpenStack::Auth::AuthToken*>(nullptr);
-  util::AuthManager3<Auth> auth_manager_;
+  util::AuthManager<Auth> auth_manager_;
   OpenStack::CloudProvider provider_;
 };
 

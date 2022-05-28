@@ -89,7 +89,7 @@ class Box::CloudProvider
   using json = nlohmann::json;
   using Request = http::Request<std::string>;
 
-  CloudProvider(coro::cloudstorage::util::AuthManager3<Auth> auth_manager,
+  CloudProvider(coro::cloudstorage::util::AuthManager<Auth> auth_manager,
                 const coro::http::Http* http)
       : auth_manager_(std::move(auth_manager)), http_(http) {}
 
@@ -130,7 +130,7 @@ class Box::CloudProvider
                                    stdx::stop_token stop_token);
 
  private:
-  coro::cloudstorage::util::AuthManager3<Auth> auth_manager_;
+  coro::cloudstorage::util::AuthManager<Auth> auth_manager_;
   const coro::http::Http* http_;
 };
 

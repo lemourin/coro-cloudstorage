@@ -70,7 +70,7 @@ class OpenStack::CloudProvider
  public:
   using Request = http::Request<std::string>;
 
-  CloudProvider(util::AuthManager3<Auth> auth_manager,
+  CloudProvider(util::AuthManager<Auth> auth_manager,
                 const coro::http::Http* http)
       : auth_manager_(std::move(auth_manager)), http_(http) {}
 
@@ -123,7 +123,7 @@ class OpenStack::CloudProvider
 
   std::string GetEndpoint(std::string_view endpoint) const;
 
-  util::AuthManager3<Auth> auth_manager_;
+  util::AuthManager<Auth> auth_manager_;
   const coro::http::Http* http_;
 };
 

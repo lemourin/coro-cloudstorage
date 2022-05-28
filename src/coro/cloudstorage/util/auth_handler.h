@@ -7,20 +7,19 @@
 
 namespace coro::cloudstorage::util {
 
-template <typename CloudProvider = class CloudProviderT>
+template <typename Auth>
 class AuthHandler {
  public:
-  AuthHandler(const http::Http* http,
-              typename CloudProvider::Auth::AuthData auth_data)
+  AuthHandler(const http::Http* http, typename Auth::AuthData auth_data)
       : http_(http), auth_data_(std::move(auth_data)) {}
 
-  Task<typename CloudProvider::Auth::AuthToken> operator()(
+  Task<typename Auth::AuthToken> operator()(
       coro::http::Request<> request, coro::stdx::stop_token stop_token) const {
     auto query =
         http::ParseQuery(http::ParseUri(request.url).query.value_or(""));
     auto it = query.find("code");
     if (it != std::end(query)) {
-      co_return co_await CloudProvider::Auth::ExchangeAuthorizationCode(
+      co_return co_await Auth::ExchangeAuthorizationCode(
           *http_, auth_data_, it->second, stop_token);
     } else {
       throw http::HttpException(http::HttpException::kBadRequest);
@@ -29,7 +28,7 @@ class AuthHandler {
 
  private:
   const http::Http* http_;
-  typename CloudProvider::Auth::AuthData auth_data_;
+  typename Auth::AuthData auth_data_;
 };
 
 }  // namespace coro::cloudstorage::util

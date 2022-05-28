@@ -97,7 +97,7 @@ class GoogleDrive::CloudProvider
  public:
   using Request = http::Request<std::string>;
 
-  CloudProvider(coro::cloudstorage::util::AuthManager3<Auth> auth_manager,
+  CloudProvider(util::AuthManager<Auth> auth_manager,
                 const coro::http::Http* http)
       : auth_manager_(std::move(auth_manager)), http_(http) {}
 
@@ -145,7 +145,7 @@ class GoogleDrive::CloudProvider
   Task<File> CreateFileImpl(Directory parent, std::string_view name,
                             FileContent content, stdx::stop_token stop_token);
 
-  coro::cloudstorage::util::AuthManager3<Auth> auth_manager_;
+  util::AuthManager<Auth> auth_manager_;
   const coro::http::Http* http_;
 };
 

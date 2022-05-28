@@ -18,30 +18,38 @@ class RefreshToken {
   using AuthToken = typename Auth::AuthToken;
   using AuthData = typename Auth::AuthData;
 
-  RefreshToken(const coro::http::Http* http, AuthData auth_data)
-      : http_(http), auth_data_(std::move(auth_data)) {}
+  template <typename F>
+  explicit RefreshToken(F&& f) : impl_(std::forward<F>(f)) {}
 
   Task<AuthToken> operator()(AuthToken auth_token,
                              stdx::stop_token stop_token) const {
-    return Auth::RefreshAccessToken(*http_, auth_data_, auth_token, stop_token);
+    return impl_(std::move(auth_token), std::move(stop_token));
   }
 
  private:
-  const coro::http::Http* http_;
-  AuthData auth_data_;
+  stdx::any_invocable<Task<AuthToken>(AuthToken, stdx::stop_token) const> impl_;
 };
 
-struct AuthorizeRequest {
-  template <typename Request, typename AuthToken>
-  Request operator()(Request request, const AuthToken& auth_token) const {
-    request.headers.emplace_back("Authorization",
-                                 StrCat("Bearer ", auth_token.access_token));
-    return request;
+template <typename Auth>
+class AuthorizeRequest {
+ public:
+  using AuthToken = typename Auth::AuthToken;
+
+  template <typename F>
+  explicit AuthorizeRequest(F&& f) : impl_(std::forward<F>(f)) {}
+
+  http::Request<std::string> operator()(http::Request<std::string> request,
+                                        AuthToken auth_token) const {
+    return impl_(std::move(request), std::move(auth_token));
   }
+
+ private:
+  stdx::any_invocable<http::Request<std::string>(http::Request<std::string>,
+                                                 AuthToken) const>
+      impl_;
 };
 
-template <typename Auth, typename RefreshTokenT = RefreshToken<Auth>,
-          typename AuthorizeRequestT = AuthorizeRequest>
+template <typename Auth>
 class AuthManager {
  public:
   using AuthToken = typename Auth::AuthToken;
@@ -50,7 +58,8 @@ class AuthManager {
   AuthManager(
       const coro::http::Http* http, AuthToken auth_token,
       coro::cloudstorage::OnAuthTokenUpdated<AuthToken> on_auth_token_updated,
-      RefreshTokenT refresh_token, AuthorizeRequestT authorize_request)
+      RefreshToken<Auth> refresh_token,
+      AuthorizeRequest<Auth> authorize_request)
       : http_(http),
         auth_token_(std::move(auth_token)),
         on_auth_token_updated_(std::move(on_auth_token_updated)),
@@ -64,8 +73,8 @@ class AuthManager {
 
   ~AuthManager() { stop_source_.request_stop(); }
 
-  template <typename Request>
-  Task<http::Response<>> Fetch(Request request, stdx::stop_token stop_token) {
+  Task<http::Response<>> Fetch(http::Request<std::string> request,
+                               stdx::stop_token stop_token) {
     auto response =
         co_await http_->Fetch(AuthorizeRequest(request), stop_token);
     if (response.status == 401) {
@@ -84,8 +93,8 @@ class AuthManager {
     }
   }
 
-  template <typename Request>
-  Task<nlohmann::json> FetchJson(Request request, stdx::stop_token stop_token) {
+  Task<nlohmann::json> FetchJson(http::Request<std::string> request,
+                                 stdx::stop_token stop_token) {
     if (!http::HasHeader(request.headers, "Accept", "application/json")) {
       request.headers.emplace_back("Accept", "application/json");
     }
@@ -101,9 +110,6 @@ class AuthManager {
     auth_token_ = std::move(auth_token);
     on_auth_token_updated_(auth_token_);
   }
-
-  RefreshTokenT& refresh_token() { return refresh_token_; }
-  const RefreshTokenT& refresh_token() const { return refresh_token_; }
 
  private:
   Task<> RefreshAuthToken(stdx::stop_token stop_token) {
@@ -136,83 +142,9 @@ class AuthManager {
   AuthToken auth_token_;
   std::optional<SharedPromise<RefreshToken>> current_auth_refresh_;
   coro::cloudstorage::OnAuthTokenUpdated<AuthToken> on_auth_token_updated_;
-  RefreshTokenT refresh_token_;
-  AuthorizeRequestT authorize_request_;
+  coro::cloudstorage::util::RefreshToken<Auth> refresh_token_;
+  coro::cloudstorage::util::AuthorizeRequest<Auth> authorize_request_;
   stdx::stop_source stop_source_;
-};
-
-template <typename Auth>
-class AuthManager2 {
- public:
-  virtual ~AuthManager2() = default;
-
-  using AuthToken = typename Auth::AuthToken;
-
-  virtual const AuthToken& GetAuthToken() const = 0;
-
-  virtual Task<http::Response<>> Fetch(http::Request<std::string> request,
-                                       stdx::stop_token stop_token) const = 0;
-
-  virtual Task<nlohmann::json> FetchJson(http::Request<std::string> request,
-                                         stdx::stop_token stop_token) const = 0;
-
-  virtual void OnAuthTokenUpdated(typename Auth::AuthToken auth_token) = 0;
-};
-
-template <typename Auth>
-class AuthManager3 : public AuthManager2<Auth> {
- public:
-  template <typename Impl>
-  explicit AuthManager3(Impl impl)
-      : d_(std::make_unique<AuthManager2Impl<Impl>>(std::move(impl))) {}
-
-  const typename Auth::AuthToken& GetAuthToken() const override {
-    return d_->GetAuthToken();
-  }
-
-  Task<http::Response<>> Fetch(http::Request<std::string> request,
-                               stdx::stop_token stop_token) const override {
-    return d_->Fetch(std::move(request), std::move(stop_token));
-  }
-
-  Task<nlohmann::json> FetchJson(http::Request<std::string> request,
-                                 stdx::stop_token stop_token) const override {
-    return d_->FetchJson(std::move(request), std::move(stop_token));
-  }
-
-  void OnAuthTokenUpdated(typename Auth::AuthToken auth_token) override {
-    d_->OnAuthTokenUpdated(std::move(auth_token));
-  }
-
- private:
-  template <typename Impl>
-  class AuthManager2Impl : public AuthManager2<Auth> {
-   public:
-    explicit AuthManager2Impl(Impl impl) : impl_(std::move(impl)) {}
-
-    const typename Auth::AuthToken& GetAuthToken() const override {
-      return impl_.GetAuthToken();
-    }
-
-    Task<http::Response<>> Fetch(http::Request<std::string> request,
-                                 stdx::stop_token stop_token) const override {
-      return impl_.Fetch(std::move(request), std::move(stop_token));
-    }
-
-    Task<nlohmann::json> FetchJson(http::Request<std::string> request,
-                                   stdx::stop_token stop_token) const override {
-      return impl_.FetchJson(std::move(request), std::move(stop_token));
-    }
-
-    void OnAuthTokenUpdated(typename Auth::AuthToken auth_token) override {
-      impl_.OnAuthTokenUpdated(std::move(auth_token));
-    }
-
-   private:
-    mutable Impl impl_;
-  };
-
-  std::unique_ptr<AuthManager2<Auth>> d_;
 };
 
 }  // namespace coro::cloudstorage::util
