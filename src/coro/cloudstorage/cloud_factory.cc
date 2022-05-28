@@ -23,13 +23,13 @@ using ::coro::cloudstorage::util::AbstractCloudProvider;
 
 template <typename T>
 concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
-                                   {
-                                     v.GetAuthorizationUrl({})
-                                     } -> stdx::convertible_to<std::string>;
-                                 };
+  { v.GetAuthorizationUrl({}) } -> stdx::convertible_to<std::string>;
+};
 
 template <typename T>
-concept HasAuthHandler = requires { typename T::Auth::AuthHandler; };
+concept HasAuthHandler = requires {
+  typename T::Auth::AuthHandler;
+};
 
 template <typename Auth>
 class RefreshTokenImpl {
@@ -225,7 +225,7 @@ class CloudFactoryUtil {
   }
 
   auto CreateAuthImpl() const {
-    return CreateAuthImpl<CloudProvider>(
+    return ::coro::cloudstorage::CreateAuthImpl<CloudProvider>(
         type_, auth_data_, [&] { return CreateAuthHandlerImpl(); });
   }
 

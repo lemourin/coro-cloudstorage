@@ -56,7 +56,7 @@ std::vector<AuthToken2> AuthTokenManager::LoadTokenData2() const {
       try {
         for (auto type : factory_->GetSupportedCloudProviders()) {
           const auto& auth = factory_->GetAuth(type);
-          if (entry["type"] == auth.GetId()) {
+          if (std::string(entry["type"]) == auth.GetId()) {
             AuthToken2 auth_token{{auth.ToAuthToken(entry)}, entry["id"]};
             result.emplace_back(std::move(auth_token));
           }

@@ -16,7 +16,6 @@ template <typename Auth>
 class RefreshToken {
  public:
   using AuthToken = typename Auth::AuthToken;
-  using AuthData = typename Auth::AuthData;
 
   template <typename F>
   explicit RefreshToken(F&& f) : impl_(std::forward<F>(f)) {}
