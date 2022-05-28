@@ -38,12 +38,9 @@ class CloudProviderAccount {
                                 CloudProvider account)
       : username_(std::move(username)),
         version_(version),
-        provider_(new CloudProvider(std::move(account)),
-                  [](void* d) { delete reinterpret_cast<CloudProvider*>(d); }),
         type_(CloudProvider::Type::kId),
         id_(GetAccountId<typename CloudProvider::Type>(username_)),
-        iprovider_(AbstractCloudProvider::Create(
-            reinterpret_cast<CloudProvider*>(provider_.get()))) {}
+        provider_(AbstractCloudProvider::Create(std::move(account))) {}
 
   CloudProviderAccount(const CloudProviderAccount&) = delete;
   CloudProviderAccount(CloudProviderAccount&&) = delete;
@@ -53,8 +50,8 @@ class CloudProviderAccount {
   std::string_view type() const { return type_; }
   std::string_view id() const { return id_; }
   std::string_view username() const { return username_; }
-  auto& provider() { return *iprovider_; }
-  const auto& provider() const { return *iprovider_; }
+  auto& provider() { return *provider_; }
+  const auto& provider() const { return *provider_; }
   stdx::stop_token stop_token() const { return stop_source_.get_token(); }
 
  private:
@@ -62,10 +59,9 @@ class CloudProviderAccount {
 
   std::string username_;
   int64_t version_;
-  std::unique_ptr<void, void (*)(void*)> provider_;
   std::string type_;
   std::string id_;
-  std::unique_ptr<AbstractCloudProvider::CloudProvider> iprovider_;
+  std::unique_ptr<AbstractCloudProvider::CloudProvider> provider_;
   stdx::stop_source stop_source_;
 };
 

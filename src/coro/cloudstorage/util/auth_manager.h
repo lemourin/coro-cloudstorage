@@ -40,17 +40,17 @@ struct AuthorizeRequest {
   }
 };
 
-template <typename Auth, typename OnAuthTokenUpdatedT,
-          typename RefreshTokenT = RefreshToken<Auth>,
+template <typename Auth, typename RefreshTokenT = RefreshToken<Auth>,
           typename AuthorizeRequestT = AuthorizeRequest>
 class AuthManager {
  public:
   using AuthToken = typename Auth::AuthToken;
   using Http = coro::http::Http;
 
-  AuthManager(const coro::http::Http* http, AuthToken auth_token,
-              OnAuthTokenUpdatedT on_auth_token_updated,
-              RefreshTokenT refresh_token, AuthorizeRequestT authorize_request)
+  AuthManager(
+      const coro::http::Http* http, AuthToken auth_token,
+      coro::cloudstorage::OnAuthTokenUpdated<AuthToken> on_auth_token_updated,
+      RefreshTokenT refresh_token, AuthorizeRequestT authorize_request)
       : http_(http),
         auth_token_(std::move(auth_token)),
         on_auth_token_updated_(std::move(on_auth_token_updated)),
@@ -135,7 +135,7 @@ class AuthManager {
   const coro::http::Http* http_;
   AuthToken auth_token_;
   std::optional<SharedPromise<RefreshToken>> current_auth_refresh_;
-  OnAuthTokenUpdatedT on_auth_token_updated_;
+  coro::cloudstorage::OnAuthTokenUpdated<AuthToken> on_auth_token_updated_;
   RefreshTokenT refresh_token_;
   AuthorizeRequestT authorize_request_;
   stdx::stop_source stop_source_;

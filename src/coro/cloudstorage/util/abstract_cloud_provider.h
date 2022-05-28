@@ -28,6 +28,44 @@ class AbstractCloudProvider {
   };
 
  public:
+  enum class Type {
+    kAmazonS3,
+    kBox,
+    kDropbox,
+    kGoogleDrive,
+    kHubiC,
+    kLocalFileSystem,
+    kMega,
+    kOneDrive,
+    kPCloud,
+    kWebDAV,
+    kYandexDisk,
+  };
+
+  class Auth {
+   public:
+    struct AuthToken {
+      Type type;
+      std::any impl;
+    };
+    using AuthData = std::any;
+
+    class AuthHandler {
+     public:
+      virtual ~AuthHandler() = default;
+
+      virtual Task<std::variant<http::Response<>, AuthToken>> OnRequest(
+          http::Request<> request, stdx::stop_token stop_token) = 0;
+    };
+
+    virtual ~Auth() = default;
+
+    virtual std::optional<std::string> GetAuthorizationUrl(
+        const AuthData& data) const = 0;
+
+    virtual std::unique_ptr<AuthHandler> CreateAuthHandler() const = 0;
+  };
+
   struct File : ItemData {
     std::string mime_type;
   };
@@ -61,7 +99,7 @@ class AbstractCloudProvider {
   class CloudProvider;
 
   template <typename CloudProviderT>
-  static std::unique_ptr<CloudProvider> Create(CloudProviderT*);
+  static std::unique_ptr<CloudProvider> Create(CloudProviderT);
 };
 
 class AbstractCloudProvider::CloudProvider

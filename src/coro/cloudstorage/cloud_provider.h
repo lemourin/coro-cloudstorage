@@ -3,7 +3,7 @@
 
 #include <span>
 
-#include "coro/cloudstorage/util/auth_manager.h"
+#include "coro/cloudstorage/cloud_exception.h"
 #include "coro/cloudstorage/util/generator_utils.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/http/http.h"

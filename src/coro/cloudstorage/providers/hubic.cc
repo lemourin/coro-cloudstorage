@@ -85,11 +85,10 @@ struct OnOpenStackTokenUpdated {
 };
 
 using OpenStackAuthManager =
-    util::AuthManager<OpenStack::Auth, OnOpenStackTokenUpdated,
-                      RefreshOpenStackToken, HubiC::AuthorizeRequest>;
+    util::AuthManager<OpenStack::Auth, RefreshOpenStackToken,
+                      HubiC::AuthorizeRequest>;
 
-using HubiCAuthManager =
-    util::AuthManager<HubiC::Auth, OnAuthTokenUpdatedT, RefreshAccessToken>;
+using HubiCAuthManager = util::AuthManager<HubiC::Auth, RefreshAccessToken>;
 
 }  // namespace
 
@@ -241,7 +240,8 @@ OpenStack::CloudProvider HubiC::CloudProvider::CreateOpenStackProvider() {
   return OpenStack::CloudProvider(
       util::AuthManager3<OpenStack::Auth>(OpenStackAuthManager(
           http_, auth_manager_.GetAuthToken().openstack_auth_token,
-          OnOpenStackTokenUpdated{&auth_manager_},
+          OnAuthTokenUpdated<OpenStack::Auth::AuthToken>(
+              OnOpenStackTokenUpdated{&auth_manager_}),
           RefreshOpenStackToken{&auth_manager_, http_},
           OpenStack::AuthorizeRequest{})),
       http_);
@@ -278,9 +278,10 @@ HubiC::Auth::AuthData GetAuthData<HubiC>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<HubiC::CloudProvider>(
-    HubiC::CloudProvider* p) -> std::unique_ptr<CloudProvider> {
-  return std::make_unique<AbstractCloudProviderImpl<HubiC::CloudProvider>>(p);
+auto AbstractCloudProvider::Create<HubiC::CloudProvider>(HubiC::CloudProvider p)
+    -> std::unique_ptr<CloudProvider> {
+  return std::make_unique<AbstractCloudProviderImpl<HubiC::CloudProvider>>(
+      std::move(p));
 }
 
 }  // namespace util

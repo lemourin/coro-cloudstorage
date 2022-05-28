@@ -479,9 +479,9 @@ AmazonS3::Auth::AuthData GetAuthData<AmazonS3>() {
 
 template <>
 auto AbstractCloudProvider::Create<AmazonS3::CloudProvider>(
-    AmazonS3::CloudProvider* p) -> std::unique_ptr<CloudProvider> {
+    AmazonS3::CloudProvider p) -> std::unique_ptr<CloudProvider> {
   return std::make_unique<AbstractCloudProviderImpl<AmazonS3::CloudProvider>>(
-      p);
+      std::move(p));
 }
 
 }  // namespace util

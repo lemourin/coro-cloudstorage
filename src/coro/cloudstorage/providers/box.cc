@@ -1,6 +1,7 @@
 #include "coro/cloudstorage/providers/box.h"
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+#include "coro/cloudstorage/util/auth_manager.h"
 
 namespace coro::cloudstorage {
 
@@ -296,9 +297,10 @@ Box::Auth::AuthData GetAuthData<Box>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<Box::CloudProvider>(Box::CloudProvider* p)
+auto AbstractCloudProvider::Create<Box::CloudProvider>(Box::CloudProvider p)
     -> std::unique_ptr<CloudProvider> {
-  return std::make_unique<AbstractCloudProviderImpl<Box::CloudProvider>>(p);
+  return std::make_unique<AbstractCloudProviderImpl<Box::CloudProvider>>(
+      std::move(p));
 }
 
 }  // namespace util

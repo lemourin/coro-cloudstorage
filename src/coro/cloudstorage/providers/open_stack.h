@@ -6,6 +6,7 @@
 #include <variant>
 
 #include "coro/cloudstorage/cloud_provider.h"
+#include "coro/cloudstorage/util/auth_manager.h"
 #include "coro/cloudstorage/util/crypto_utils.h"
 #include "coro/cloudstorage/util/fetch_json.h"
 #include "coro/cloudstorage/util/file_utils.h"
