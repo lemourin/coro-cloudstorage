@@ -15,7 +15,7 @@ namespace coro::cloudstorage::util {
 
 class CloudFactoryContext {
  public:
-  CloudFactoryContext(event_base* event_base)
+  explicit CloudFactoryContext(event_base* event_base)
       : event_loop_(event_base),
         thread_pool_(&event_loop_),
         http_(coro::http::CacheHttpConfig{}, event_base),
@@ -24,9 +24,7 @@ class CloudFactoryContext {
         random_engine_(std::random_device()()),
         random_number_generator_(&random_engine_),
         factory_(&event_loop_, &thread_pool_, &http_, &thumbnail_generator_,
-                 &muxer_, &random_number_generator_),
-        factory2_(&event_loop_, &thread_pool_, &http_, &thumbnail_generator_,
-                  &muxer_, &random_number_generator_) {}
+                 &muxer_, &random_number_generator_) {}
 
   CloudFactoryContext(CloudFactoryContext&&) = delete;
   CloudFactoryContext& operator=(CloudFactoryContext&&) = delete;
@@ -35,7 +33,6 @@ class CloudFactoryContext {
   auto* event_loop() { return &event_loop_; }
   auto* thread_pool() { return &thread_pool_; }
   auto* thumbnail_generator() { return &thumbnail_generator_; }
-  auto* factory2() { return &factory2_; }
 
  private:
   coro::util::EventLoop event_loop_;
@@ -46,7 +43,6 @@ class CloudFactoryContext {
   std::default_random_engine random_engine_;
   util::RandomNumberGenerator random_number_generator_;
   CloudFactory factory_;
-  CloudFactory2 factory2_;
 };
 
 }  // namespace coro::cloudstorage::util

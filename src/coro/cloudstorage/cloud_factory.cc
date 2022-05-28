@@ -23,6 +23,16 @@ using ::coro::cloudstorage::util::AbstractCloudProvider;
 using ::coro::cloudstorage::util::AuthManager;
 using ::coro::cloudstorage::util::AuthManager3;
 
+template <typename T>
+concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
+                                   {
+                                     v.GetAuthorizationUrl({})
+                                     } -> stdx::convertible_to<std::string>;
+                                 };
+
+template <typename T>
+concept HasAuthHandler = requires { typename T::Auth::AuthHandler; };
+
 template <typename CloudProvider, typename Impl>
 class AuthHandlerImpl : public AbstractCloudProvider::Auth::AuthHandler {
  public:
@@ -178,12 +188,7 @@ class CloudFactoryImpl : public AbstractCloudFactory {
         return base_injector;
       }
     }();
-
-    if constexpr (HasCloudProviderT<CloudProvider>) {
-      return injector.template create<CloudProvider::template CloudProvider>();
-    } else {
-      return injector.template create<typename CloudProvider::CloudProvider>();
-    }
+    return injector.template create<typename CloudProvider::CloudProvider>();
   }
 
   auto GetAuthData() const {
@@ -213,9 +218,6 @@ class CloudFactoryImpl : public AbstractCloudFactory {
     if constexpr (HasAuthHandler<CloudProvider>) {
       return injector
           .template create<typename CloudProvider::Auth::AuthHandler>();
-    } else if constexpr (HasAuthHandlerT<CloudProvider>) {
-      return injector
-          .template create<CloudProvider::Auth::template AuthHandler>();
     } else {
       return injector.template create<util::AuthHandler>();
     }
@@ -233,7 +235,7 @@ class CloudFactoryImpl : public AbstractCloudFactory {
 
 }  // namespace
 
-std::unique_ptr<AbstractCloudFactory> CloudFactory2::CreateCloudFactory(
+std::unique_ptr<AbstractCloudFactory> CloudFactory::CreateCloudFactory(
     AbstractCloudProvider::Type type) const {
   auto create = [&]<typename T>() {
     return std::make_unique<CloudFactoryImpl<T>>(
@@ -267,7 +269,7 @@ std::unique_ptr<AbstractCloudFactory> CloudFactory2::CreateCloudFactory(
   }
 }
 
-std::unique_ptr<AbstractCloudProvider::CloudProvider> CloudFactory2::Create(
+std::unique_ptr<AbstractCloudProvider::CloudProvider> CloudFactory::Create(
     AbstractCloudProvider::Auth::AuthToken auth_token,
     std::function<void(const AbstractCloudProvider::Auth::AuthToken&)>
         on_token_updated) const {
@@ -275,13 +277,13 @@ std::unique_ptr<AbstractCloudProvider::CloudProvider> CloudFactory2::Create(
       ->Create(std::move(auth_token), std::move(on_token_updated));
 }
 
-std::unique_ptr<AbstractCloudProvider::Auth> CloudFactory2::CreateAuth(
+std::unique_ptr<AbstractCloudProvider::Auth> CloudFactory::CreateAuth(
     AbstractCloudProvider::Type type) const {
   return CreateCloudFactory(type)->CreateAuth(type);
 }
 
 std::vector<AbstractCloudProvider::Type>
-CloudFactory2::GetSupportedCloudProviders() const {
+CloudFactory::GetSupportedCloudProviders() const {
   using Type = AbstractCloudProvider::Type;
 
   return {Type::kAmazonS3,

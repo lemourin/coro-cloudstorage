@@ -14,7 +14,6 @@
 
 using ::coro::Promise;
 using ::coro::Task;
-using ::coro::cloudstorage::CloudFactory;
 using ::coro::cloudstorage::util::AbstractCloudFactory;
 using ::coro::cloudstorage::util::AccountManagerHandler;
 using ::coro::cloudstorage::util::AuthTokenManager;
@@ -24,7 +23,6 @@ using ::coro::cloudstorage::util::SettingsManager;
 using ::coro::cloudstorage::util::ThumbnailGenerator;
 using ::coro::http::CurlHttp;
 using ::coro::http::HttpServer;
-using ::coro::util::TypeList;
 
 class HttpHandler {
  public:
@@ -75,11 +73,11 @@ Task<> CoMain(event_base* event_base) noexcept {
   try {
     CloudFactoryContext factory_context(event_base);
     SettingsManager settings_manager(
-        AuthTokenManager{factory_context.factory2()});
+        AuthTokenManager{factory_context.factory()});
     Promise<void> quit;
     HttpServer<HttpHandler> http_server(
         event_base, settings_manager.GetHttpServerConfig(),
-        factory_context.factory2(), factory_context.thumbnail_generator(),
+        factory_context.factory(), factory_context.thumbnail_generator(),
         std::move(settings_manager), &quit);
     co_await quit;
     co_await http_server.Quit();
