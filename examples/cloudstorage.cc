@@ -31,10 +31,10 @@ class HttpHandler {
   using Request = coro::http::Request<>;
   using Response = coro::http::Response<>;
 
-  HttpHandler(const CloudFactory* factory, const AbstractCloudFactory* factory2,
+  HttpHandler(const AbstractCloudFactory* factory,
               const ThumbnailGenerator* thumbnail_generator,
               SettingsManager settings_manager, Promise<void>* quit)
-      : account_manager_handler_(factory, factory2, thumbnail_generator,
+      : account_manager_handler_(factory, thumbnail_generator,
                                  AccountListener{},
                                  std::move(settings_manager)),
         quit_(quit) {}
@@ -79,9 +79,8 @@ Task<> CoMain(event_base* event_base) noexcept {
     Promise<void> quit;
     HttpServer<HttpHandler> http_server(
         event_base, settings_manager.GetHttpServerConfig(),
-        factory_context.factory(), factory_context.factory2(),
-        factory_context.thumbnail_generator(), std::move(settings_manager),
-        &quit);
+        factory_context.factory2(), factory_context.thumbnail_generator(),
+        std::move(settings_manager), &quit);
     co_await quit;
     co_await http_server.Quit();
   } catch (const std::exception& exception) {
