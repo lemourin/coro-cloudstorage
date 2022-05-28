@@ -2,6 +2,7 @@
 #define CORO_CLOUDSTORAGE_UTIL_ABSTRACT_CLOUD_PROVIDER_H
 
 #include <any>
+#include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <string>
 #include <variant>
@@ -48,7 +49,6 @@ class AbstractCloudProvider {
       Type type;
       std::any impl;
     };
-    using AuthData = std::any;
 
     class AuthHandler {
      public:
@@ -60,8 +60,13 @@ class AbstractCloudProvider {
 
     virtual ~Auth() = default;
 
-    virtual std::optional<std::string> GetAuthorizationUrl(
-        const AuthData& data) const = 0;
+    virtual std::string_view GetId() const = 0;
+
+    virtual nlohmann::json ToJson(const AuthToken&) const = 0;
+
+    virtual AuthToken ToAuthToken(const nlohmann::json&) const = 0;
+
+    virtual std::optional<std::string> GetAuthorizationUrl() const = 0;
 
     virtual std::unique_ptr<AuthHandler> CreateAuthHandler() const = 0;
   };
@@ -108,7 +113,7 @@ class AbstractCloudProvider::CloudProvider
  public:
   virtual ~CloudProvider() = default;
 
-  virtual intptr_t GetId() const = 0;
+  virtual std::string_view GetId() const = 0;
 
   virtual Task<Directory> GetRoot(stdx::stop_token) const = 0;
 

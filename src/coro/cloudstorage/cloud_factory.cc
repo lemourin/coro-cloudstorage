@@ -59,14 +59,14 @@ auto CreateAuthHandlerImpl(AbstractCloudProvider::Type type, Impl impl) {
 template <typename CloudProvider, typename Impl>
 class AuthImpl : public AbstractCloudProvider::Auth {
  public:
-  AuthImpl(AbstractCloudProvider::Type type, Impl impl)
-      : type_(type), impl_(std::move(impl)) {}
+  AuthImpl(AbstractCloudProvider::Type type, const util::AuthData* auth_data,
+           Impl impl)
+      : type_(type), auth_data_(auth_data), impl_(std::move(impl)) {}
 
-  std::optional<std::string> GetAuthorizationUrl(
-      const AuthData& data) const override {
+  std::optional<std::string> GetAuthorizationUrl() const override {
     if constexpr (HasGetAuthorizationUrl<CloudProvider>) {
       return CloudProvider::Auth::GetAuthorizationUrl(
-          std::any_cast<const typename CloudProvider::Auth::AuthData&>(data));
+          auth_data_->template operator()<CloudProvider>());
     } else {
       return std::nullopt;
     }
@@ -76,14 +76,32 @@ class AuthImpl : public AbstractCloudProvider::Auth {
     return CreateAuthHandlerImpl<CloudProvider>(type_, impl_());
   }
 
+  std::string_view GetId() const override { return CloudProvider::kId; }
+
+  nlohmann::json ToJson(const AuthToken& auth_token) const override {
+    return util::ToJson(
+        std::any_cast<const typename CloudProvider::Auth::AuthToken&>(
+            auth_token.impl));
+  }
+
+  AuthToken ToAuthToken(const nlohmann::json& json) const override {
+    return AuthToken{
+        .type = type_,
+        .impl =
+            util::ToAuthToken<typename CloudProvider::Auth::AuthToken>(json)};
+  }
+
  private:
   AbstractCloudProvider::Type type_;
+  const util::AuthData* auth_data_;
   Impl impl_;
 };
 
 template <typename CloudProvider, typename Impl>
-auto CreateAuthImpl(AbstractCloudProvider::Type type, Impl impl) {
-  return std::make_unique<AuthImpl<CloudProvider, Impl>>(type, std::move(impl));
+auto CreateAuthImpl(AbstractCloudProvider::Type type,
+                    const util::AuthData* auth_data, Impl impl) {
+  return std::make_unique<AuthImpl<CloudProvider, Impl>>(type, auth_data,
+                                                         std::move(impl));
 }
 
 template <typename CloudProvider>
@@ -128,7 +146,12 @@ class CloudFactoryImpl : public AbstractCloudFactory {
   std::unique_ptr<AbstractCloudProvider::Auth> CreateAuth(
       AbstractCloudProvider::Type) const override {
     return CreateAuthImpl<CloudProvider>(
-        type_, [&] { return CreateAuthHandlerImpl(); });
+        type_, auth_data_, [&] { return CreateAuthHandlerImpl(); });
+  }
+
+  std::vector<AbstractCloudProvider::Type> GetSupportedCloudProviders()
+      const override {
+    return {type_};
   }
 
  private:
@@ -218,7 +241,7 @@ std::unique_ptr<AbstractCloudFactory> CloudFactory2::CreateCloudFactory(
 
   switch (type) {
     case AbstractCloudProvider::Type::kAmazonS3:
-      return create.operator()<GoogleDrive>();
+      return create.operator()<AmazonS3>();
     case AbstractCloudProvider::Type::kBox:
       return create.operator()<Box>();
     case AbstractCloudProvider::Type::kDropbox:
@@ -253,6 +276,23 @@ std::unique_ptr<AbstractCloudProvider::CloudProvider> CloudFactory2::Create(
 std::unique_ptr<AbstractCloudProvider::Auth> CloudFactory2::CreateAuth(
     AbstractCloudProvider::Type type) const {
   return CreateCloudFactory(type)->CreateAuth(type);
+}
+
+std::vector<AbstractCloudProvider::Type>
+CloudFactory2::GetSupportedCloudProviders() const {
+  using Type = AbstractCloudProvider::Type;
+
+  return {Type::kAmazonS3,
+          Type::kBox,
+          Type::kDropbox,
+          Type::kGoogleDrive,
+          Type::kLocalFileSystem,
+          Type::kHubiC,
+          Type::kMega,
+          Type::kOneDrive,
+          Type::kPCloud,
+          Type::kWebDAV,
+          Type::kYandexDisk};
 }
 
 }  // namespace coro::cloudstorage

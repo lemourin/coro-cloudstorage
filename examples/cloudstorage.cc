@@ -16,7 +16,9 @@
 using ::coro::Promise;
 using ::coro::Task;
 using ::coro::cloudstorage::CloudFactory;
+using ::coro::cloudstorage::util::AbstractCloudFactory;
 using ::coro::cloudstorage::util::AccountManagerHandler;
+using ::coro::cloudstorage::util::AuthTokenManager;
 using ::coro::cloudstorage::util::CloudFactoryContext;
 using ::coro::cloudstorage::util::CloudProviderAccount;
 using ::coro::cloudstorage::util::SettingsManager;
@@ -32,11 +34,11 @@ class HttpHandler {
   using Request = coro::http::Request<>;
   using Response = coro::http::Response<>;
 
-  HttpHandler(const CloudFactory* factory,
+  HttpHandler(const CloudFactory* factory, const AbstractCloudFactory* factory2,
               const ThumbnailGenerator* thumbnail_generator,
               SettingsManager settings_manager, Promise<void>* quit)
       : account_manager_handler_(AccountManagerHandler::Id<CloudProviders>{},
-                                 factory, thumbnail_generator,
+                                 factory, factory2, thumbnail_generator,
                                  AccountListener{},
                                  std::move(settings_manager)),
         quit_(quit) {}
@@ -76,12 +78,14 @@ class HttpHandler {
 Task<> CoMain(event_base* event_base) noexcept {
   try {
     CloudFactoryContext factory_context(event_base);
-    SettingsManager settings_manager;
+    SettingsManager settings_manager(
+        AuthTokenManager{factory_context.factory2()});
     Promise<void> quit;
     HttpServer<HttpHandler> http_server(
         event_base, settings_manager.GetHttpServerConfig(),
-        factory_context.factory(), factory_context.thumbnail_generator(),
-        std::move(settings_manager), &quit);
+        factory_context.factory(), factory_context.factory2(),
+        factory_context.thumbnail_generator(), std::move(settings_manager),
+        &quit);
     co_await quit;
     co_await http_server.Quit();
   } catch (const std::exception& exception) {

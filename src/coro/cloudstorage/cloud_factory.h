@@ -184,6 +184,9 @@ class CloudFactory2 : public util::AbstractCloudFactory {
   std::unique_ptr<util::AbstractCloudProvider::Auth> CreateAuth(
       util::AbstractCloudProvider::Type) const override;
 
+  std::vector<util::AbstractCloudProvider::Type> GetSupportedCloudProviders()
+      const override;
+
  private:
   std::unique_ptr<util::AbstractCloudFactory> CreateCloudFactory(
       util::AbstractCloudProvider::Type type) const;

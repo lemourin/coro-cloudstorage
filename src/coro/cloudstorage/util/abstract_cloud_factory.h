@@ -16,6 +16,9 @@ class AbstractCloudFactory {
 
   virtual std::unique_ptr<AbstractCloudProvider::Auth> CreateAuth(
       AbstractCloudProvider::Type) const = 0;
+
+  virtual std::vector<AbstractCloudProvider::Type> GetSupportedCloudProviders()
+      const = 0;
 };
 
 }  // namespace coro::cloudstorage::util

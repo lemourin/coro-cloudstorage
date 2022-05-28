@@ -16,9 +16,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider {
   explicit AbstractCloudProviderImpl(CloudProviderT provider)
       : provider_(std::move(provider)) {}
 
-  intptr_t GetId() const override {
-    return reinterpret_cast<intptr_t>(&provider_);
-  }
+  std::string_view GetId() const override { return CloudProviderT::Type::kId; }
 
   Task<Directory> GetRoot(stdx::stop_token stop_token) const override {
     co_return Convert<Directory>(

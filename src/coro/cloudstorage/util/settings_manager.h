@@ -9,8 +9,9 @@ namespace coro::cloudstorage::util {
 
 class SettingsManager {
  public:
-  explicit SettingsManager(std::string path = GetConfigFilePath())
-      : auth_token_manager_(path),
+  SettingsManager(AuthTokenManager auth_token_manager,
+                  std::string path = GetConfigFilePath())
+      : auth_token_manager_(std::move(auth_token_manager)),
         path_(std::move(path)),
         effective_is_public_network_enabled_(IsPublicNetworkEnabled()) {}
 
@@ -19,10 +20,19 @@ class SettingsManager {
     return auth_token_manager_.LoadTokenData<CloudProviderList>();
   }
 
+  auto LoadTokenData2() const {
+    return auth_token_manager_.LoadTokenData2();
+  }
+
   template <typename CloudProvider>
   void SaveToken(typename CloudProvider::Auth::AuthToken token,
                  std::string_view id) const {
     auth_token_manager_.SaveToken<CloudProvider>(std::move(token), id);
+  }
+
+  void SaveToken2(AbstractCloudProvider::Auth::AuthToken token,
+                  std::string_view id) const {
+    auth_token_manager_.SaveToken2(std::move(token), id);
   }
 
   void RemoveToken(std::string_view type, std::string_view id) const {

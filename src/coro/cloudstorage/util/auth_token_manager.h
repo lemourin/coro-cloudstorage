@@ -20,6 +20,10 @@ struct AuthToken : CloudProviderT::Auth::AuthToken {
   std::string id;
 };
 
+struct AuthToken2 : AbstractCloudProvider::Auth::AuthToken {
+  std::string id;
+};
+
 namespace internal {
 
 template <typename>
@@ -64,8 +68,11 @@ struct LoadToken<coro::util::TypeList<CloudProviders...>> {
 
 class AuthTokenManager {
  public:
-  AuthTokenManager(std::string path = GetConfigFilePath())
-      : path_(std::move(path)) {}
+  AuthTokenManager(AbstractCloudFactory* factory,
+                   std::string path = GetConfigFilePath())
+      : factory_(factory), path_(std::move(path)) {}
+
+  std::vector<AuthToken2> LoadTokenData2() const;
 
   template <typename CloudProviderList>
   auto LoadTokenData() const {
@@ -79,6 +86,9 @@ class AuthTokenManager {
               GetCloudProviderId<CloudProvider>());
   }
 
+  void SaveToken2(AbstractCloudProvider::Auth::AuthToken token,
+                  std::string_view id) const;
+
   template <typename CloudProvider>
   void RemoveToken(std::string_view id) const {
     RemoveToken(id, GetCloudProviderId<CloudProvider>());
@@ -89,6 +99,7 @@ class AuthTokenManager {
   void RemoveToken(std::string_view id, std::string_view provider_id) const;
 
  private:
+  AbstractCloudFactory* factory_;
   std::string path_;
 };
 
