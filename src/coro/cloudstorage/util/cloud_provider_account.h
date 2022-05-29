@@ -16,48 +16,8 @@ inline std::string GetAccountId(std::string_view id,
   return StrCat("[", id, "] ", username);
 }
 
-template <typename CloudProvider>
-std::string GetAccountId(std::string_view username) {
-  return GetAccountId(CloudProvider::kId, username);
-}
-
-namespace internal {
-
-template <typename CloudProvider>
-struct OnAuthTokenChanged {
-  void operator()(typename CloudProvider::Auth::AuthToken auth_token) {
-    if (*account_id) {
-      d->template SaveToken<CloudProvider>(std::move(auth_token), **account_id);
-    }
-  }
-  SettingsManager* d;
-  std::shared_ptr<std::optional<std::string>> account_id;
-};
-
-struct OnAuthTokenChanged2 {
-  void operator()(AbstractCloudProvider::Auth::AuthToken auth_token) {
-    //    if (*account_id) {
-    //      d->template SaveToken<CloudProvider>(std::move(auth_token),
-    //      **account_id);
-    //    }
-  }
-  SettingsManager* d;
-  std::shared_ptr<std::optional<std::string>> account_id;
-};
-
-}  // namespace internal
-
 class CloudProviderAccount {
  public:
-  template <typename CloudProvider>
-  CloudProviderAccount(std::string username, int64_t version,
-                       CloudProvider account)
-      : username_(std::move(username)),
-        version_(version),
-        type_(CloudProvider::Type::kId),
-        id_(GetAccountId<typename CloudProvider::Type>(username_)),
-        provider_(AbstractCloudProvider::Create(std::move(account))) {}
-
   CloudProviderAccount(
       std::string username, int64_t version,
       std::unique_ptr<AbstractCloudProvider::CloudProvider> account)

@@ -13,6 +13,16 @@ namespace coro::cloudstorage::util {
 
 namespace {
 
+struct OnAuthTokenChanged {
+  void operator()(AbstractCloudProvider::Auth::AuthToken auth_token) {
+    if (*account_id) {
+      d->SaveToken2(std::move(auth_token), **account_id);
+    }
+  }
+  SettingsManager* d;
+  std::shared_ptr<std::optional<std::string>> account_id;
+};
+
 Generator<std::string> GetResponse(Generator<std::string> body,
                                    stdx::stop_source stop_source,
                                    stdx::stop_token account_token,
@@ -251,9 +261,8 @@ CloudProviderAccount* AccountManagerHandler::CreateAccount(
     std::shared_ptr<std::optional<std::string>> username) {
   return &accounts_.emplace_back(
       username->value_or(""), version_++,
-      factory_->Create(
-          std::move(auth_token),
-          internal::OnAuthTokenChanged2{&settings_manager_, username}));
+      factory_->Create(std::move(auth_token),
+                       OnAuthTokenChanged{&settings_manager_, username}));
 }
 
 Task<CloudProviderAccount*> AccountManagerHandler::Create(
