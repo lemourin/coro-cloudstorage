@@ -20,24 +20,24 @@ T ToItem(std::string account_id, Entry entry) {
 
 }  // namespace
 
-bool MergedCloudProvider2::CloudProvider::IsFileContentSizeRequired(
+bool MergedCloudProvider::CloudProvider::IsFileContentSizeRequired(
     const Directory &d) const {
   auto *account = GetAccount(d.account_id);
   return account->provider->IsFileContentSizeRequired(d.item);
 }
 
-bool MergedCloudProvider2::CloudProvider::IsFileContentSizeRequired(
+bool MergedCloudProvider::CloudProvider::IsFileContentSizeRequired(
     const Root &) const {
   throw CloudException("can't upload into root");
 }
 
-void MergedCloudProvider2::CloudProvider::AddAccount(
+void MergedCloudProvider::CloudProvider::AddAccount(
     std::string id, AbstractCloudProvider::CloudProvider *p) {
   std::cerr << "CREATE " << id << "\n";
   accounts_.push_back(Account{.id = std::move(id), .provider = p});
 }
 
-void MergedCloudProvider2::CloudProvider::RemoveAccount(
+void MergedCloudProvider::CloudProvider::RemoveAccount(
     AbstractCloudProvider::CloudProvider *p) {
   accounts_.erase(
       std::find_if(accounts_.begin(), accounts_.end(), [&](Account &account) {
@@ -50,12 +50,12 @@ void MergedCloudProvider2::CloudProvider::RemoveAccount(
       }));
 }
 
-auto MergedCloudProvider2::CloudProvider::GetRoot(stdx::stop_token) const
+auto MergedCloudProvider::CloudProvider::GetRoot(stdx::stop_token) const
     -> Task<Root> {
   co_return Root{.id = "root"};
 }
 
-auto MergedCloudProvider2::CloudProvider::ListDirectoryPage(
+auto MergedCloudProvider::CloudProvider::ListDirectoryPage(
     Root directory, std::optional<std::string> page_token,
     stdx::stop_token stop_token) -> Task<PageData> {
   auto get_root = [](Account *account,
@@ -81,7 +81,7 @@ auto MergedCloudProvider2::CloudProvider::ListDirectoryPage(
   co_return page_data;
 }
 
-auto MergedCloudProvider2::CloudProvider::ListDirectoryPage(
+auto MergedCloudProvider::CloudProvider::ListDirectoryPage(
     Directory directory, std::optional<std::string> page_token,
     stdx::stop_token stop_token) -> Task<PageData> {
   auto *account = GetAccount(directory.account_id);
@@ -108,7 +108,7 @@ auto MergedCloudProvider2::CloudProvider::ListDirectoryPage(
   co_return result;
 }
 
-auto MergedCloudProvider2::CloudProvider::GetGeneralData(
+auto MergedCloudProvider::CloudProvider::GetGeneralData(
     stdx::stop_token stop_token) -> Task<GeneralData> {
   auto get_volume_data =
       [&](Account &account) -> Task<AbstractCloudProvider::GeneralData> {
@@ -137,7 +137,7 @@ auto MergedCloudProvider2::CloudProvider::GetGeneralData(
   co_return total;
 }
 
-Generator<std::string> MergedCloudProvider2::CloudProvider::GetFileContent(
+Generator<std::string> MergedCloudProvider::CloudProvider::GetFileContent(
     File file, http::Range range, stdx::stop_token stop_token) {
   auto *account = GetAccount(file.account_id);
   coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
@@ -148,7 +148,7 @@ Generator<std::string> MergedCloudProvider2::CloudProvider::GetFileContent(
 }
 
 template <typename ItemT>
-Task<ItemT> MergedCloudProvider2::CloudProvider::RenameItem(
+Task<ItemT> MergedCloudProvider::CloudProvider::RenameItem(
     ItemT item, std::string new_name, stdx::stop_token stop_token) {
   if constexpr (std::is_same_v<ItemT, Root>) {
     throw std::runtime_error("can't rename root");
@@ -164,7 +164,7 @@ Task<ItemT> MergedCloudProvider2::CloudProvider::RenameItem(
   }
 }
 
-auto MergedCloudProvider2::CloudProvider::CreateDirectory(
+auto MergedCloudProvider::CloudProvider::CreateDirectory(
     Directory parent, std::string name, stdx::stop_token stop_token)
     -> Task<Directory> {
   auto *account = GetAccount(parent.account_id);
@@ -178,7 +178,7 @@ auto MergedCloudProvider2::CloudProvider::CreateDirectory(
 }
 
 template <typename ItemT>
-Task<> MergedCloudProvider2::CloudProvider::RemoveItem(
+Task<> MergedCloudProvider::CloudProvider::RemoveItem(
     ItemT item, stdx::stop_token stop_token) {
   if constexpr (std::is_same_v<ItemT, Root>) {
     throw CloudException("can't remove root");
@@ -192,7 +192,7 @@ Task<> MergedCloudProvider2::CloudProvider::RemoveItem(
 }
 
 template <typename ItemT>
-Task<ItemT> MergedCloudProvider2::CloudProvider::MoveItem(
+Task<ItemT> MergedCloudProvider::CloudProvider::MoveItem(
     ItemT source, Directory destination, stdx::stop_token stop_token) {
   if constexpr (std::is_same_v<ItemT, Root>) {
     throw CloudException("can't move root");
@@ -210,9 +210,11 @@ Task<ItemT> MergedCloudProvider2::CloudProvider::MoveItem(
   }
 }
 
-auto MergedCloudProvider2::CloudProvider::CreateFile(
-    Directory parent, std::string_view name, FileContent content,
-    stdx::stop_token stop_token) -> Task<File> {
+auto MergedCloudProvider::CloudProvider::CreateFile(Directory parent,
+                                                    std::string_view name,
+                                                    FileContent content,
+                                                    stdx::stop_token stop_token)
+    -> Task<File> {
   auto *account = GetAccount(parent.account_id);
   auto *p = account->provider;
   coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
@@ -225,7 +227,7 @@ auto MergedCloudProvider2::CloudProvider::CreateFile(
                              stop_token_or.GetToken()));
 }
 
-auto MergedCloudProvider2::CloudProvider::GetAccount(std::string_view id)
+auto MergedCloudProvider::CloudProvider::GetAccount(std::string_view id)
     -> Account * {
   for (auto &account : accounts_) {
     if (account.id == id) {
@@ -235,41 +237,40 @@ auto MergedCloudProvider2::CloudProvider::GetAccount(std::string_view id)
   throw CloudException(CloudException::Type::kNotFound);
 }
 
-auto MergedCloudProvider2::CloudProvider::GetAccount(std::string_view id) const
+auto MergedCloudProvider::CloudProvider::GetAccount(std::string_view id) const
     -> const Account * {
   return const_cast<CloudProvider *>(this)->GetAccount(id);
 }
 
-template auto MergedCloudProvider2::CloudProvider::RenameItem(
+template auto MergedCloudProvider::CloudProvider::RenameItem(
     File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
 
-template auto MergedCloudProvider2::CloudProvider::RenameItem(
+template auto MergedCloudProvider::CloudProvider::RenameItem(
     Directory item, std::string new_name, stdx::stop_token stop_token)
     -> Task<Directory>;
 
-template auto MergedCloudProvider2::CloudProvider::RenameItem(
+template auto MergedCloudProvider::CloudProvider::RenameItem(
     Root item, std::string new_name, stdx::stop_token stop_token) -> Task<Root>;
 
-template auto MergedCloudProvider2::CloudProvider::MoveItem(File, Directory,
-                                                            stdx::stop_token)
+template auto MergedCloudProvider::CloudProvider::MoveItem(File, Directory,
+                                                           stdx::stop_token)
     -> Task<File>;
 
-template auto MergedCloudProvider2::CloudProvider::MoveItem(Directory,
-                                                            Directory,
-                                                            stdx::stop_token)
+template auto MergedCloudProvider::CloudProvider::MoveItem(Directory, Directory,
+                                                           stdx::stop_token)
     -> Task<Directory>;
 
-template auto MergedCloudProvider2::CloudProvider::MoveItem(Root, Directory,
-                                                            stdx::stop_token)
+template auto MergedCloudProvider::CloudProvider::MoveItem(Root, Directory,
+                                                           stdx::stop_token)
     -> Task<Root>;
 
-template Task<> MergedCloudProvider2::CloudProvider::RemoveItem(
+template Task<> MergedCloudProvider::CloudProvider::RemoveItem(
     File, stdx::stop_token);
 
-template Task<> MergedCloudProvider2::CloudProvider::RemoveItem(
+template Task<> MergedCloudProvider::CloudProvider::RemoveItem(
     Directory, stdx::stop_token);
 
-template Task<> MergedCloudProvider2::CloudProvider::RemoveItem(
+template Task<> MergedCloudProvider::CloudProvider::RemoveItem(
     Root, stdx::stop_token);
 
 }  // namespace coro::cloudstorage::util
