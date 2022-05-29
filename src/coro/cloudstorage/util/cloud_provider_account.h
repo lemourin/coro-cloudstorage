@@ -27,11 +27,6 @@ class CloudProviderAccount {
         id_(GetAccountId(type_, username_)),
         provider_(std::move(account)) {}
 
-  CloudProviderAccount(const CloudProviderAccount&) = delete;
-  CloudProviderAccount(CloudProviderAccount&&) = delete;
-  CloudProviderAccount& operator=(const CloudProviderAccount&) = delete;
-  CloudProviderAccount& operator=(CloudProviderAccount&&) = delete;
-
   std::string_view type() const { return type_; }
   std::string_view id() const { return id_; }
   std::string_view username() const { return username_; }

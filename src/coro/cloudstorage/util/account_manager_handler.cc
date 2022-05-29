@@ -16,7 +16,7 @@ namespace {
 struct OnAuthTokenChanged {
   void operator()(AbstractCloudProvider::Auth::AuthToken auth_token) {
     if (*account_id) {
-      d->SaveToken2(std::move(auth_token), **account_id);
+      d->SaveToken(std::move(auth_token), **account_id);
     }
   }
   SettingsManager* d;
@@ -71,7 +71,7 @@ AccountManagerHandler::AccountManagerHandler(
         .handler = AuthHandler{type, this}});
   }
 
-  for (auto auth_token : settings_manager_.LoadTokenData2()) {
+  for (auto auth_token : settings_manager_.LoadTokenData()) {
     auto id = std::move(auth_token.id);
     auto* account =
         CreateAccount(std::move(auth_token),
@@ -286,7 +286,7 @@ Task<CloudProviderAccount*> AccountManagerHandler::Create(
       if (entry.version_ == version) {
         OnCloudProviderCreated(account);
         on_create_called = true;
-        settings_manager_.SaveToken2(std::move(auth_token), **username);
+        settings_manager_.SaveToken(std::move(auth_token), **username);
         break;
       }
     }

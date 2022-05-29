@@ -15,24 +15,11 @@ class SettingsManager {
         path_(std::move(path)),
         effective_is_public_network_enabled_(IsPublicNetworkEnabled()) {}
 
-  template <typename CloudProviderList>
-  auto LoadTokenData() const {
-    return auth_token_manager_.LoadTokenData<CloudProviderList>();
-  }
+  auto LoadTokenData() const { return auth_token_manager_.LoadTokenData(); }
 
-  auto LoadTokenData2() const {
-    return auth_token_manager_.LoadTokenData2();
-  }
-
-  template <typename CloudProvider>
-  void SaveToken(typename CloudProvider::Auth::AuthToken token,
+  void SaveToken(AbstractCloudProvider::Auth::AuthToken token,
                  std::string_view id) const {
-    auth_token_manager_.SaveToken<CloudProvider>(std::move(token), id);
-  }
-
-  void SaveToken2(AbstractCloudProvider::Auth::AuthToken token,
-                  std::string_view id) const {
-    auth_token_manager_.SaveToken2(std::move(token), id);
+    auth_token_manager_.SaveToken(std::move(token), id);
   }
 
   void RemoveToken(std::string_view type, std::string_view id) const {
