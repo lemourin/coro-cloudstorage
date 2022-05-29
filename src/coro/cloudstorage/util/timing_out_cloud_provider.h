@@ -4,36 +4,24 @@
 #include <utility>
 
 #include "coro/cloudstorage/cloud_provider.h"
+#include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/cloudstorage/util/timing_out_stop_token.h"
 #include "coro/util/event_loop.h"
 #include "coro/util/stop_token_or.h"
 
 namespace coro::cloudstorage::util {
 
-template <typename CloudProviderT>
-struct TimingOutCloudProvider {
-  using Type = CloudProviderT;
-  using Impl = CloudProviderT;
-  using Item = typename CloudProviderT::Item;
-  using PageData = typename CloudProviderT::PageData;
-  using FileContent = typename CloudProviderT::FileContent;
-  using ItemTypeList = typename CloudProviderT::ItemTypeList;
-
-  class CloudProvider;
-};
-
-template <typename CloudProviderT>
-class TimingOutCloudProvider<CloudProviderT>::CloudProvider
-    : public coro::cloudstorage::CloudProvider<TimingOutCloudProvider,
-                                               CloudProvider> {
+class TimingOutCloudProvider : public AbstractCloudProvider::CloudProvider {
  private:
+  using CloudProviderT = AbstractCloudProvider::CloudProvider;
+
   coro::util::EventLoop* event_loop_;
   int timeout_ms_;
   CloudProviderT* provider_;
 
  public:
-  CloudProvider(coro::util::EventLoop* event_loop, int timeout_ms,
-                CloudProviderT* provider)
+  TimingOutCloudProvider(coro::util::EventLoop* event_loop, int timeout_ms,
+                         CloudProviderT* provider)
       : event_loop_(event_loop), timeout_ms_(timeout_ms), provider_(provider) {}
 
   CloudProviderT* GetProvider() { return provider_; }
@@ -177,7 +165,7 @@ class TimingOutCloudProvider<CloudProviderT>::CloudProvider
         : timing_out_stop_token_(*event_loop, std::move(action), timeout_ms),
           token_or_(timing_out_stop_token_.GetToken(), std::move(stop_token)) {}
 
-    auto GetToken() const { return token_or_.GetToken(); }
+    stdx::stop_token GetToken() const { return token_or_.GetToken(); }
 
    private:
     TimingOutStopToken timing_out_stop_token_;

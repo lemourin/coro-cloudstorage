@@ -381,24 +381,28 @@ auto AbstractCloudProvider::Create<GoogleDrive::CloudProvider>(
 
 }  // namespace util
 
-template auto GoogleDrive::CloudProvider::RenameItem<GoogleDrive::File>(
+template auto GoogleDrive::CloudProvider::RenameItem(
     File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
 
-template auto GoogleDrive::CloudProvider::RenameItem<GoogleDrive::Directory>(
+template auto GoogleDrive::CloudProvider::RenameItem(
     Directory item, std::string new_name, stdx::stop_token stop_token)
     -> Task<Directory>;
 
-template auto GoogleDrive::CloudProvider::MoveItem<GoogleDrive::File>(
-    File, Directory, stdx::stop_token) -> Task<File>;
+template auto GoogleDrive::CloudProvider::MoveItem(File, Directory,
+                                                   stdx::stop_token)
+    -> Task<File>;
 
-template auto GoogleDrive::CloudProvider::MoveItem<GoogleDrive::Directory>(
-    Directory, Directory, stdx::stop_token) -> Task<Directory>;
+template auto GoogleDrive::CloudProvider::MoveItem(Directory, Directory,
+                                                   stdx::stop_token)
+    -> Task<Directory>;
 
-template auto GoogleDrive::CloudProvider::GetItemThumbnail<GoogleDrive::File>(
-    File, http::Range, stdx::stop_token) -> Task<Thumbnail>;
+template auto GoogleDrive::CloudProvider::GetItemThumbnail(File, http::Range,
+                                                           stdx::stop_token)
+    -> Task<Thumbnail>;
 
-template auto
-    GoogleDrive::CloudProvider::GetItemThumbnail<GoogleDrive::Directory>(
-        Directory, http::Range, stdx::stop_token) -> Task<Thumbnail>;
+template auto GoogleDrive::CloudProvider::GetItemThumbnail(Directory,
+                                                           http::Range,
+                                                           stdx::stop_token)
+    -> Task<Thumbnail>;
 
 }  // namespace coro::cloudstorage

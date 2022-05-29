@@ -1266,70 +1266,78 @@ auto AbstractCloudProvider::Create<Mega::CloudProvider>(Mega::CloudProvider p)
 
 }  // namespace util
 
-template auto Mega::CloudProvider::ListDirectoryPage<Mega::Directory>(
-    Directory, std::optional<std::string>, coro::stdx::stop_token)
+template auto Mega::CloudProvider::ListDirectoryPage(Directory,
+                                                     std::optional<std::string>,
+                                                     coro::stdx::stop_token)
     -> Task<PageData>;
 
-template auto Mega::CloudProvider::ListDirectoryPage<Mega::Root>(
-    Root, std::optional<std::string>, coro::stdx::stop_token) -> Task<PageData>;
-
-template auto Mega::CloudProvider::ListDirectoryPage<Mega::Inbox>(
-    Inbox, std::optional<std::string>, coro::stdx::stop_token)
+template auto Mega::CloudProvider::ListDirectoryPage(Root,
+                                                     std::optional<std::string>,
+                                                     coro::stdx::stop_token)
     -> Task<PageData>;
 
-template auto Mega::CloudProvider::ListDirectoryPage<Mega::Trash>(
-    Trash, std::optional<std::string>, coro::stdx::stop_token)
+template auto Mega::CloudProvider::ListDirectoryPage(Inbox,
+                                                     std::optional<std::string>,
+                                                     coro::stdx::stop_token)
     -> Task<PageData>;
 
-template auto Mega::CloudProvider::CreateDirectory<Mega::Root>(Root,
-                                                               std::string,
-                                                               stdx::stop_token)
+template auto Mega::CloudProvider::ListDirectoryPage(Trash,
+                                                     std::optional<std::string>,
+                                                     coro::stdx::stop_token)
+    -> Task<PageData>;
+
+template auto Mega::CloudProvider::CreateDirectory(Root, std::string,
+                                                   stdx::stop_token)
     -> Task<Directory>;
 
-template auto Mega::CloudProvider::CreateDirectory<Mega::Directory>(
-    Directory, std::string, stdx::stop_token) -> Task<Directory>;
-
-template auto Mega::CloudProvider::CreateFile<Mega::Directory>(
-    Directory, std::string_view, FileContent, stdx::stop_token) -> Task<File>;
-
-template auto Mega::CloudProvider::CreateFile<Mega::Root>(
-    Root, std::string_view, FileContent, stdx::stop_token) -> Task<File>;
-
-template auto Mega::CloudProvider::RenameItem<Mega::File>(
-    File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
-
-template auto Mega::CloudProvider::RenameItem<Mega::Directory>(
-    Directory item, std::string new_name, stdx::stop_token stop_token)
+template auto Mega::CloudProvider::CreateDirectory(Directory, std::string,
+                                                   stdx::stop_token)
     -> Task<Directory>;
 
-template auto Mega::CloudProvider::MoveItem<Mega::File, Mega::Directory>(
-    File, Directory, stdx::stop_token) -> Task<File>;
+template auto Mega::CloudProvider::CreateFile(Directory, std::string_view,
+                                              FileContent, stdx::stop_token)
+    -> Task<File>;
 
-template auto Mega::CloudProvider::MoveItem<Mega::File, Mega::Inbox>(
-    File, Inbox, stdx::stop_token) -> Task<File>;
+template auto Mega::CloudProvider::CreateFile(Root, std::string_view,
+                                              FileContent, stdx::stop_token)
+    -> Task<File>;
 
-template auto Mega::CloudProvider::MoveItem<Mega::File, Mega::Trash>(
-    File, Trash, stdx::stop_token) -> Task<File>;
+template auto Mega::CloudProvider::RenameItem(File item, std::string new_name,
+                                              stdx::stop_token stop_token)
+    -> Task<File>;
 
-template auto Mega::CloudProvider::MoveItem<Mega::File, Mega::Root>(
-    File, Root, stdx::stop_token) -> Task<File>;
+template auto Mega::CloudProvider::RenameItem(Directory item,
+                                              std::string new_name,
+                                              stdx::stop_token stop_token)
+    -> Task<Directory>;
 
-template auto Mega::CloudProvider::MoveItem<Mega::Directory, Mega::Directory>(
-    Directory, Directory, stdx::stop_token) -> Task<Directory>;
+template auto Mega::CloudProvider::MoveItem(File, Directory, stdx::stop_token)
+    -> Task<File>;
 
-template auto Mega::CloudProvider::MoveItem<Mega::Directory, Mega::Inbox>(
-    Directory, Inbox, stdx::stop_token) -> Task<Directory>;
+template auto Mega::CloudProvider::MoveItem(File, Inbox, stdx::stop_token)
+    -> Task<File>;
 
-template auto Mega::CloudProvider::MoveItem<Mega::Directory, Mega::Trash>(
-    Directory, Trash, stdx::stop_token) -> Task<Directory>;
+template auto Mega::CloudProvider::MoveItem(File, Trash, stdx::stop_token)
+    -> Task<File>;
 
-template auto Mega::CloudProvider::MoveItem<Mega::Directory, Mega::Root>(
-    Directory, Root, stdx::stop_token) -> Task<Directory>;
+template auto Mega::CloudProvider::MoveItem(File, Root, stdx::stop_token)
+    -> Task<File>;
 
-template Task<> Mega::CloudProvider::RemoveItem<Mega::File>(File,
-                                                            stdx::stop_token);
+template auto Mega::CloudProvider::MoveItem(Directory, Directory,
+                                            stdx::stop_token)
+    -> Task<Directory>;
 
-template Task<> Mega::CloudProvider::RemoveItem<Mega::Directory>(
-    Directory, stdx::stop_token);
+template auto Mega::CloudProvider::MoveItem(Directory, Inbox, stdx::stop_token)
+    -> Task<Directory>;
+
+template auto Mega::CloudProvider::MoveItem(Directory, Trash, stdx::stop_token)
+    -> Task<Directory>;
+
+template auto Mega::CloudProvider::MoveItem(Directory, Root, stdx::stop_token)
+    -> Task<Directory>;
+
+template Task<> Mega::CloudProvider::RemoveItem(File, stdx::stop_token);
+
+template Task<> Mega::CloudProvider::RemoveItem(Directory, stdx::stop_token);
 
 }  // namespace coro::cloudstorage
