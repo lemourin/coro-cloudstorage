@@ -325,8 +325,7 @@ OneDrive::Auth::AuthData GetAuthData<OneDrive>() {
 template <>
 auto AbstractCloudProvider::Create<OneDrive::CloudProvider>(
     OneDrive::CloudProvider p) -> std::unique_ptr<CloudProvider> {
-  return std::make_unique<AbstractCloudProviderImpl<OneDrive::CloudProvider>>(
-      std::move(p));
+  return CreateAbstractCloudProvider(std::move(p));
 }
 
 }  // namespace util

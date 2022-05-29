@@ -368,7 +368,7 @@ Dropbox::Auth::AuthData GetAuthData<Dropbox>() {
 template <>
 auto AbstractCloudProvider::Create<Dropbox::CloudProvider>(
     Dropbox::CloudProvider p) -> std::unique_ptr<CloudProvider> {
-  return std::make_unique<AbstractCloudProviderImpl<Dropbox::CloudProvider>>(
+  return CreateAbstractCloudProvider(
       std::move(p));
 }
 

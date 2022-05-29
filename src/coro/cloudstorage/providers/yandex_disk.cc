@@ -290,8 +290,7 @@ YandexDisk::Auth::AuthData GetAuthData<YandexDisk>() {
 template <>
 auto AbstractCloudProvider::Create<YandexDisk::CloudProvider>(
     YandexDisk::CloudProvider p) -> std::unique_ptr<CloudProvider> {
-  return std::make_unique<AbstractCloudProviderImpl<YandexDisk::CloudProvider>>(
-      std::move(p));
+  return CreateAbstractCloudProvider(std::move(p));
 }
 
 }  // namespace util

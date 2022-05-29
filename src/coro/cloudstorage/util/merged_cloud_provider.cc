@@ -26,6 +26,11 @@ bool MergedCloudProvider2::CloudProvider::IsFileContentSizeRequired(
   return account->provider->IsFileContentSizeRequired(d.item);
 }
 
+bool MergedCloudProvider2::CloudProvider::IsFileContentSizeRequired(
+    const Root &) const {
+  throw CloudException("can't upload into root");
+}
+
 void MergedCloudProvider2::CloudProvider::AddAccount(
     std::string id, AbstractCloudProvider::CloudProvider *p) {
   std::cerr << "CREATE " << id << "\n";
@@ -159,22 +164,17 @@ Task<ItemT> MergedCloudProvider2::CloudProvider::RenameItem(
   }
 }
 
-template <typename DirectoryT>
 auto MergedCloudProvider2::CloudProvider::CreateDirectory(
-    DirectoryT parent, std::string name, stdx::stop_token stop_token)
+    Directory parent, std::string name, stdx::stop_token stop_token)
     -> Task<Directory> {
-  if constexpr (std::is_same_v<DirectoryT, Root>) {
-    throw CloudException("can't create directory directly under root");
-  } else {
-    auto *account = GetAccount(parent.account_id);
-    auto *p = account->provider;
-    coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
-                                          std::move(stop_token));
-    co_return ToItem<Directory>(
-        parent.account_id,
-        co_await p->CreateDirectory(std::move(parent.item), std::move(name),
-                                    stop_token_or.GetToken()));
-  }
+  auto *account = GetAccount(parent.account_id);
+  auto *p = account->provider;
+  coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
+                                        std::move(stop_token));
+  co_return ToItem<Directory>(
+      parent.account_id,
+      co_await p->CreateDirectory(std::move(parent.item), std::move(name),
+                                  stop_token_or.GetToken()));
 }
 
 template <typename ItemT>
@@ -191,13 +191,11 @@ Task<> MergedCloudProvider2::CloudProvider::RemoveItem(
   }
 }
 
-template <typename ItemT, typename DirectoryT>
+template <typename ItemT>
 Task<ItemT> MergedCloudProvider2::CloudProvider::MoveItem(
-    ItemT source, DirectoryT destination, stdx::stop_token stop_token) {
+    ItemT source, Directory destination, stdx::stop_token stop_token) {
   if constexpr (std::is_same_v<ItemT, Root>) {
     throw CloudException("can't move root");
-  } else if constexpr (std::is_same_v<DirectoryT, Root>) {
-    throw CloudException("can't move directly under root");
   } else if (source.account_id != destination.account_id) {
     throw CloudException("can't move between accounts");
   } else {
@@ -256,24 +254,12 @@ template auto MergedCloudProvider2::CloudProvider::MoveItem(File, Directory,
                                                             stdx::stop_token)
     -> Task<File>;
 
-template auto MergedCloudProvider2::CloudProvider::MoveItem(File, Root,
-                                                            stdx::stop_token)
-    -> Task<File>;
-
 template auto MergedCloudProvider2::CloudProvider::MoveItem(Directory,
                                                             Directory,
                                                             stdx::stop_token)
     -> Task<Directory>;
 
-template auto MergedCloudProvider2::CloudProvider::MoveItem(Directory, Root,
-                                                            stdx::stop_token)
-    -> Task<Directory>;
-
 template auto MergedCloudProvider2::CloudProvider::MoveItem(Root, Directory,
-                                                            stdx::stop_token)
-    -> Task<Root>;
-
-template auto MergedCloudProvider2::CloudProvider::MoveItem(Root, Root,
                                                             stdx::stop_token)
     -> Task<Root>;
 
@@ -285,11 +271,5 @@ template Task<> MergedCloudProvider2::CloudProvider::RemoveItem(
 
 template Task<> MergedCloudProvider2::CloudProvider::RemoveItem(
     Root, stdx::stop_token);
-
-template auto MergedCloudProvider2::CloudProvider::CreateDirectory(
-    Root, std::string, stdx::stop_token) -> Task<Directory>;
-
-template auto MergedCloudProvider2::CloudProvider::CreateDirectory(
-    Directory, std::string, stdx::stop_token) -> Task<Directory>;
 
 }  // namespace coro::cloudstorage::util

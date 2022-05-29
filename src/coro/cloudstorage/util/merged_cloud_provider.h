@@ -521,6 +521,8 @@ struct MergedCloudProvider2 {
     std::optional<int64_t> size;
   };
 
+  static inline constexpr std::string_view kId = "merged";
+
   class CloudProvider;
 };
 
@@ -529,6 +531,7 @@ class MergedCloudProvider2::CloudProvider
                                                CloudProvider> {
  public:
   bool IsFileContentSizeRequired(const Directory &d) const;
+  bool IsFileContentSizeRequired(const Root &d) const;
 
   void AddAccount(std::string id, AbstractCloudProvider::CloudProvider *p);
 
@@ -553,15 +556,14 @@ class MergedCloudProvider2::CloudProvider
   Task<ItemT> RenameItem(ItemT item, std::string new_name,
                          stdx::stop_token stop_token);
 
-  template <typename DirectoryT>
-  Task<Directory> CreateDirectory(DirectoryT parent, std::string name,
+  Task<Directory> CreateDirectory(Directory parent, std::string name,
                                   stdx::stop_token stop_token);
 
   template <typename ItemT>
   Task<> RemoveItem(ItemT item, stdx::stop_token stop_token);
 
-  template <typename ItemT, typename DirectoryT>
-  Task<ItemT> MoveItem(ItemT source, DirectoryT destination,
+  template <typename ItemT>
+  Task<ItemT> MoveItem(ItemT source, Directory destination,
                        stdx::stop_token stop_token);
 
   Task<File> CreateFile(Directory parent, std::string_view name,

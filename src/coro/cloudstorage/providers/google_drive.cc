@@ -375,8 +375,7 @@ GoogleDrive::Auth::AuthData GetAuthData<GoogleDrive>() {
 template <>
 auto AbstractCloudProvider::Create<GoogleDrive::CloudProvider>(
     GoogleDrive::CloudProvider p) -> std::unique_ptr<CloudProvider> {
-  return std::make_unique<
-      AbstractCloudProviderImpl<GoogleDrive::CloudProvider>>(std::move(p));
+  return CreateAbstractCloudProvider(std::move(p));
 }
 
 }  // namespace util

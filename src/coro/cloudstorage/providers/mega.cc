@@ -1260,8 +1260,7 @@ Mega::Auth::AuthData GetAuthData<Mega>() {
 template <>
 auto AbstractCloudProvider::Create<Mega::CloudProvider>(Mega::CloudProvider p)
     -> std::unique_ptr<CloudProvider> {
-  return std::make_unique<AbstractCloudProviderImpl<Mega::CloudProvider>>(
-      std::move(p));
+  return CreateAbstractCloudProvider(std::move(p));
 }
 
 }  // namespace util
