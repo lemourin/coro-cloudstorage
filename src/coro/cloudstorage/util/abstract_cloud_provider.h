@@ -32,6 +32,7 @@ class AbstractCloudProvider {
     kPCloud,
     kWebDAV,
     kYandexDisk,
+    kYouTube,
   };
 
   class Auth {

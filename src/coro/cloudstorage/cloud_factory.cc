@@ -13,6 +13,7 @@
 #include "coro/cloudstorage/providers/pcloud.h"
 #include "coro/cloudstorage/providers/webdav.h"
 #include "coro/cloudstorage/providers/yandex_disk.h"
+#include "coro/cloudstorage/providers/youtube.h"
 
 namespace coro::cloudstorage {
 
@@ -343,6 +344,8 @@ std::unique_ptr<AbstractCloudFactory> CloudFactory::CreateCloudFactory(
       return create.operator()<WebDAV>();
     case AbstractCloudProvider::Type::kYandexDisk:
       return create.operator()<YandexDisk>();
+    case AbstractCloudProvider::Type::kYouTube:
+      return create.operator()<YouTube>();
   }
 }
 
@@ -364,10 +367,10 @@ CloudFactory::GetSupportedCloudProviders() const {
   using Type = AbstractCloudProvider::Type;
 
   static std::vector<AbstractCloudProvider::Type> types = {
-      Type::kAmazonS3,    Type::kBox,       Type::kDropbox,
-      Type::kGoogleDrive, Type::kHubiC,     Type::kLocalFileSystem,
-      Type::kMega,        Type::kOneDrive,  Type::kPCloud,
-      Type::kWebDAV,      Type::kYandexDisk};
+      Type::kAmazonS3,    Type::kBox,        Type::kDropbox,
+      Type::kGoogleDrive, Type::kHubiC,      Type::kLocalFileSystem,
+      Type::kMega,        Type::kOneDrive,   Type::kPCloud,
+      Type::kWebDAV,      Type::kYandexDisk, Type::kYouTube};
 
   return types;
 }
