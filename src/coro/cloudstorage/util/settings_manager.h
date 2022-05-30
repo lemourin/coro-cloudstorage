@@ -10,10 +10,7 @@ namespace coro::cloudstorage::util {
 class SettingsManager {
  public:
   SettingsManager(AuthTokenManager auth_token_manager,
-                  std::string path = GetConfigFilePath())
-      : auth_token_manager_(std::move(auth_token_manager)),
-        path_(std::move(path)),
-        effective_is_public_network_enabled_(IsPublicNetworkEnabled()) {}
+                  std::string path = GetConfigFilePath());
 
   auto LoadTokenData() const { return auth_token_manager_.LoadTokenData(); }
 
@@ -39,6 +36,7 @@ class SettingsManager {
   AuthTokenManager auth_token_manager_;
   std::string path_;
   bool effective_is_public_network_enabled_;
+  uint16_t port_;
 };
 
 }  // namespace coro::cloudstorage::util

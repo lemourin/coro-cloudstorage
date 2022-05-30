@@ -19,7 +19,7 @@ concept HasRedirectUri = requires(T v) {
                          };
 
 struct AuthData {
-  static constexpr std::string_view kHostname = "http://localhost:12345";
+  static constexpr std::string_view kHostname = CORO_CLOUDSTORAGE_REDIRECT_URI;
 
   template <typename CloudProvider>
   auto operator()() const {

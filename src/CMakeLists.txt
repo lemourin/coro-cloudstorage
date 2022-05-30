@@ -202,6 +202,13 @@ embed_resource(
         ../assets/js/settings_main.js
 )
 
+set(CORO_CLOUDSTORAGE_REDIRECT_URI "http://localhost:12345" CACHE STRING "redirect uri")
+
+target_compile_definitions(
+    coro-cloudstorage
+        PUBLIC CORO_CLOUDSTORAGE_REDIRECT_URI="${CORO_CLOUDSTORAGE_REDIRECT_URI}"
+)
+
 function(define_auth_data)
     math(EXPR CNT "${ARGC} - 1")
     foreach(INDEX RANGE 0 ${CNT} 2)
