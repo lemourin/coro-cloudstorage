@@ -1254,7 +1254,7 @@ Mega::Auth::AuthToken ToAuthToken<Mega::Auth::AuthToken>(
 
 template <>
 Mega::Auth::AuthData GetAuthData<Mega>() {
-  return {.api_key = "ZVhB0Czb", .app_name = "coro-cloudstorage"};
+  return {.api_key = MEGA_API_KEY, .app_name = MEGA_APP_NAME};
 }
 
 template <>

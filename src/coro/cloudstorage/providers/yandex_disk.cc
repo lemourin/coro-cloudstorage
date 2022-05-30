@@ -282,8 +282,8 @@ namespace util {
 template <>
 YandexDisk::Auth::AuthData GetAuthData<YandexDisk>() {
   return {
-      .client_id = "04d700d432884c4381c07e760213ed8a",
-      .client_secret = "197f9693caa64f0ebb51d201110074f9",
+      .client_id = YANDEX_DISK_CLIENT_ID,
+      .client_secret = YANDEX_DISK_CLIENT_SECRET,
   };
 }
 

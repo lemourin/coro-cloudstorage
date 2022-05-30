@@ -360,8 +360,8 @@ namespace util {
 template <>
 Dropbox::Auth::AuthData GetAuthData<Dropbox>() {
   return {
-      .client_id = "ktryxp68ae5cicj",
-      .client_secret = "6evu94gcxnmyr59",
+      .client_id = DROPBOX_CLIENT_ID,
+      .client_secret = DROPBOX_CLIENT_SECRET,
   };
 }
 

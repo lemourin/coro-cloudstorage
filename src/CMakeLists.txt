@@ -201,3 +201,34 @@ embed_resource(
         ../assets/js/account_list_main.js
         ../assets/js/settings_main.js
 )
+
+function(define_auth_data)
+    math(EXPR CNT "${ARGC} - 1")
+    foreach(INDEX RANGE 0 ${CNT} 2)
+        list(GET ARGN ${INDEX} NAME)
+        math(EXPR I "${INDEX} + 1")
+        list(GET ARGN ${I} VALUE)
+        message("${NAME} ${VALUE}")
+        set(${NAME} "${VALUE}" CACHE STRING "${NAME}")
+        target_compile_definitions(coro-cloudstorage PRIVATE ${NAME}="${VALUE}")
+    endforeach()
+endfunction()
+
+define_auth_data(
+    GOOGLE_DRIVE_CLIENT_ID "646432077068-hmvk44qgo6d0a64a5h9ieue34p3j2dcv.apps.googleusercontent.com"
+    GOOGLE_DRIVE_CLIENT_SECRET "1f0FG5ch-kKOanTAv1Bqdp9U"
+    BOX_CLIENT_ID "zmiv9tv13hunxhyjk16zqv8dmdw0d773"
+    BOX_CLIENT_SECRET "IZ0T8WsUpJin7Qt3rHMf7qDAIFAkYZ0R"
+    DROPBOX_CLIENT_ID "ktryxp68ae5cicj"
+    DROPBOX_CLIENT_SECRET "6evu94gcxnmyr59"
+    HUBIC_CLIENT_ID "api_hubic_kHQ5NUmE2yAAeiWfXPwQy2T53M6RP2fe"
+    HUBIC_CLIENT_SECRET "Xk1ezMMSGNeU4r0wv3jutleYX9XvXmgg8XVElJjqoDvlDw0KsC9U2tkSxJxYof8V"
+    MEGA_API_KEY "ZVhB0Czb"
+    MEGA_APP_NAME "coro-cloudstorage"
+    ONE_DRIVE_CLIENT_ID "56a1d60f-ea71-40e9-a489-b87fba12a23e"
+    ONE_DRIVE_CLIENT_SECRET "zJRAsd0o4E9c33q4OLc7OhY"
+    PCLOUD_CLIENT_ID "rjR7bUpwgdz"
+    PCLOUD_CLIENT_SECRET "zNtirCfoYfmX5aFzoavWikKWyMlV"
+    YANDEX_DISK_CLIENT_ID "04d700d432884c4381c07e760213ed8a"
+    YANDEX_DISK_CLIENT_SECRET "197f9693caa64f0ebb51d201110074f9"
+)

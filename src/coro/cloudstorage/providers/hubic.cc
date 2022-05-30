@@ -266,10 +266,7 @@ HubiC::Auth::AuthToken ToAuthToken<HubiC::Auth::AuthToken>(
 
 template <>
 HubiC::Auth::AuthData GetAuthData<HubiC>() {
-  return {
-      .client_id = "api_hubic_kHQ5NUmE2yAAeiWfXPwQy2T53M6RP2fe",
-      .client_secret =
-          "Xk1ezMMSGNeU4r0wv3jutleYX9XvXmgg8XVElJjqoDvlDw0KsC9U2tkSxJxYof8V"};
+  return {.client_id = HUBIC_CLIENT_ID, .client_secret = HUBIC_CLIENT_SECRET};
 }
 
 template <>

@@ -289,8 +289,8 @@ namespace util {
 template <>
 Box::Auth::AuthData GetAuthData<Box>() {
   return {
-      .client_id = "zmiv9tv13hunxhyjk16zqv8dmdw0d773",
-      .client_secret = "IZ0T8WsUpJin7Qt3rHMf7qDAIFAkYZ0R",
+      .client_id = BOX_CLIENT_ID,
+      .client_secret = BOX_CLIENT_SECRET,
   };
 }
 

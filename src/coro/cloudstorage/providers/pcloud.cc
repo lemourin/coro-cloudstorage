@@ -328,8 +328,8 @@ PCloud::Auth::AuthToken ToAuthToken<PCloud::Auth::AuthToken>(
 template <>
 PCloud::Auth::AuthData GetAuthData<PCloud>() {
   return {
-      .client_id = "rjR7bUpwgdz",
-      .client_secret = "zNtirCfoYfmX5aFzoavWikKWyMlV",
+      .client_id = PCLOUD_CLIENT_ID,
+      .client_secret = PCLOUD_CLIENT_SECRET,
   };
 }
 
