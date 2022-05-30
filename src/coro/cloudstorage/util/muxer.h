@@ -53,7 +53,8 @@ class MuxerContext {
 
 class Muxer {
  public:
-  Muxer(coro::util::EventLoop* event_loop, coro::util::ThreadPool* thread_pool)
+  Muxer(const coro::util::EventLoop* event_loop,
+        coro::util::ThreadPool* thread_pool)
       : event_loop_(event_loop), thread_pool_(thread_pool) {}
 
   template <typename VideoCloudProvider, typename Video,
@@ -77,10 +78,10 @@ class Muxer {
             return CreateIOContext(audio_cloud_provider, std::move(audio_track),
                                    stop_token);
           });
-      return MuxerContext(video_io_context.get(), audio_io_context.get(),
-                          container);
+      return MuxerContext(thread_pool_, video_io_context.get(),
+                          audio_io_context.get(), container);
     });
-    FOR_CO_AWAIT(std::string & chunk, muxer_context.GetContent(thread_pool_)) {
+    FOR_CO_AWAIT(std::string & chunk, muxer_context.GetContent()) {
       if (!chunk.empty()) {
         co_yield std::move(chunk);
       }
@@ -109,7 +110,7 @@ class Muxer {
     return promise.get_future().get();
   }
 
-  coro::util::EventLoop* event_loop_;
+  const coro::util::EventLoop* event_loop_;
   coro::util::ThreadPool* thread_pool_;
 };
 
