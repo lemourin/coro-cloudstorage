@@ -16,6 +16,8 @@ namespace {
 
 enum class TransformType { kReverse, kSplice, kSwap };
 
+using ::coro::cloudstorage::util::CreateAbstractCloudProviderImpl;
+using ::coro::cloudstorage::util::MediaContainer;
 using ::coro::cloudstorage::util::StrCat;
 using ::nlohmann::json;
 
@@ -736,19 +738,20 @@ Generator<std::string> YouTube::CloudProvider::GetMuxedFileContent(
   StreamData data = co_await stream_cache_.Get(file.video_id, stop_token);
   Stream video_stream{};
   video_stream.video_id = file.video_id;
-  auto best_video = data.GetBestVideo(util::StrCat("video/", type));
+  auto best_video = data.GetBestVideo(StrCat("video/", type));
   video_stream.itag = best_video["itag"];
   video_stream.size = std::stoll(std::string(best_video["contentLength"]));
   Stream audio_stream{};
   audio_stream.video_id = std::move(file.video_id);
-  auto best_audio = data.GetBestAudio(util::StrCat("audio/", type));
+  auto best_audio = data.GetBestAudio(StrCat("audio/", type));
   audio_stream.itag = best_audio["itag"];
   audio_stream.size = std::stoll(std::string(best_audio["contentLength"]));
+  auto impl = CreateAbstractCloudProviderImpl(this);
   FOR_CO_AWAIT(
       std::string & chunk,
-      (*muxer_)(this, std::move(video_stream), this, std::move(audio_stream),
-                type == "webm" ? util::MediaContainer::kWebm
-                               : util::MediaContainer::kMp4,
+      (*muxer_)(&impl, impl.Convert(std::move(video_stream)), &impl,
+                impl.Convert(std::move(audio_stream)),
+                type == "webm" ? MediaContainer::kWebm : MediaContainer::kMp4,
                 std::move(stop_token))) {
     co_yield std::move(chunk);
   }
