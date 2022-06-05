@@ -9,16 +9,16 @@
 
 namespace coro::cloudstorage::util {
 
-template <typename CloudProvider, typename Item, typename F>
+template <typename TypeT, typename CloudProvider, typename Item, typename F>
 Task<> RecursiveVisit(CloudProvider* provider, Item item, const F& func,
                       stdx::stop_token stop_token) {
-  if constexpr (IsDirectory<Item, CloudProvider>) {
+  if constexpr (IsDirectory<Item, TypeT>) {
     std::vector<Task<>> tasks;
     FOR_CO_AWAIT(auto& page, ListDirectory(provider, item, stop_token)) {
       for (const auto& entry : page.items) {
         tasks.emplace_back(std::visit(
             [&](auto& entry) {
-              return RecursiveVisit(provider, entry, func, stop_token);
+              return RecursiveVisit<TypeT>(provider, entry, func, stop_token);
             },
             entry));
       }

@@ -382,8 +382,8 @@ std::string AmazonS3::CloudProvider::GetEndpoint(std::string_view href) const {
 template <typename ItemT, typename F>
 Task<> AmazonS3::CloudProvider::Visit(ItemT item, const F& func,
                                       stdx::stop_token stop_token) {
-  return util::RecursiveVisit(this, std::move(item), func,
-                              std::move(stop_token));
+  return util::RecursiveVisit<AmazonS3>(this, std::move(item), func,
+                                        std::move(stop_token));
 }
 
 Task<> AmazonS3::CloudProvider::RemoveItemImpl(

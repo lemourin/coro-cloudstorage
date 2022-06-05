@@ -197,8 +197,8 @@ Task<> OpenStack::CloudProvider::MoveItemImpl(const ItemT& source,
 template <typename ItemT, typename F>
 Task<> OpenStack::CloudProvider::Visit(ItemT item, const F& func,
                                        stdx::stop_token stop_token) {
-  return util::RecursiveVisit(this, std::move(item), func,
-                              std::move(stop_token));
+  return util::RecursiveVisit<OpenStack>(this, std::move(item), func,
+                                         std::move(stop_token));
 }
 
 std::string OpenStack::CloudProvider::GetEndpoint(

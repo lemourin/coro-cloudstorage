@@ -314,9 +314,8 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
     return GetThumbnail(std::move(item), quality, range, std::move(stop_token));
   }
 
-  template <typename From,
-            typename To = std::conditional_t<IsDirectory<From, CloudProviderT>,
-                                             Directory, File>>
+  template <typename From, typename To = std::conditional_t<
+                               IsDirectory<From, TypeT>, Directory, File>>
   static To Convert(From d) {
     To result;
     result.id = [&] {
