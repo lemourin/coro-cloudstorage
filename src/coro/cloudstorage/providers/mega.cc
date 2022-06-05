@@ -20,6 +20,9 @@ namespace {
 constexpr std::string_view kApiEndpoint = "https://g.api.mega.co.nz";
 constexpr int kRetryCount = 7;
 
+using ::coro::cloudstorage::util::CreateAbstractCloudProviderImpl;
+using ::coro::cloudstorage::util::ThumbnailOptions;
+
 enum ItemType { kFile = 0, kFolder, kRoot, kInbox, kTrash };
 
 struct SessionData {
@@ -773,10 +776,11 @@ auto Mega::CloudProvider::TrySetThumbnail(File file,
     case FileType::kImage:
     case FileType::kVideo: {
       try {
+        auto impl = CreateAbstractCloudProviderImpl(this);
         auto thumbnail = co_await thumbnail_generator_(
-            this, file,
-            util::ThumbnailOptions{
-                .size = 120, .codec = util::ThumbnailOptions::Codec::JPEG},
+            &impl, impl.Convert(file),
+            ThumbnailOptions{.size = 120,
+                             .codec = ThumbnailOptions::Codec::JPEG},
             stop_token);
         co_return co_await SetThumbnail(std::move(file), std::move(thumbnail),
                                         std::move(stop_token));

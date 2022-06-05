@@ -16,6 +16,7 @@ extern "C" {
 #include <utility>
 #include <vector>
 
+#include "avio_context.h"
 #include "coro/cloudstorage/util/ffmpeg_utils.h"
 
 namespace coro::cloudstorage::util {
@@ -301,11 +302,23 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options) {
   return frame;
 }
 
-}  // namespace
-
 std::string GenerateThumbnail(AVIOContext* io_context,
                               ThumbnailOptions options) {
   return EncodeFrame(GetThumbnailFrame(io_context, options).get(), options);
+}
+
+}  // namespace
+
+Task<std::string> ThumbnailGenerator::operator()(
+    AbstractCloudProvider::CloudProvider* provider,
+    AbstractCloudProvider::File file, ThumbnailOptions options,
+    stdx::stop_token stop_token) const {
+  std::unique_ptr<AVIOContext, AVIOContextDeleter> io_context;
+  co_return co_await thread_pool_->Do([&] {
+    io_context = CreateIOContext(event_loop_, provider, std::move(file),
+                                 std::move(stop_token));
+    return GenerateThumbnail(io_context.get(), options);
+  });
 }
 
 }  // namespace coro::cloudstorage::util
