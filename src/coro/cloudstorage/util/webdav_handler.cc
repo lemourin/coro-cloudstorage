@@ -10,34 +10,32 @@ using CloudProvider = AbstractCloudProvider::CloudProvider;
 using ItemT = AbstractCloudProvider::Item;
 
 struct CreateDirectoryF {
-  template <typename Item>
-  Task<Response> operator()(Item item) && {
-    if constexpr (IsDirectory<Item, CloudProvider> &&
-                  CanCreateDirectory<Item, CloudProvider>) {
-      co_await provider->CreateDirectory(std::move(item), name,
-                                         std::move(stop_token));
-      co_return Response{.status = 201};
-    } else {
-      co_return Response{.status = 501};
-    }
+  Task<Response> operator()(AbstractCloudProvider::Directory item) && {
+    co_await provider->CreateDirectory(std::move(item), name,
+                                       std::move(stop_token));
+    co_return Response{.status = 201};
   }
+
+  Task<Response> operator()(AbstractCloudProvider::File) && {
+    co_return Response{.status = 501};
+  }
+
   CloudProvider* provider;
   std::string name;
   stdx::stop_token stop_token;
 };
 
 struct CreateFileF {
-  template <typename Item>
-  Task<Response> operator()(Item item) && {
-    if constexpr (IsDirectory<Item, CloudProvider> &&
-                  CanCreateFile<Item, CloudProvider>) {
-      co_await provider->CreateFile(std::move(item), std::move(name),
-                                    std::move(content), std::move(stop_token));
-      co_return Response{.status = 201};
-    } else {
-      co_return Response{.status = 501};
-    }
+  Task<Response> operator()(AbstractCloudProvider::Directory item) && {
+    co_await provider->CreateFile(std::move(item), std::move(name),
+                                  std::move(content), std::move(stop_token));
+    co_return Response{.status = 201};
   }
+
+  Task<Response> operator()(AbstractCloudProvider::File) && {
+    co_return Response{.status = 501};
+  }
+
   CloudProvider* provider;
   std::string name;
   typename CloudProvider::FileContent content;
@@ -46,15 +44,16 @@ struct CreateFileF {
 
 template <typename Item>
 struct MoveItemF {
-  template <typename Destination>
-  Task<std::optional<ItemT>> operator()(Destination destination) && {
-    if constexpr (CanMove<Item, Destination, CloudProvider>) {
-      co_return co_await provider->MoveItem(
-          std::move(source), std::move(destination), std::move(stop_token));
-    } else {
-      co_return std::nullopt;
-    }
+  Task<std::optional<ItemT>> operator()(
+      AbstractCloudProvider::Directory destination) && {
+    co_return co_await provider->MoveItem(
+        std::move(source), std::move(destination), std::move(stop_token));
   }
+
+  Task<std::optional<ItemT>> operator()(AbstractCloudProvider::File) && {
+    co_return std::nullopt;
+  }
+
   CloudProvider* provider;
   Item source;
   stdx::stop_token stop_token;
@@ -63,12 +62,8 @@ struct MoveItemF {
 struct RenameItemF {
   template <typename Source>
   Task<std::optional<ItemT>> operator()(Source item) && {
-    if constexpr (CanRename<Source, CloudProvider>) {
-      co_return co_await provider->RenameItem(
-          std::move(item), std::move(destination_name), std::move(stop_token));
-    } else {
-      co_return std::nullopt;
-    }
+    co_return co_await provider->RenameItem(
+        std::move(item), std::move(destination_name), std::move(stop_token));
   }
   CloudProvider* provider;
   std::string destination_name;
@@ -78,14 +73,13 @@ struct RenameItemF {
 template <typename Item>
 Generator<std::string> GetWebDavItemResponse(std::string path, Item item) {
   co_yield R"(<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:">)";
-  ElementData current_element_data{
-      .path = std::move(path),
-      .name = item.name,
-      .size = CloudProvider::GetSize(item),
-      .timestamp = CloudProvider::GetTimestamp(item)};
-  if constexpr (IsFile<Item, CloudProvider>) {
-    current_element_data.mime_type = CloudProvider::GetMimeType(item);
-    current_element_data.size = CloudProvider::GetSize(item);
+  ElementData current_element_data{.path = std::move(path),
+                                   .name = item.name,
+                                   .size = item.size,
+                                   .timestamp = item.timestamp};
+  if constexpr (std::is_same_v<Item, AbstractCloudProvider::File>) {
+    current_element_data.mime_type = item.mime_type;
+    current_element_data.size = item.size;
   } else {
     current_element_data.is_directory = true;
   }
@@ -93,10 +87,10 @@ Generator<std::string> GetWebDavItemResponse(std::string path, Item item) {
   co_yield "</d:multistatus>";
 }
 
-template <IsDirectory<CloudProvider> Directory>
 Generator<std::string> GetWebDavResponse(
-    Directory directory, Generator<typename CloudProvider::PageData> page_data,
-    Request request, std::string path) {
+    AbstractCloudProvider::Directory directory,
+    Generator<AbstractCloudProvider::PageData> page_data, Request request,
+    std::string path) {
   co_yield R"(<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:">)";
   ElementData current_element_data{
       .path = path, .name = directory.name, .is_directory = true};
@@ -105,24 +99,22 @@ Generator<std::string> GetWebDavResponse(
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
         auto name = std::visit([](auto item) { return item.name; }, item);
-        auto timestamp = std::visit(
-            [](const auto& item) { return CloudProvider::GetTimestamp(item); },
-            item);
+        auto timestamp =
+            std::visit([](const auto& item) { return item.timestamp; }, item);
         ElementData element_data(
             {.path = util::StrCat(path, http::EncodeUri(name)),
              .name = name,
              .is_directory = std::visit(
-                 [](const auto& d) {
-                   return IsDirectory<std::remove_cvref_t<decltype(d)>,
-                                      CloudProvider>;
+                 []<typename T>(const T& d) {
+                   return std::is_same_v<T, AbstractCloudProvider::Directory>;
                  },
                  item),
              .timestamp = timestamp});
         std::visit(
-            [&](const auto& item) {
-              if constexpr (IsFile<decltype(item), CloudProvider>) {
-                element_data.mime_type = CloudProvider::GetMimeType(item);
-                element_data.size = CloudProvider::GetSize(item);
+            [&]<typename T>(const T& item) {
+              if constexpr (std::is_same_v<T, AbstractCloudProvider::File>) {
+                element_data.mime_type = item.mime_type;
+                element_data.size = item.size;
               }
             },
             item);
@@ -142,12 +134,8 @@ Task<Response> HandleExistingItem(CloudProvider* provider, Request request,
                        .headers = {{"Content-Type", "text/xml"}},
                        .body = GetWebDavItemResponse(GetPath(request), d)};
   } else if (request.method == http::Method::kDelete) {
-    if constexpr (CanRemove<Item, CloudProvider>) {
-      co_await provider->RemoveItem(d, std::move(stop_token));
-      co_return Response{.status = 204};
-    } else {
-      co_return Response{.status = 501};
-    }
+    co_await provider->RemoveItem(d, std::move(stop_token));
+    co_return Response{.status = 204};
   } else if (request.method == http::Method::kMove) {
     auto destination_header = http::GetHeader(request.headers, "Destination");
     if (!destination_header) {
@@ -187,7 +175,7 @@ Task<Response> HandleExistingItem(CloudProvider* provider, Request request,
     }
     co_return Response{.status = 201};
   } else if (request.method == http::Method::kPropfind) {
-    if constexpr (IsDirectory<Item, CloudProvider>) {
+    if constexpr (std::is_same_v<Item, AbstractCloudProvider::Directory>) {
       std::string directory_path = GetPath(request);
       if (directory_path.empty() || directory_path.back() != '/') {
         directory_path += '/';

@@ -37,8 +37,7 @@ class CloudProviderHandler {
   std::string GetItemPathPrefix(
       std::span<const std::pair<std::string, std::string>> headers) const;
 
-  template <typename Item>
-  Task<std::string> GenerateThumbnail(const Item& item,
+  Task<std::string> GenerateThumbnail(const AbstractCloudProvider::File& item,
                                       stdx::stop_token stop_token) const;
 
   template <typename Item>
@@ -51,8 +50,12 @@ class CloudProviderHandler {
   Task<Response> GetItemThumbnail(Item d, ThumbnailQuality,
                                   stdx::stop_token stop_token) const;
 
-  template <typename Item>
-  Task<Response> HandleExistingItem(Request request, Item d,
+  Task<Response> HandleExistingItem(Request request,
+                                    AbstractCloudProvider::File d,
+                                    stdx::stop_token stop_token);
+
+  Task<Response> HandleExistingItem(Request request,
+                                    AbstractCloudProvider::Directory d,
                                     stdx::stop_token stop_token);
 
   template <typename Item>
@@ -60,8 +63,7 @@ class CloudProviderHandler {
                            bool use_dash_player) const;
 
   Generator<std::string> GetDirectoryContent(
-      std::string path_prefix,
-      Generator<typename CloudProvider::PageData> page_data,
+      std::string path_prefix, Generator<CloudProvider::PageData> page_data,
       std::string path) const;
 
   using ItemT = typename CloudProvider::Item;

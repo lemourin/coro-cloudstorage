@@ -44,11 +44,11 @@ http::Response<> GetFileContentResponse(CloudProvider* provider, Item d,
                                         std::optional<http::Range> range,
                                         stdx::stop_token stop_token) {
   std::vector<std::pair<std::string, std::string>> headers = {
-      {"Content-Type", CloudProvider::GetMimeType(d)},
+      {"Content-Type", d.mime_type},
       {"Content-Disposition", "inline; filename=\"" + d.name + "\""},
       {"Access-Control-Allow-Origin", "*"},
       {"Access-Control-Allow-Headers", "*"}};
-  auto size = CloudProvider::GetSize(d);
+  auto size = d.size;
   if (size) {
     http::Range drange = range.value_or(http::Range{});
     if (!drange.end) {

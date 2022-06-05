@@ -5,6 +5,97 @@
 
 namespace coro::cloudstorage::util {
 
+template <typename T, typename CloudProvider>
+concept IsFile = requires(typename CloudProvider::Impl& provider, T v,
+                          http::Range range, stdx::stop_token stop_token) {
+  {
+    provider.GetFileContent(v, range, stop_token)
+    } -> GeneratorLike<std::string_view>;
+};
+
+template <typename Parent, typename CloudProvider>
+concept CanCreateFile =
+    requires(typename CloudProvider::Impl& provider, Parent parent,
+             std::string_view name, typename CloudProvider::FileContent content,
+             stdx::stop_token stop_token,
+             decltype(provider.CreateFile(parent, name, std::move(content),
+                                          stop_token)) item_promise,
+             typename decltype(item_promise)::type item) {
+  { item } -> IsFile<CloudProvider>;
+};
+
+template <typename T, typename CloudProvider>
+concept CanRename = requires(
+    typename CloudProvider::Impl& provider, T v, std::string new_name,
+    stdx::stop_token stop_token,
+    decltype(provider.RenameItem(v, new_name, stop_token)) item_promise,
+    typename decltype(item_promise)::type item) {
+  { item } -> stdx::convertible_to<typename CloudProvider::Item>;
+};
+
+template <typename T, typename CloudProvider>
+concept CanRemove = requires(typename CloudProvider::Impl& provider, T v,
+                             stdx::stop_token stop_token) {
+  { provider.RemoveItem(v, stop_token) } -> Awaitable<void>;
+};
+
+template <typename Source, typename Destination, typename CloudProvider>
+concept CanMove = requires(typename CloudProvider::Impl& provider,
+                           Source source, Destination destination,
+                           stdx::stop_token stop_token,
+                           decltype(provider.MoveItem(source, destination,
+                                                      stop_token)) item_promise,
+                           typename decltype(item_promise)::type item) {
+  { item } -> stdx::convertible_to<typename CloudProvider::Item>;
+};
+
+template <typename Parent, typename CloudProvider>
+concept CanCreateDirectory = requires(
+    typename CloudProvider::Impl& provider, Parent v, std::string name,
+    stdx::stop_token stop_token,
+    decltype(provider.CreateDirectory(v, name, stop_token)) item_promise,
+    typename decltype(item_promise)::type item) {
+  { item } -> stdx::convertible_to<typename CloudProvider::Item>;
+};
+
+template <typename Item, typename CloudProvider>
+concept HasThumbnail = requires(
+    typename CloudProvider::Impl& provider, Item v, http::Range range,
+    stdx::stop_token stop_token,
+    decltype(provider.GetItemThumbnail(v, range, stop_token)) thumbnail_promise,
+    typename decltype(thumbnail_promise)::type thumbnail) {
+  {
+    std::declval<decltype(thumbnail)>()
+    } -> stdx::convertible_to<typename CloudProvider::Type::Thumbnail>;
+};
+
+template <typename Item, typename CloudProvider>
+concept HasQualityThumbnail = requires(
+    typename CloudProvider::Impl& provider, Item v, ThumbnailQuality quality,
+    http::Range range, stdx::stop_token stop_token,
+    decltype(provider.GetItemThumbnail(v, quality, range,
+                                       stop_token)) thumbnail_promise,
+    typename decltype(thumbnail_promise)::type thumbnail) {
+  {
+    std::declval<decltype(thumbnail)>()
+    } -> stdx::convertible_to<typename CloudProvider::Type::Thumbnail>;
+};
+
+template <typename T>
+concept HasMimeType = requires(T v) {
+  { v.mime_type } -> stdx::convertible_to<std::optional<std::string_view>>;
+};
+
+template <typename T>
+concept HasSize = requires(T v) {
+  { v.size } -> stdx::convertible_to<std::optional<int64_t>>;
+};
+
+template <typename T>
+concept HasTimestamp = requires(T v) {
+  { v.timestamp } -> stdx::convertible_to<std::optional<int64_t>>;
+};
+
 template <typename T>
 concept HasUsageData = requires(T v) {
   { v.space_used } -> stdx::convertible_to<std::optional<int64_t>>;
@@ -210,10 +301,10 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
       return std::move(stream).str();
     }();
     result.name = d.name;
-    result.size = CloudProviderT::GetSize(d);
-    result.timestamp = CloudProviderT::GetTimestamp(d);
+    result.size = GetSize(d);
+    result.timestamp = GetTimestamp(d);
     if constexpr (std::is_same_v<To, File> && IsFile<From, CloudProviderT>) {
-      result.mime_type = CloudProviderT::GetMimeType(d);
+      result.mime_type = GetMimeType(d);
     }
     result.impl.template emplace<ItemT>(std::move(d));
     return result;
@@ -222,6 +313,42 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
  private:
   using ItemT = typename CloudProviderT::Item;
   using FileContentT = typename CloudProviderT::FileContent;
+
+  template <typename T>
+  static std::string GetMimeType(const T& d) {
+    static_assert(IsFile<T, CloudProviderT>);
+    if constexpr (HasMimeType<T>) {
+      if constexpr (std::is_convertible_v<decltype(d.mime_type), std::string>) {
+        return d.mime_type;
+      } else if constexpr (std::is_constructible_v<std::string,
+                                                   decltype(d.mime_type)>) {
+        return std::string(d.mime_type);
+      } else {
+        return d.mime_type.value_or(
+            coro::http::GetMimeType(coro::http::GetExtension(d.name)));
+      }
+    } else {
+      return coro::http::GetMimeType(coro::http::GetExtension(d.name));
+    }
+  }
+
+  template <typename T>
+  static std::optional<int64_t> GetSize(const T& d) {
+    if constexpr (HasSize<T>) {
+      return d.size;
+    } else {
+      return std::nullopt;
+    }
+  }
+
+  template <typename T>
+  static std::optional<int64_t> GetTimestamp(const T& d) {
+    if constexpr (HasTimestamp<T>) {
+      return d.timestamp;
+    } else {
+      return std::nullopt;
+    }
+  }
 
   auto* provider() const {
     return const_cast<CloudProviderT*>(CloudProviderSupplier::provider());

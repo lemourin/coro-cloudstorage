@@ -21,6 +21,11 @@ namespace di = boost::di;
 using ::coro::cloudstorage::util::AbstractCloudFactory;
 using ::coro::cloudstorage::util::AbstractCloudProvider;
 
+template <typename Auth>
+concept HasAuthData = requires(typename Auth::AuthData* d) {
+  { d } -> stdx::convertible_to<typename Auth::AuthData*>;
+};
+
 template <typename T>
 concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
   { v.GetAuthorizationUrl({}) } -> stdx::convertible_to<std::string>;

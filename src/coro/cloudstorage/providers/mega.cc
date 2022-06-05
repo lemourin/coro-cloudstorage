@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+#include "coro/cloudstorage/util/cloud_provider_utils.h"
 
 namespace coro::cloudstorage {
 
@@ -21,6 +22,8 @@ constexpr std::string_view kApiEndpoint = "https://g.api.mega.co.nz";
 constexpr int kRetryCount = 7;
 
 using ::coro::cloudstorage::util::CreateAbstractCloudProviderImpl;
+using ::coro::cloudstorage::util::FileType;
+using ::coro::cloudstorage::util::GetFileType;
 using ::coro::cloudstorage::util::ThumbnailOptions;
 
 enum ItemType { kFile = 0, kFolder, kRoot, kInbox, kTrash };
@@ -772,11 +775,11 @@ auto Mega::CloudProvider::CreateFile(DirectoryT parent, std::string_view name,
 auto Mega::CloudProvider::TrySetThumbnail(File file,
                                           stdx::stop_token stop_token)
     -> Task<File> {
-  switch (this->GetFileType(file)) {
+  auto impl = CreateAbstractCloudProviderImpl(this);
+  switch (GetFileType(impl.Convert(file).mime_type)) {
     case FileType::kImage:
     case FileType::kVideo: {
       try {
-        auto impl = CreateAbstractCloudProviderImpl(this);
         auto thumbnail = co_await thumbnail_generator_(
             &impl, impl.Convert(file),
             ThumbnailOptions{.size = 120,

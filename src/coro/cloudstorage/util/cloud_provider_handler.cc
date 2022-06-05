@@ -1,5 +1,6 @@
 #include "coro/cloudstorage/util/cloud_provider_handler.h"
 
+#include "coro/cloudstorage/util/cloud_provider_utils.h"
 #include "coro/cloudstorage/util/net_utils.h"
 
 namespace coro::cloudstorage::util {
@@ -65,6 +66,24 @@ Generator<std::string> GetDashPlayer(std::string path) {
   co_yield fmt::format(fmt::runtime(kAssetsHtmlDashPlayerHtml),
                        fmt::arg("poster", StrCat(path, "?hq_thumbnail=true")),
                        fmt::arg("source", std::move(stream).str()));
+}
+
+std::string_view GetIconName(AbstractCloudProvider::Directory) {
+  return "folder";
+}
+
+std::string_view GetIconName(AbstractCloudProvider::File file) {
+  switch (GetFileType(file.mime_type)) {
+    case FileType::kUnknown:
+      return "unknown";
+    case FileType::kImage:
+      return "image-x-generic";
+    case FileType::kAudio:
+      return "audio-x-generic";
+    case FileType::kVideo:
+      return "video-x-generic";
+  }
+  throw std::runtime_error("invalid file type");
 }
 
 }  // namespace
@@ -139,10 +158,10 @@ std::string CloudProviderHandler::GetItemPathPrefix(
   return ::coro::cloudstorage::util::GetItemPathPrefix(headers);
 }
 
-template <typename Item>
 Task<std::string> CloudProviderHandler::GenerateThumbnail(
-    const Item& item, stdx::stop_token stop_token) const {
-  switch (CloudProvider::GetFileType(item)) {
+    const AbstractCloudProvider::File& item,
+    stdx::stop_token stop_token) const {
+  switch (GetFileType(item.mime_type)) {
     case FileType::kImage:
     case FileType::kVideo:
       co_return co_await (*thumbnail_generator_)(
@@ -156,33 +175,16 @@ Task<std::string> CloudProviderHandler::GenerateThumbnail(
 
 template <typename Item>
 auto CloudProviderHandler::GetStaticIcon(const Item& item) const -> Response {
-  std::string_view icon_name = [&] {
-    if constexpr (IsFile<Item, CloudProvider>) {
-      switch (CloudProvider::GetFileType(item)) {
-        case FileType::kUnknown:
-          return "unknown";
-        case FileType::kImage:
-          return "image-x-generic";
-        case FileType::kAudio:
-          return "audio-x-generic";
-        case FileType::kVideo:
-          return "video-x-generic";
-      }
-      throw std::runtime_error("invalid file type");
-    } else {
-      return "folder";
-    }
-  }();
   return Response{
       .status = 302,
-      .headers = {{"Location", StrCat("/static/", icon_name, ".svg")}}};
+      .headers = {{"Location", StrCat("/static/", GetIconName(item), ".svg")}}};
 }
 
 template <typename Item>
 auto CloudProviderHandler::GetIcon(const Item& item,
                                    stdx::stop_token stop_token) const
     -> Task<Response> {
-  if constexpr (IsFile<Item, CloudProvider>) {
+  if constexpr (std::is_same_v<Item, AbstractCloudProvider::File>) {
     try {
       std::string content =
           co_await GenerateThumbnail(item, std::move(stop_token));
@@ -220,33 +222,35 @@ auto CloudProviderHandler::GetItemThumbnail(Item d, ThumbnailQuality quality,
   co_return co_await GetIcon(d, std::move(stop_token));
 }
 
-template <typename Item>
-auto CloudProviderHandler::HandleExistingItem(Request request, Item d,
+auto CloudProviderHandler::HandleExistingItem(Request request,
+                                              AbstractCloudProvider::File d,
                                               stdx::stop_token stop_token)
     -> Task<Response> {
-  if constexpr (IsDirectory<Item, CloudProvider>) {
-    std::string directory_path = GetPath(request);
-    if (directory_path.empty() || directory_path.back() != '/') {
-      directory_path += '/';
-    }
-    co_return Response{.status = 200,
-                       .headers = {{"Content-Type", "text/html"}},
-                       .body = GetDirectoryContent(
-                           GetItemPathPrefix(request.headers),
-                           provider_->ListDirectory(d, std::move(stop_token)),
-                           directory_path)};
-  } else {
-    co_return GetFileContentResponse(
-        provider_, std::move(d),
-        [&]() -> std::optional<http::Range> {
-          if (auto header = http::GetHeader(request.headers, "Range")) {
-            return http::ParseRange(std::move(*header));
-          } else {
-            return std::nullopt;
-          }
-        }(),
-        std::move(stop_token));
+  co_return GetFileContentResponse(
+      provider_, std::move(d),
+      [&]() -> std::optional<http::Range> {
+        if (auto header = http::GetHeader(request.headers, "Range")) {
+          return http::ParseRange(std::move(*header));
+        } else {
+          return std::nullopt;
+        }
+      }(),
+      std::move(stop_token));
+}
+
+auto CloudProviderHandler::HandleExistingItem(
+    Request request, AbstractCloudProvider::Directory d,
+    stdx::stop_token stop_token) -> Task<Response> {
+  std::string directory_path = GetPath(request);
+  if (directory_path.empty() || directory_path.back() != '/') {
+    directory_path += '/';
   }
+  co_return Response{
+      .status = 200,
+      .headers = {{"Content-Type", "text/html"}},
+      .body = GetDirectoryContent(
+          GetItemPathPrefix(request.headers),
+          provider_->ListDirectory(d, std::move(stop_token)), directory_path)};
 }
 
 template <typename Item>
@@ -256,17 +260,15 @@ std::string CloudProviderHandler::GetItemEntry(const Item& item,
   std::string file_link = StrCat(path, http::EncodeUri(item.name));
   return fmt::format(
       fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", item.name),
-      fmt::arg("size", SizeToString(CloudProvider::GetSize(item))),
-      fmt::arg("timestamp",
-               TimeStampToString(CloudProvider::GetTimestamp(item))),
+      fmt::arg("size", SizeToString(item.size)),
+      fmt::arg("timestamp", TimeStampToString(item.timestamp)),
       fmt::arg("url",
                StrCat(file_link, use_dash_player ? "?dash_player=true" : "")),
       fmt::arg("thumbnail_url", StrCat(file_link, "?thumbnail=true")));
 }
 
 Generator<std::string> CloudProviderHandler::GetDirectoryContent(
-    std::string path_prefix,
-    Generator<typename CloudProvider::PageData> page_data,
+    std::string path_prefix, Generator<CloudProvider::PageData> page_data,
     std::string path) const {
   co_yield "<!DOCTYPE html>"
       "<html lang='en-us'>"
@@ -292,10 +294,10 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
       co_yield std::visit(
           [&]<typename Item>(const Item& item) {
             bool use_dash_player = [&] {
-              if constexpr (IsFile<Item, CloudProvider>) {
+              if constexpr (std::is_same_v<Item, AbstractCloudProvider::File>) {
                 return item.name.ends_with(".mpd") ||
                        (!path_prefix.empty() &&
-                        CloudProvider::GetMimeType(item).starts_with("video"));
+                        item.mime_type.starts_with("video"));
               } else {
                 return false;
               }

@@ -262,7 +262,7 @@ Task<ItemT> AmazonS3::CloudProvider::RenameItem(ItemT item,
     destination_path += "/";
   }
   destination_path += new_name;
-  if constexpr (IsDirectory<Item, CloudProvider>) {
+  if constexpr (std::is_same_v<ItemT, Directory>) {
     destination_path += "/";
   }
   co_await Move(item, destination_path, stop_token);
@@ -301,7 +301,7 @@ Task<ItemT> AmazonS3::CloudProvider::MoveItem(ItemT source,
                                               Directory destination,
                                               stdx::stop_token stop_token) {
   auto destination_path = util::StrCat(destination.id, source.name);
-  if constexpr (IsDirectory<ItemT, CloudProvider>) {
+  if constexpr (std::is_same_v<ItemT, Directory>) {
     destination_path += "/";
   }
   co_await Move(source, destination_path, stop_token);
@@ -332,7 +332,7 @@ Task<ItemT> AmazonS3::CloudProvider::GetItem(
                  http::FormDataToString(
                      {{"list-type", "2"}, {"prefix", id}, {"delimiter", "/"}})},
       std::move(stop_token));
-  if constexpr (IsDirectory<ItemT, CloudProvider>) {
+  if constexpr (std::is_same_v<ItemT, Directory>) {
     auto file = ToFile(response.document_element().child("Contents"));
     ItemT directory;
     directory.id = std::move(file.id);
@@ -418,7 +418,7 @@ Task<> AmazonS3::CloudProvider::MoveItemImpl(
       .url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(destination))),
       .method = http::Method::kPut,
       .headers = {{"Content-Length", "0"}}};
-  if constexpr (!IsDirectory<ItemT, CloudProvider>) {
+  if constexpr (!std::is_same_v<ItemT, Directory>) {
     request.headers.emplace_back(
         "X-Amz-Copy-Source",
         http::EncodeUriPath(util::StrCat(auth_token_.bucket, "/", source.id)));
