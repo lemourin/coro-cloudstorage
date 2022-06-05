@@ -118,8 +118,7 @@ struct YouTube {
   static inline constexpr auto& kIcon = util::kAssetsProvidersYoutubePng;
 };
 
-struct YouTube::CloudProvider
-    : coro::cloudstorage::CloudProvider<YouTube, CloudProvider> {
+struct YouTube::CloudProvider {
   using Request = http::Request<std::string>;
   using AuthManager = util::AuthManager<Auth>;
 
@@ -158,15 +157,15 @@ struct YouTube::CloudProvider
   Generator<std::string> GetFileContent(DashManifest file, http::Range range,
                                         stdx::stop_token stop_token);
 
-  Task<Thumbnail> GetItemThumbnail(DashManifest item, ThumbnailQuality,
+  Task<Thumbnail> GetItemThumbnail(DashManifest item, util::ThumbnailQuality,
                                    http::Range range,
                                    stdx::stop_token stop_token);
 
-  Task<Thumbnail> GetItemThumbnail(MuxedStreamMp4 item, ThumbnailQuality,
+  Task<Thumbnail> GetItemThumbnail(MuxedStreamMp4 item, util::ThumbnailQuality,
                                    http::Range range,
                                    stdx::stop_token stop_token);
 
-  Task<Thumbnail> GetItemThumbnail(MuxedStreamWebm item, ThumbnailQuality,
+  Task<Thumbnail> GetItemThumbnail(MuxedStreamWebm item, util::ThumbnailQuality,
                                    http::Range range,
                                    stdx::stop_token stop_token);
 
@@ -181,7 +180,8 @@ struct YouTube::CloudProvider
                                             stdx::stop_token stop_token);
 
   template <typename Item>
-  Task<Thumbnail> GetItemThumbnailImpl(Item item, ThumbnailQuality quality,
+  Task<Thumbnail> GetItemThumbnailImpl(Item item,
+                                       util::ThumbnailQuality quality,
                                        http::Range range,
                                        stdx::stop_token stop_token);
 

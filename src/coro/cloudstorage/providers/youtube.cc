@@ -19,6 +19,7 @@ enum class TransformType { kReverse, kSplice, kSwap };
 using ::coro::cloudstorage::util::CreateAbstractCloudProviderImpl;
 using ::coro::cloudstorage::util::MediaContainer;
 using ::coro::cloudstorage::util::StrCat;
+using ::coro::cloudstorage::util::ThumbnailQuality;
 using ::nlohmann::json;
 
 using StreamDirectory = YouTube::StreamDirectory;
@@ -765,7 +766,7 @@ Generator<std::string> YouTube::CloudProvider::GetMuxedFileContent(
   auto best_audio = data.GetBestAudio(StrCat("audio/", type));
   audio_stream.itag = best_audio["itag"];
   audio_stream.size = std::stoll(std::string(best_audio["contentLength"]));
-  auto impl = CreateAbstractCloudProviderImpl(this);
+  auto impl = CreateAbstractCloudProviderImpl<YouTube>(this);
   FOR_CO_AWAIT(
       std::string & chunk,
       (*muxer_)(&impl, impl.Convert(std::move(video_stream)), &impl,
@@ -899,7 +900,7 @@ YouTube::Auth::AuthData GetAuthData<YouTube>() {
 template <>
 auto AbstractCloudProvider::Create<YouTube::CloudProvider>(
     YouTube::CloudProvider p) -> std::unique_ptr<CloudProvider> {
-  return CreateAbstractCloudProvider(std::move(p));
+  return CreateAbstractCloudProvider<YouTube>(std::move(p));
 }
 
 }  // namespace util
