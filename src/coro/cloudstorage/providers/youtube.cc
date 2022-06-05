@@ -62,6 +62,23 @@ std::optional<std::string> Find(std::string_view text,
   return std::nullopt;
 }
 
+YouTube::ThumbnailData GetThumbnailData(const nlohmann::json& json) {
+  YouTube::ThumbnailData data;
+  if (json.contains("default")) {
+    data.default_quality_url = json["default"]["url"];
+  }
+  if (json.contains("maxres")) {
+    data.high_quality_url = json["maxres"]["url"];
+  } else if (json.contains("standard")) {
+    data.high_quality_url = json["standard"]["url"];
+  } else if (json.contains("high")) {
+    data.high_quality_url = json["high"]["url"];
+  } else if (json.contains("medium")) {
+    data.high_quality_url = json["medium"]["url"];
+  }
+  return data;
+}
+
 namespace js {
 
 struct Function {
@@ -247,9 +264,7 @@ MuxedStreamT ToMuxedStream(std::string_view directory_id, json item) {
     }
   }());
   stream.id = StrCat(directory_id, http::EncodeUri(stream.name));
-  if (item["snippet"]["thumbnails"].contains("default")) {
-    stream.thumbnail_url = item["snippet"]["thumbnails"]["default"]["url"];
-  }
+  stream.thumbnail = GetThumbnailData(item["snippet"]["thumbnails"]);
   return stream;
 }
 
@@ -613,9 +628,7 @@ auto YouTube::CloudProvider::ListDirectoryPage(
             http::ParseTime(std::string(item["snippet"]["publishedAt"]));
         file.name = std::string(item["snippet"]["title"]) + ".mpd";
         file.id = directory.id + http::EncodeUri(file.name);
-        if (item["snippet"]["thumbnails"].contains("default")) {
-          file.thumbnail_url = item["snippet"]["thumbnails"]["default"]["url"];
-        }
+        file.thumbnail = GetThumbnailData(item["snippet"]["thumbnails"]);
         result.items.emplace_back(std::move(file));
         break;
       }
@@ -708,24 +721,30 @@ Generator<std::string> YouTube::CloudProvider::GetFileContent(
 }
 
 auto YouTube::CloudProvider::GetItemThumbnail(DashManifest item,
+                                              ThumbnailQuality quality,
                                               http::Range range,
                                               stdx::stop_token stop_token)
     -> Task<Thumbnail> {
-  return GetItemThumbnailImpl(std::move(item), range, std::move(stop_token));
+  return GetItemThumbnailImpl(std::move(item), quality, range,
+                              std::move(stop_token));
 }
 
 auto YouTube::CloudProvider::GetItemThumbnail(MuxedStreamMp4 item,
+                                              ThumbnailQuality quality,
                                               http::Range range,
                                               stdx::stop_token stop_token)
     -> Task<Thumbnail> {
-  return GetItemThumbnailImpl(std::move(item), range, std::move(stop_token));
+  return GetItemThumbnailImpl(std::move(item), quality, range,
+                              std::move(stop_token));
 }
 
 auto YouTube::CloudProvider::GetItemThumbnail(MuxedStreamWebm item,
+                                              ThumbnailQuality quality,
                                               http::Range range,
                                               stdx::stop_token stop_token)
     -> Task<Thumbnail> {
-  return GetItemThumbnailImpl(std::move(item), range, std::move(stop_token));
+  return GetItemThumbnailImpl(std::move(item), quality, range,
+                              std::move(stop_token));
 }
 
 template <typename MuxedStream>
@@ -787,14 +806,25 @@ Generator<std::string> YouTube::CloudProvider::GetFileContentImpl(
 }
 
 template <typename ItemT>
-auto YouTube::CloudProvider::GetItemThumbnailImpl(ItemT item, http::Range range,
+auto YouTube::CloudProvider::GetItemThumbnailImpl(ItemT item,
+                                                  ThumbnailQuality quality,
+                                                  http::Range range,
                                                   stdx::stop_token stop_token)
     -> Task<Thumbnail> {
-  if (!item.thumbnail_url) {
+  std::optional<std::string> url = [&]() -> std::optional<std::string> {
+    switch (quality) {
+      case ThumbnailQuality::kLow:
+        return std::move(item.thumbnail.default_quality_url);
+      case ThumbnailQuality::kHigh:
+        return std::move(item.thumbnail.high_quality_url
+                             ? item.thumbnail.high_quality_url
+                             : item.thumbnail.default_quality_url);
+    }
+  }();
+  if (!url) {
     throw CloudException(CloudException::Type::kNotFound);
   }
-  Request request{.url = std::move(*item.thumbnail_url),
-                  .headers = {ToRangeHeader(range)}};
+  Request request{.url = std::move(*url), .headers = {ToRangeHeader(range)}};
   auto response =
       co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
   Thumbnail result;
