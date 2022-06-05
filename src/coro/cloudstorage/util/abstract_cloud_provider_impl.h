@@ -5,6 +5,12 @@
 
 namespace coro::cloudstorage::util {
 
+template <typename T>
+concept HasUsageData = requires(T v) {
+  { v.space_used } -> stdx::convertible_to<std::optional<int64_t>>;
+  { v.space_total } -> stdx::convertible_to<std::optional<int64_t>>;
+};
+
 template <typename CloudProviderT>
 class AbstractCloudProviderImplNonOwningSupplier {
  public:
@@ -181,6 +187,18 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
     return GetThumbnail(std::move(item), range, std::move(stop_token));
   }
 
+  Task<Thumbnail> GetItemThumbnail(File item, ThumbnailQuality quality,
+                                   http::Range range,
+                                   stdx::stop_token stop_token) const override {
+    return GetThumbnail(std::move(item), quality, range, std::move(stop_token));
+  }
+
+  Task<Thumbnail> GetItemThumbnail(Directory item, ThumbnailQuality quality,
+                                   http::Range range,
+                                   stdx::stop_token stop_token) const override {
+    return GetThumbnail(std::move(item), quality, range, std::move(stop_token));
+  }
+
   template <typename From,
             typename To = std::conditional_t<IsDirectory<From, CloudProviderT>,
                                              Directory, File>>
@@ -355,6 +373,37 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
                                stdx::stop_token stop_token) const {
     co_return co_await std::visit(
         GetThumbnailF{provider(), range, std::move(stop_token)},
+        std::any_cast<ItemT&&>(std::move(item.impl)));
+  }
+
+  struct GetQualityThumbnailF {
+    template <typename Item>
+    Task<Thumbnail> operator()(Item entry) && {
+      if constexpr (HasQualityThumbnail<Item, CloudProviderT>) {
+        auto provider_thumbnail = co_await provider->GetItemThumbnail(
+            std::move(entry), quality, range, std::move(stop_token));
+        Thumbnail thumbnail{
+            .data = std::move(provider_thumbnail.data),
+            .size = provider_thumbnail.size,
+            .mime_type = std::string(std::move(provider_thumbnail.mime_type))};
+        co_return thumbnail;
+      } else {
+        return GetThumbnailF{provider, range,
+                             std::move(stop_token)}(std::move(entry));
+      }
+    }
+    CloudProviderT* provider;
+    ThumbnailQuality quality;
+    http::Range range;
+    stdx::stop_token stop_token;
+  };
+
+  template <typename Item>
+  Task<Thumbnail> GetThumbnail(Item item, ThumbnailQuality quality,
+                               http::Range range,
+                               stdx::stop_token stop_token) const {
+    co_return co_await std::visit(
+        GetQualityThumbnailF{provider(), quality, range, std::move(stop_token)},
         std::any_cast<ItemT&&>(std::move(item.impl)));
   }
 };

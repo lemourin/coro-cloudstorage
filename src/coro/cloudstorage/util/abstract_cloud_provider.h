@@ -157,6 +157,14 @@ class AbstractCloudProvider::CloudProvider
 
   virtual Task<Thumbnail> GetItemThumbnail(
       Directory item, http::Range range, stdx::stop_token stop_token) const = 0;
+
+  virtual Task<Thumbnail> GetItemThumbnail(
+      File item, ThumbnailQuality, http::Range range,
+      stdx::stop_token stop_token) const = 0;
+
+  virtual Task<Thumbnail> GetItemThumbnail(
+      Directory item, ThumbnailQuality, http::Range range,
+      stdx::stop_token stop_token) const = 0;
 };
 
 }  // namespace coro::cloudstorage::util

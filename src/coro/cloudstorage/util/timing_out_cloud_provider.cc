@@ -135,6 +135,20 @@ Task<AbstractCloudProvider::Thumbnail> TimingOutCloudProvider::GetItemThumbnail(
                                      std::move(stop_token));
 }
 
+Task<AbstractCloudProvider::Thumbnail> TimingOutCloudProvider::GetItemThumbnail(
+    AbstractCloudProvider::File item, ThumbnailQuality quality,
+    http::Range range, stdx::stop_token stop_token) const {
+  return provider_->GetItemThumbnail(std::move(item), quality, range,
+                                     std::move(stop_token));
+}
+
+Task<AbstractCloudProvider::Thumbnail> TimingOutCloudProvider::GetItemThumbnail(
+    AbstractCloudProvider::Directory item, ThumbnailQuality quality,
+    http::Range range, stdx::stop_token stop_token) const {
+  return provider_->GetItemThumbnail(std::move(item), quality, range,
+                                     std::move(stop_token));
+}
+
 Task<> TimingOutCloudProvider::InstallTimer(
     int64_t* chunk_index, stdx::stop_source* stop_source) const {
   int64_t current_chunk_index = *chunk_index;

@@ -48,7 +48,8 @@ class CloudProviderHandler {
   Task<Response> GetIcon(const Item& item, stdx::stop_token stop_token) const;
 
   template <typename Item>
-  Task<Response> GetItemThumbnail(Item d, stdx::stop_token stop_token) const;
+  Task<Response> GetItemThumbnail(Item d, ThumbnailQuality,
+                                  stdx::stop_token stop_token) const;
 
   template <typename Item>
   Task<Response> HandleExistingItem(Request request, Item d,

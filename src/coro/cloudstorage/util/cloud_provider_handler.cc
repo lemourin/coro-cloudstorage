@@ -63,7 +63,7 @@ Generator<std::string> GetDashPlayer(std::string path) {
   std::stringstream stream;
   stream << "<source src='" << path << "'>";
   co_yield fmt::format(fmt::runtime(kAssetsHtmlDashPlayerHtml),
-                       fmt::arg("poster", StrCat(path, "?thumbnail=true")),
+                       fmt::arg("poster", StrCat(path, "?hq_thumbnail=true")),
                        fmt::arg("source", std::move(stream).str()));
 }
 
@@ -90,7 +90,17 @@ auto CloudProviderHandler::operator()(Request request,
           it != query.end() && it->second == "true") {
         co_return co_await std::visit(
             [&]<typename T>(T&& d) {
-              return GetItemThumbnail(std::forward<T>(d), stop_token);
+              return GetItemThumbnail(std::forward<T>(d),
+                                      ThumbnailQuality::kLow, stop_token);
+            },
+            co_await provider_->GetItemByPathComponents(path, stop_token));
+      }
+      if (auto it = query.find("hq_thumbnail");
+          it != query.end() && it->second == "true") {
+        co_return co_await std::visit(
+            [&]<typename T>(T&& d) {
+              return GetItemThumbnail(std::forward<T>(d),
+                                      ThumbnailQuality::kHigh, stop_token);
             },
             co_await provider_->GetItemByPathComponents(path, stop_token));
       }
@@ -192,22 +202,20 @@ auto CloudProviderHandler::GetIcon(const Item& item,
 }
 
 template <typename Item>
-auto CloudProviderHandler::GetItemThumbnail(Item d,
+auto CloudProviderHandler::GetItemThumbnail(Item d, ThumbnailQuality quality,
                                             stdx::stop_token stop_token) const
     -> Task<Response> {
-  if constexpr (HasThumbnail<Item, CloudProvider>) {
-    try {
-      auto thumbnail =
-          co_await provider_->GetItemThumbnail(d, http::Range{}, stop_token);
-      co_return Response{
-          .status = 200,
-          .headers = {{"Cache-Control", "private"},
-                      {"Cache-Control", "max-age=604800"},
-                      {"Content-Type", std::string(thumbnail.mime_type)},
-                      {"Content-Length", std::to_string(thumbnail.size)}},
-          .body = std::move(thumbnail.data)};
-    } catch (...) {
-    }
+  try {
+    auto thumbnail = co_await provider_->GetItemThumbnail(
+        d, quality, http::Range{}, stop_token);
+    co_return Response{
+        .status = 200,
+        .headers = {{"Cache-Control", "private"},
+                    {"Cache-Control", "max-age=604800"},
+                    {"Content-Type", std::string(thumbnail.mime_type)},
+                    {"Content-Length", std::to_string(thumbnail.size)}},
+        .body = std::move(thumbnail.data)};
+  } catch (...) {
   }
   co_return co_await GetIcon(d, std::move(stop_token));
 }

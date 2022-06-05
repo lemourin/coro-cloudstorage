@@ -77,6 +77,14 @@ class TimingOutCloudProvider : public AbstractCloudProvider::CloudProvider {
       AbstractCloudProvider::Directory item, http::Range range,
       stdx::stop_token stop_token) const override;
 
+  Task<AbstractCloudProvider::Thumbnail> GetItemThumbnail(
+      AbstractCloudProvider::File item, ThumbnailQuality, http::Range range,
+      stdx::stop_token stop_token) const override;
+
+  Task<AbstractCloudProvider::Thumbnail> GetItemThumbnail(
+      AbstractCloudProvider::Directory item, ThumbnailQuality,
+      http::Range range, stdx::stop_token stop_token) const override;
+
  private:
   Task<> InstallTimer(int64_t* chunk_index,
                       stdx::stop_source* stop_source) const;
