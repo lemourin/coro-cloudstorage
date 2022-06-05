@@ -4,7 +4,6 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/auth_token_manager.h"
@@ -81,8 +80,7 @@ struct PCloud {
   static inline constexpr auto& kIcon = util::kAssetsProvidersPcloudPng;
 };
 
-class PCloud::CloudProvider
-    : public coro::cloudstorage::CloudProvider<PCloud, CloudProvider> {
+class PCloud::CloudProvider {
  public:
   CloudProvider(const coro::http::Http* http,
                 PCloud::Auth::AuthToken auth_token)

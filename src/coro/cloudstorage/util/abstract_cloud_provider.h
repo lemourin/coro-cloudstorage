@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "coro/cloudstorage/cloud_exception.h"
-#include "coro/cloudstorage/cloud_provider.h"
+#include "coro/cloudstorage/util/thumbnail_quality.h"
 #include "coro/generator.h"
 #include "coro/http/http.h"
 #include "coro/stdx/stop_token.h"
@@ -109,9 +109,7 @@ class AbstractCloudProvider {
   static std::unique_ptr<CloudProvider> Create(CloudProviderT);
 };
 
-class AbstractCloudProvider::CloudProvider
-    : public coro::cloudstorage::CloudProvider<AbstractCloudProvider,
-                                               CloudProvider> {
+class AbstractCloudProvider::CloudProvider {
  public:
   virtual ~CloudProvider() = default;
 

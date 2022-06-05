@@ -18,6 +18,7 @@ extern "C" {
 
 #include "avio_context.h"
 #include "coro/cloudstorage/util/ffmpeg_utils.h"
+#include "coro/util/raii_utils.h"
 
 namespace coro::cloudstorage::util {
 

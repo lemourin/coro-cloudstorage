@@ -4,7 +4,6 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/auth_manager.h"
@@ -83,8 +82,7 @@ struct Box {
   static inline constexpr auto& kIcon = util::kAssetsProvidersBoxPng;
 };
 
-class Box::CloudProvider
-    : public coro::cloudstorage::CloudProvider<Box, CloudProvider> {
+class Box::CloudProvider {
  public:
   using json = nlohmann::json;
   using Request = http::Request<std::string>;

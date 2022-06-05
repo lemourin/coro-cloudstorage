@@ -1,6 +1,7 @@
 #include "coro/cloudstorage/providers/dropbox.h"
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+#include "coro/cloudstorage/util/generator_utils.h"
 
 namespace coro::cloudstorage {
 
@@ -368,8 +369,7 @@ Dropbox::Auth::AuthData GetAuthData<Dropbox>() {
 template <>
 auto AbstractCloudProvider::Create<Dropbox::CloudProvider>(
     Dropbox::CloudProvider p) -> std::unique_ptr<CloudProvider> {
-  return CreateAbstractCloudProvider(
-      std::move(p));
+  return CreateAbstractCloudProvider<Dropbox>(std::move(p));
 }
 
 }  // namespace util

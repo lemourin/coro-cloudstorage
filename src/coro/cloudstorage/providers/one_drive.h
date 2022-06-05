@@ -1,7 +1,6 @@
 #ifndef CORO_CLOUDSTORAGE_ONE_DRIVE_H
 #define CORO_CLOUDSTORAGE_ONE_DRIVE_H
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/auth_manager.h"
@@ -87,8 +86,7 @@ struct OneDrive {
   };
 };
 
-struct OneDrive::CloudProvider
-    : coro::cloudstorage::CloudProvider<OneDrive, CloudProvider> {
+struct OneDrive::CloudProvider {
   using Request = http::Request<std::string>;
 
   CloudProvider(util::AuthManager<Auth> auth_manager,

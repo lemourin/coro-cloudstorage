@@ -13,6 +13,7 @@
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
 #include "coro/cloudstorage/util/cloud_provider_utils.h"
+#include "coro/cloudstorage/util/string_utils.h"
 
 namespace coro::cloudstorage {
 
@@ -775,7 +776,7 @@ auto Mega::CloudProvider::CreateFile(DirectoryT parent, std::string_view name,
 auto Mega::CloudProvider::TrySetThumbnail(File file,
                                           stdx::stop_token stop_token)
     -> Task<File> {
-  auto impl = CreateAbstractCloudProviderImpl(this);
+  auto impl = CreateAbstractCloudProviderImpl<Mega>(this);
   switch (GetFileType(impl.Convert(file).mime_type)) {
     case FileType::kImage:
     case FileType::kVideo: {
@@ -1267,7 +1268,7 @@ Mega::Auth::AuthData GetAuthData<Mega>() {
 template <>
 auto AbstractCloudProvider::Create<Mega::CloudProvider>(Mega::CloudProvider p)
     -> std::unique_ptr<CloudProvider> {
-  return CreateAbstractCloudProvider(std::move(p));
+  return CreateAbstractCloudProvider<Mega>(std::move(p));
 }
 
 }  // namespace util

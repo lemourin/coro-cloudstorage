@@ -2,6 +2,7 @@
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
 #include "coro/cloudstorage/util/auth_manager.h"
+#include "coro/cloudstorage/util/cloud_provider_utils.h"
 
 namespace coro::cloudstorage {
 
@@ -12,6 +13,9 @@ constexpr std::string_view kFileProperties = "name,id,size,modified_at";
 constexpr std::string_view kEndpoint = "https://api.box.com/2.0";
 
 using AuthManager = ::coro::cloudstorage::util::AuthManager<Box::Auth>;
+
+using ::coro::cloudstorage::util::CreateAbstractCloudProviderImpl;
+using ::coro::cloudstorage::util::ListDirectory;
 
 std::string GetEndpoint(std::string_view path) {
   return std::string(kEndpoint) + std::string(path);
@@ -241,7 +245,7 @@ auto Box::CloudProvider::CreateFile(Directory parent, std::string_view name,
                                     FileContent content,
                                     stdx::stop_token stop_token) -> Task<File> {
   std::optional<std::string> id;
-  FOR_CO_AWAIT(const PageData& page, this->ListDirectory(parent, stop_token)) {
+  FOR_CO_AWAIT(const auto& page, ListDirectory(this, parent, stop_token)) {
     for (const auto& item : page.items) {
       if (std::visit([](const auto& d) { return d.name; }, item) == name) {
         id = std::visit([](const auto& d) { return d.id; }, item);
@@ -297,7 +301,7 @@ Box::Auth::AuthData GetAuthData<Box>() {
 template <>
 auto AbstractCloudProvider::Create<Box::CloudProvider>(Box::CloudProvider p)
     -> std::unique_ptr<CloudProvider> {
-  return CreateAbstractCloudProvider(std::move(p));
+  return CreateAbstractCloudProvider<Box>(std::move(p));
 }
 
 }  // namespace util

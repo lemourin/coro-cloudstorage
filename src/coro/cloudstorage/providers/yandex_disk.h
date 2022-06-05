@@ -4,7 +4,6 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/fetch_json.h"
@@ -79,8 +78,7 @@ struct YandexDisk {
   static inline constexpr auto& kIcon = util::kAssetsProvidersYandexPng;
 };
 
-class YandexDisk::CloudProvider
-    : public coro::cloudstorage::CloudProvider<YandexDisk, CloudProvider> {
+class YandexDisk::CloudProvider {
  public:
   using json = nlohmann::json;
   using Request = http::Request<std::string>;

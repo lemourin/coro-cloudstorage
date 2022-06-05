@@ -11,6 +11,7 @@
 #include "coro/cloudstorage/util/settings_manager.h"
 #include "coro/cloudstorage/util/thumbnail_generator.h"
 #include "coro/cloudstorage/util/thumbnail_options.h"
+#include "coro/cloudstorage/util/thumbnail_quality.h"
 #include "coro/cloudstorage/util/webdav_handler.h"
 #include "coro/http/http_parse.h"
 #include "coro/util/lru_cache.h"
@@ -63,10 +64,9 @@ class CloudProviderHandler {
                            bool use_dash_player) const;
 
   Generator<std::string> GetDirectoryContent(
-      std::string path_prefix, Generator<CloudProvider::PageData> page_data,
+      std::string path_prefix,
+      Generator<AbstractCloudProvider::PageData> page_data,
       std::string path) const;
-
-  using ItemT = typename CloudProvider::Item;
 
   CloudProvider* provider_;
   const ThumbnailGenerator* thumbnail_generator_;

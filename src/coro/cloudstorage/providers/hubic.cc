@@ -1,6 +1,7 @@
 #include "coro/cloudstorage/providers/hubic.h"
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+#include "coro/cloudstorage/util/on_auth_token_updated.h"
 
 namespace coro::cloudstorage {
 
@@ -128,7 +129,7 @@ auto HubiC::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,
 HubiC::CloudProvider::CloudProvider(
     const coro::http::Http* http, Auth::AuthToken auth_token,
     Auth::AuthData auth_data,
-    OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
+    util::OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
     util::AuthorizeRequest<Auth> authorize_request)
     : http_(http),
       auth_manager_(
@@ -233,7 +234,7 @@ OpenStack::CloudProvider HubiC::CloudProvider::CreateOpenStackProvider() {
   return OpenStack::CloudProvider(
       util::AuthManager<OpenStack::Auth>(
           http_, auth_manager_.GetAuthToken().openstack_auth_token,
-          OnAuthTokenUpdated<OpenStack::Auth::AuthToken>(
+          util::OnAuthTokenUpdated<OpenStack::Auth::AuthToken>(
               OnOpenStackTokenUpdated{&auth_manager_}),
           util::RefreshToken<OpenStack::Auth>(
               RefreshOpenStackToken{&auth_manager_, http_}),
@@ -272,7 +273,7 @@ HubiC::Auth::AuthData GetAuthData<HubiC>() {
 template <>
 auto AbstractCloudProvider::Create<HubiC::CloudProvider>(HubiC::CloudProvider p)
     -> std::unique_ptr<CloudProvider> {
-  return CreateAbstractCloudProvider(std::move(p));
+  return CreateAbstractCloudProvider<HubiC>(std::move(p));
 }
 
 }  // namespace util

@@ -4,7 +4,7 @@
 #include <nlohmann/json.hpp>
 
 #include "coro/cloudstorage/cloud_exception.h"
-#include "coro/cloudstorage/cloud_provider.h"
+#include "coro/cloudstorage/util/on_auth_token_updated.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/http/http.h"
 #include "coro/shared_promise.h"
@@ -54,11 +54,10 @@ class AuthManager {
   using AuthToken = typename Auth::AuthToken;
   using Http = coro::http::Http;
 
-  AuthManager(
-      const coro::http::Http* http, AuthToken auth_token,
-      coro::cloudstorage::OnAuthTokenUpdated<AuthToken> on_auth_token_updated,
-      RefreshToken<Auth> refresh_token,
-      AuthorizeRequest<Auth> authorize_request)
+  AuthManager(const coro::http::Http* http, AuthToken auth_token,
+              OnAuthTokenUpdated<AuthToken> on_auth_token_updated,
+              RefreshToken<Auth> refresh_token,
+              AuthorizeRequest<Auth> authorize_request)
       : http_(http),
         auth_token_(std::move(auth_token)),
         on_auth_token_updated_(std::move(on_auth_token_updated)),
@@ -140,7 +139,8 @@ class AuthManager {
   const coro::http::Http* http_;
   AuthToken auth_token_;
   std::optional<SharedPromise<RefreshToken>> current_auth_refresh_;
-  coro::cloudstorage::OnAuthTokenUpdated<AuthToken> on_auth_token_updated_;
+  coro::cloudstorage::util::OnAuthTokenUpdated<AuthToken>
+      on_auth_token_updated_;
   coro::cloudstorage::util::RefreshToken<Auth> refresh_token_;
   coro::cloudstorage::util::AuthorizeRequest<Auth> authorize_request_;
   stdx::stop_source stop_source_;

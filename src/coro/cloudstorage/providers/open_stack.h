@@ -5,7 +5,6 @@
 #include <string>
 #include <variant>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/auth_manager.h"
 #include "coro/cloudstorage/util/crypto_utils.h"
 #include "coro/cloudstorage/util/fetch_json.h"
@@ -65,8 +64,7 @@ class OpenStack {
   class CloudProvider;
 };
 
-class OpenStack::CloudProvider
-    : public coro::cloudstorage::CloudProvider<OpenStack, CloudProvider> {
+class OpenStack::CloudProvider {
  public:
   using Request = http::Request<std::string>;
 

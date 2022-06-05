@@ -6,16 +6,25 @@
 namespace coro::cloudstorage::util {
 
 template <typename T, typename CloudProvider>
-concept IsFile = requires(typename CloudProvider::Impl& provider, T v,
+concept IsFile = requires(typename CloudProvider::CloudProvider& provider, T v,
                           http::Range range, stdx::stop_token stop_token) {
   {
     provider.GetFileContent(v, range, stop_token)
     } -> GeneratorLike<std::string_view>;
 };
 
+template <typename T, typename CloudProvider>
+concept IsDirectory = requires(typename CloudProvider::CloudProvider& provider,
+                               T v, std::optional<std::string> page_token,
+                               stdx::stop_token stop_token) {
+  {
+    provider.ListDirectoryPage(v, page_token, stop_token)
+    } -> Awaitable<typename CloudProvider::PageData>;
+};
+
 template <typename Parent, typename CloudProvider>
 concept CanCreateFile =
-    requires(typename CloudProvider::Impl& provider, Parent parent,
+    requires(typename CloudProvider::CloudProvider& provider, Parent parent,
              std::string_view name, typename CloudProvider::FileContent content,
              stdx::stop_token stop_token,
              decltype(provider.CreateFile(parent, name, std::move(content),
@@ -26,7 +35,7 @@ concept CanCreateFile =
 
 template <typename T, typename CloudProvider>
 concept CanRename = requires(
-    typename CloudProvider::Impl& provider, T v, std::string new_name,
+    typename CloudProvider::CloudProvider& provider, T v, std::string new_name,
     stdx::stop_token stop_token,
     decltype(provider.RenameItem(v, new_name, stop_token)) item_promise,
     typename decltype(item_promise)::type item) {
@@ -34,13 +43,13 @@ concept CanRename = requires(
 };
 
 template <typename T, typename CloudProvider>
-concept CanRemove = requires(typename CloudProvider::Impl& provider, T v,
-                             stdx::stop_token stop_token) {
+concept CanRemove = requires(typename CloudProvider::CloudProvider& provider,
+                             T v, stdx::stop_token stop_token) {
   { provider.RemoveItem(v, stop_token) } -> Awaitable<void>;
 };
 
 template <typename Source, typename Destination, typename CloudProvider>
-concept CanMove = requires(typename CloudProvider::Impl& provider,
+concept CanMove = requires(typename CloudProvider::CloudProvider& provider,
                            Source source, Destination destination,
                            stdx::stop_token stop_token,
                            decltype(provider.MoveItem(source, destination,
@@ -51,7 +60,7 @@ concept CanMove = requires(typename CloudProvider::Impl& provider,
 
 template <typename Parent, typename CloudProvider>
 concept CanCreateDirectory = requires(
-    typename CloudProvider::Impl& provider, Parent v, std::string name,
+    typename CloudProvider::CloudProvider& provider, Parent v, std::string name,
     stdx::stop_token stop_token,
     decltype(provider.CreateDirectory(v, name, stop_token)) item_promise,
     typename decltype(item_promise)::type item) {
@@ -60,25 +69,31 @@ concept CanCreateDirectory = requires(
 
 template <typename Item, typename CloudProvider>
 concept HasThumbnail = requires(
-    typename CloudProvider::Impl& provider, Item v, http::Range range,
+    typename CloudProvider::CloudProvider& provider, Item v, http::Range range,
     stdx::stop_token stop_token,
     decltype(provider.GetItemThumbnail(v, range, stop_token)) thumbnail_promise,
     typename decltype(thumbnail_promise)::type thumbnail) {
   {
     std::declval<decltype(thumbnail)>()
-    } -> stdx::convertible_to<typename CloudProvider::Type::Thumbnail>;
+    } -> stdx::convertible_to<typename CloudProvider::Thumbnail>;
 };
 
 template <typename Item, typename CloudProvider>
 concept HasQualityThumbnail = requires(
-    typename CloudProvider::Impl& provider, Item v, ThumbnailQuality quality,
-    http::Range range, stdx::stop_token stop_token,
+    typename CloudProvider::CloudProvider& provider, Item v,
+    ThumbnailQuality quality, http::Range range, stdx::stop_token stop_token,
     decltype(provider.GetItemThumbnail(v, quality, range,
                                        stop_token)) thumbnail_promise,
     typename decltype(thumbnail_promise)::type thumbnail) {
   {
     std::declval<decltype(thumbnail)>()
-    } -> stdx::convertible_to<typename CloudProvider::Type::Thumbnail>;
+    } -> stdx::convertible_to<typename CloudProvider::Thumbnail>;
+};
+
+template <typename Directory, typename CloudProvider>
+concept HasIsFileContentSizeRequired = requires(
+    typename CloudProvider::CloudProvider& provider, const Directory& d) {
+  { provider.IsFileContentSizeRequired(d) } -> stdx::convertible_to<bool>;
 };
 
 template <typename T>
@@ -128,20 +143,24 @@ class AbstractCloudProviderImplOwningSupplier {
   CloudProviderT impl_;
 };
 
-template <typename CloudProviderT, typename CloudProviderSupplier>
+template <typename TypeT, typename CloudProviderSupplier>
 class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
                                   public CloudProviderSupplier {
  public:
+  using CloudProviderT = typename TypeT::CloudProvider;
   using Directory = AbstractCloudProvider::Directory;
   using File = AbstractCloudProvider::File;
   using GeneralData = AbstractCloudProvider::GeneralData;
   using Thumbnail = AbstractCloudProvider::Thumbnail;
+  using PageData = AbstractCloudProvider::PageData;
+  using FileContent = AbstractCloudProvider::FileContent;
+  using Item = AbstractCloudProvider::Item;
 
   template <typename... Args>
   explicit AbstractCloudProviderImpl(Args&&... args)
       : CloudProviderSupplier(std::forward<Args>(args)...) {}
 
-  std::string_view GetId() const override { return CloudProviderT::Type::kId; }
+  std::string_view GetId() const override { return TypeT::kId; }
 
   Task<Directory> GetRoot(stdx::stop_token stop_token) const override {
     co_return Convert(co_await provider()->GetRoot(std::move(stop_token)));
@@ -150,10 +169,15 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   bool IsFileContentSizeRequired(const Directory& d) const override {
     return std::visit(
         [&]<typename Item>(const Item& directory) -> bool {
-          if constexpr (IsDirectory<Item, CloudProviderT>) {
-            return provider()->IsFileContentSizeRequired(directory);
+          if constexpr (IsDirectory<Item, TypeT>) {
+            if constexpr (HasIsFileContentSizeRequired<Item, TypeT>) {
+              return provider()->IsFileContentSizeRequired(directory);
+            } else {
+              return std::is_convertible_v<
+                  decltype(std::declval<FileContent>().size), int64_t>;
+            }
           } else {
-            throw CloudException("not a directory");
+            throw CloudException("not a directory here");
           }
         },
         std::any_cast<const ItemT&>(d.impl));
@@ -164,7 +188,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
                                    stdx::stop_token stop_token) const override {
     co_return co_await std::visit(
         [&]<typename DirectoryT>(DirectoryT directory) -> Task<PageData> {
-          if constexpr (IsDirectory<DirectoryT, CloudProviderT>) {
+          if constexpr (IsDirectory<DirectoryT, TypeT>) {
             auto page = co_await provider()->ListDirectoryPage(
                 directory, std::move(page_token), std::move(stop_token));
 
@@ -202,7 +226,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
       stdx::stop_token stop_token) const override {
     return std::visit(
         [&]<typename File>(File item) -> Generator<std::string> {
-          if constexpr (IsFile<File, CloudProviderT>) {
+          if constexpr (IsFile<File, TypeT>) {
             return provider()->GetFileContent(std::move(item), range,
                                               std::move(stop_token));
           } else {
@@ -303,7 +327,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
     result.name = d.name;
     result.size = GetSize(d);
     result.timestamp = GetTimestamp(d);
-    if constexpr (std::is_same_v<To, File> && IsFile<From, CloudProviderT>) {
+    if constexpr (std::is_same_v<To, File> && IsFile<From, TypeT>) {
       result.mime_type = GetMimeType(d);
     }
     result.impl.template emplace<ItemT>(std::move(d));
@@ -311,12 +335,12 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   }
 
  private:
-  using ItemT = typename CloudProviderT::Item;
-  using FileContentT = typename CloudProviderT::FileContent;
+  using ItemT = typename TypeT::Item;
+  using FileContentT = typename TypeT::FileContent;
 
   template <typename T>
   static std::string GetMimeType(const T& d) {
-    static_assert(IsFile<T, CloudProviderT>);
+    static_assert(IsFile<T, TypeT>);
     if constexpr (HasMimeType<T>) {
       if constexpr (std::is_convertible_v<decltype(d.mime_type), std::string>) {
         return d.mime_type;
@@ -357,7 +381,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   struct CreateFileF {
     template <typename DirectoryT>
     Task<File> operator()(DirectoryT parent) && {
-      if constexpr (CanCreateFile<DirectoryT, CloudProviderT>) {
+      if constexpr (CanCreateFile<DirectoryT, TypeT>) {
         FileContentT ncontent;
         ncontent.data = std::move(content.data);
         if constexpr (std::is_convertible_v<decltype(ncontent.size), int64_t>) {
@@ -381,7 +405,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   struct CreateDirectoryF {
     template <typename DirectoryT>
     Task<Directory> operator()(DirectoryT parent) {
-      if constexpr (CanCreateDirectory<DirectoryT, CloudProviderT>) {
+      if constexpr (CanCreateDirectory<DirectoryT, TypeT>) {
         co_return Convert(co_await provider->CreateDirectory(
             std::move(parent), std::move(name), std::move(stop_token)));
       } else {
@@ -396,8 +420,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   struct RenameDirectoryF {
     template <typename Entry>
     Task<Directory> operator()(Entry entry) && {
-      if constexpr (IsDirectory<Entry, CloudProviderT> &&
-                    CanRename<Entry, CloudProviderT>) {
+      if constexpr (IsDirectory<Entry, TypeT> && CanRename<Entry, TypeT>) {
         co_return Convert(co_await provider->RenameItem(
             std::move(entry), std::move(new_name), std::move(stop_token)));
       } else {
@@ -412,8 +435,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   struct RenameFileF {
     template <typename Entry>
     Task<File> operator()(Entry entry) && {
-      if constexpr (IsFile<Entry, CloudProviderT> &&
-                    CanRename<Entry, CloudProviderT>) {
+      if constexpr (IsFile<Entry, TypeT> && CanRename<Entry, TypeT>) {
         co_return Convert(co_await provider->RenameItem(
             std::move(entry), std::move(new_name), std::move(stop_token)));
       } else {
@@ -428,7 +450,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   struct RemoveItemF {
     template <typename Entry>
     Task<> operator()(Entry entry) && {
-      if constexpr (CanRemove<Entry, CloudProviderT>) {
+      if constexpr (CanRemove<Entry, TypeT>) {
         co_await provider->RemoveItem(std::move(entry), std::move(stop_token));
       } else {
         throw CloudException("can't remove");
@@ -448,8 +470,8 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   struct MoveDirectoryF {
     template <typename SourceT, typename DestinationT>
     Task<Directory> operator()(SourceT source, DestinationT destination) && {
-      if constexpr (IsDirectory<SourceT, CloudProviderT> &&
-                    CanMove<SourceT, DestinationT, CloudProviderT>) {
+      if constexpr (IsDirectory<SourceT, TypeT> &&
+                    CanMove<SourceT, DestinationT, TypeT>) {
         co_return Convert(co_await provider->MoveItem(
             std::move(source), std::move(destination), std::move(stop_token)));
       } else {
@@ -463,8 +485,8 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   struct MoveFileF {
     template <typename SourceT, typename DestinationT>
     Task<File> operator()(SourceT source, DestinationT destination) && {
-      if constexpr (IsFile<SourceT, CloudProviderT> &&
-                    CanMove<SourceT, DestinationT, CloudProviderT>) {
+      if constexpr (IsFile<SourceT, TypeT> &&
+                    CanMove<SourceT, DestinationT, TypeT>) {
         co_return Convert(co_await provider->MoveItem(
             std::move(source), std::move(destination), std::move(stop_token)));
       } else {
@@ -478,7 +500,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   struct GetThumbnailF {
     template <typename Item>
     Task<Thumbnail> operator()(Item entry) && {
-      if constexpr (HasThumbnail<Item, CloudProviderT>) {
+      if constexpr (HasThumbnail<Item, TypeT>) {
         auto provider_thumbnail = co_await provider->GetItemThumbnail(
             std::move(entry), range, std::move(stop_token));
         Thumbnail thumbnail{
@@ -506,7 +528,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   struct GetQualityThumbnailF {
     template <typename Item>
     Task<Thumbnail> operator()(Item entry) && {
-      if constexpr (HasQualityThumbnail<Item, CloudProviderT>) {
+      if constexpr (HasQualityThumbnail<Item, TypeT>) {
         auto provider_thumbnail = co_await provider->GetItemThumbnail(
             std::move(entry), quality, range, std::move(stop_token));
         Thumbnail thumbnail{
@@ -535,26 +557,24 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
   }
 };
 
-template <typename T>
+template <typename Type, typename T>
 auto CreateAbstractCloudProviderImpl(T impl) {
   if constexpr (std::is_pointer_v<T>) {
     using CloudProviderT = std::remove_pointer_t<T>;
     return AbstractCloudProviderImpl<
-        CloudProviderT,
-        AbstractCloudProviderImplNonOwningSupplier<CloudProviderT>>(impl);
+        Type, AbstractCloudProviderImplNonOwningSupplier<CloudProviderT>>(impl);
   } else {
     using CloudProviderT = std::remove_cvref_t<T>;
     return AbstractCloudProviderImpl<
-        CloudProviderT,
-        AbstractCloudProviderImplOwningSupplier<CloudProviderT>>(
+        Type, AbstractCloudProviderImplOwningSupplier<CloudProviderT>>(
         std::move(impl));
   }
 }
 
-template <typename T>
+template <typename Type, typename T>
 std::unique_ptr<AbstractCloudProvider::CloudProvider>
 CreateAbstractCloudProvider(T impl) {
-  auto d = CreateAbstractCloudProviderImpl(std::move(impl));
+  auto d = CreateAbstractCloudProviderImpl<Type>(std::move(impl));
   return std::make_unique<decltype(d)>(std::move(d));
 }
 

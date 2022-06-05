@@ -416,7 +416,7 @@ namespace util {
 template <>
 auto AbstractCloudProvider::Create<WebDAV::CloudProvider>(
     WebDAV::CloudProvider p) -> std::unique_ptr<CloudProvider> {
-  return CreateAbstractCloudProvider(std::move(p));
+  return CreateAbstractCloudProvider<WebDAV>(std::move(p));
 }
 
 }  // namespace util

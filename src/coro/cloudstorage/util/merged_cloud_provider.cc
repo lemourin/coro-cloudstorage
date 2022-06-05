@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#include "coro/cloudstorage/util/string_utils.h"
+
 namespace coro::cloudstorage::util {
 
 namespace {
@@ -10,7 +12,7 @@ template <typename T, typename Entry>
 T ToItem(std::string account_id, Entry entry) {
   T item;
   item.account_id = std::move(account_id);
-  item.id = util::StrCat(item.account_id, "|", entry.id);
+  item.id = StrCat(item.account_id, "|", entry.id);
   item.name = entry.name;
   item.timestamp = entry.timestamp;
   item.size = entry.size;

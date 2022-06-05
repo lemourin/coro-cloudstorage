@@ -4,7 +4,6 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/auth_handler.h"
@@ -68,8 +67,7 @@ class WebDAV {
   static inline constexpr auto& kIcon = util::kAssetsProvidersWebdavPng;
 };
 
-class WebDAV::CloudProvider
-    : public coro::cloudstorage::CloudProvider<WebDAV, CloudProvider> {
+class WebDAV::CloudProvider {
  public:
   using Request = http::Request<std::string>;
 

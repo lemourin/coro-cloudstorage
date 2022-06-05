@@ -8,6 +8,7 @@
 #include "coro/cloudstorage/util/static_file_handler.h"
 #include "coro/cloudstorage/util/theme_handler.h"
 #include "coro/cloudstorage/util/webdav_utils.h"
+#include "coro/util/stop_token_or.h"
 
 namespace coro::cloudstorage::util {
 

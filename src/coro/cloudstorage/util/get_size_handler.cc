@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/util/get_size_handler.h"
 
+#include "coro/util/stop_token_or.h"
+
 namespace coro::cloudstorage::util {
 
 auto GetSizeHandler::operator()(Request request,

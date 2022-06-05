@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 
+#include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/http/http.h"
 #include "coro/http/http_parse.h"
 
@@ -23,14 +24,16 @@ std::string GetPath(const Request& request) {
 
 std::vector<std::string> GetEffectivePath(std::string_view uri_path);
 
-template <typename CloudProvider, typename Request>
-auto ToFileContent(Request request) {
+template <typename Request>
+auto ToFileContent(AbstractCloudProvider::CloudProvider* p,
+                   const AbstractCloudProvider::Directory& parent,
+                   Request request) {
   if (!request.body) {
     throw http::HttpException(http::HttpException::kBadRequest);
   }
-  typename CloudProvider::FileContent content{.data = std::move(*request.body)};
+  AbstractCloudProvider::FileContent content{.data = std::move(*request.body)};
   auto header = http::GetHeader(request.headers, "Content-Length");
-  if (std::is_convertible_v<decltype(content.size), int64_t> && !header) {
+  if (p->IsFileContentSizeRequired(parent) && !header) {
     throw http::HttpException(http::HttpException::kBadRequest);
   }
   if (header) {

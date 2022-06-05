@@ -2,6 +2,7 @@
 
 #include "coro/cloudstorage/util/cloud_provider_utils.h"
 #include "coro/cloudstorage/util/net_utils.h"
+#include "coro/cloudstorage/util/thumbnail_quality.h"
 
 namespace coro::cloudstorage::util {
 
@@ -112,7 +113,7 @@ auto CloudProviderHandler::operator()(Request request,
               return GetItemThumbnail(std::forward<T>(d),
                                       ThumbnailQuality::kLow, stop_token);
             },
-            co_await provider_->GetItemByPathComponents(path, stop_token));
+            co_await GetItemByPathComponents(provider_, path, stop_token));
       }
       if (auto it = query.find("hq_thumbnail");
           it != query.end() && it->second == "true") {
@@ -121,7 +122,7 @@ auto CloudProviderHandler::operator()(Request request,
               return GetItemThumbnail(std::forward<T>(d),
                                       ThumbnailQuality::kHigh, stop_token);
             },
-            co_await provider_->GetItemByPathComponents(path, stop_token));
+            co_await GetItemByPathComponents(provider_, path, stop_token));
       }
       if (auto it = query.find("dash_player");
           it != query.end() && it->second == "true") {
@@ -137,7 +138,7 @@ auto CloudProviderHandler::operator()(Request request,
           return HandleExistingItem(std::move(request), std::forward<T>(d),
                                     stop_token);
         },
-        co_await provider_->GetItemByPathComponents(path, stop_token));
+        co_await GetItemByPathComponents(provider_, path, stop_token));
   } catch (const CloudException& e) {
     switch (e.type()) {
       case CloudException::Type::kNotFound:
@@ -250,7 +251,7 @@ auto CloudProviderHandler::HandleExistingItem(
       .headers = {{"Content-Type", "text/html"}},
       .body = GetDirectoryContent(
           GetItemPathPrefix(request.headers),
-          provider_->ListDirectory(d, std::move(stop_token)), directory_path)};
+          ListDirectory(provider_, d, std::move(stop_token)), directory_path)};
 }
 
 template <typename Item>
@@ -268,7 +269,8 @@ std::string CloudProviderHandler::GetItemEntry(const Item& item,
 }
 
 Generator<std::string> CloudProviderHandler::GetDirectoryContent(
-    std::string path_prefix, Generator<CloudProvider::PageData> page_data,
+    std::string path_prefix,
+    Generator<AbstractCloudProvider::PageData> page_data,
     std::string path) const {
   co_yield "<!DOCTYPE html>"
       "<html lang='en-us'>"

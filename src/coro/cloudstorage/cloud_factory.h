@@ -1,10 +1,8 @@
 #ifndef CORO_CLOUDSTORAGE_CLOUD_FACTORY_H
 #define CORO_CLOUDSTORAGE_CLOUD_FACTORY_H
 
-#include <boost/di.hpp>
 #include <random>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/abstract_cloud_factory.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/auth_handler.h"

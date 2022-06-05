@@ -3,7 +3,6 @@
 
 #include <utility>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/cloudstorage/util/timing_out_stop_token.h"
 #include "coro/util/event_loop.h"
@@ -25,9 +24,10 @@ class TimingOutCloudProvider : public AbstractCloudProvider::CloudProvider {
   Task<AbstractCloudProvider::Directory> GetRoot(
       stdx::stop_token stop_token) const override;
 
-  Task<PageData> ListDirectoryPage(AbstractCloudProvider::Directory directory,
-                                   std::optional<std::string> page_token,
-                                   stdx::stop_token stop_token) const override;
+  Task<AbstractCloudProvider::PageData> ListDirectoryPage(
+      AbstractCloudProvider::Directory directory,
+      std::optional<std::string> page_token,
+      stdx::stop_token stop_token) const override;
 
   Task<AbstractCloudProvider::GeneralData> GetGeneralData(
       stdx::stop_token stop_token) const override;

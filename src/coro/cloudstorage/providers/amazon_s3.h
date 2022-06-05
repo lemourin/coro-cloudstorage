@@ -7,7 +7,6 @@
 #include <span>
 #include <sstream>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/auth_handler.h"
@@ -70,8 +69,7 @@ class AmazonS3 {
   static inline constexpr auto& kIcon = util::kAssetsProvidersAmazons3Png;
 };
 
-class AmazonS3::CloudProvider
-    : public coro::cloudstorage::CloudProvider<AmazonS3, CloudProvider> {
+class AmazonS3::CloudProvider {
  public:
   using Request = http::Request<std::string>;
 

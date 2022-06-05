@@ -1,5 +1,8 @@
 #include "coro/cloudstorage/util/avio_context.h"
 
+#include "coro/cloudstorage/util/generator_utils.h"
+#include "coro/http/http.h"
+
 namespace coro::cloudstorage::util {
 
 namespace {

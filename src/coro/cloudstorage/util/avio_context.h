@@ -4,7 +4,6 @@
 #include <cerrno>
 #include <iostream>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/util/event_loop.h"
 

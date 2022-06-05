@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/cloud_factory.h"
 
+#include <boost/di.hpp>
+
 #include "coro/cloudstorage/providers/amazon_s3.h"
 #include "coro/cloudstorage/providers/box.h"
 #include "coro/cloudstorage/providers/dropbox.h"
@@ -178,9 +180,10 @@ class CloudFactoryUtil {
     auto auth_injector = [&] {
       if constexpr (HasAuthData<Auth>) {
         return di::make_injector(
-            di::bind<OnAuthTokenUpdated<AuthToken>>().to([&](const auto&) {
-              return OnAuthTokenUpdated<AuthToken>(on_token_updated);
-            }),
+            di::bind<util::OnAuthTokenUpdated<AuthToken>>().to(
+                [&](const auto&) {
+                  return util::OnAuthTokenUpdated<AuthToken>(on_token_updated);
+                }),
             di::bind<util::RefreshToken<Auth>>().to([](const auto& injector) {
               return util::RefreshToken<Auth>(
                   injector.template create<RefreshTokenImpl<Auth>>());

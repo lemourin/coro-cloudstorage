@@ -6,7 +6,6 @@
 #include <sstream>
 #include <string>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/auth_manager.h"
@@ -92,8 +91,7 @@ struct GoogleDrive {
   static inline constexpr auto& kIcon = util::kAssetsProvidersGooglePng;
 };
 
-class GoogleDrive::CloudProvider
-    : public coro::cloudstorage::CloudProvider<GoogleDrive, CloudProvider> {
+class GoogleDrive::CloudProvider {
  public:
   using Request = http::Request<std::string>;
 

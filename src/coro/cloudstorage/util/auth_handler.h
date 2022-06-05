@@ -1,7 +1,6 @@
 #ifndef CORO_CLOUDSTORAGE_AUTH_HANDLER_H
 #define CORO_CLOUDSTORAGE_AUTH_HANDLER_H
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/http/http.h"
 #include "coro/http/http_parse.h"
 

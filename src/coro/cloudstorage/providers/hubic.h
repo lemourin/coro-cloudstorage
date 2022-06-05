@@ -3,7 +3,6 @@
 
 #include <string_view>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/providers/open_stack.h"
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
@@ -50,12 +49,11 @@ class HubiC : public OpenStack {
   static inline constexpr auto& kIcon = util::kAssetsProvidersHubicPng;
 };
 
-class HubiC::CloudProvider
-    : public coro::cloudstorage::CloudProvider<HubiC, CloudProvider> {
+class HubiC::CloudProvider {
  public:
   CloudProvider(const coro::http::Http* http, Auth::AuthToken auth_token,
                 Auth::AuthData auth_data,
-                OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
+                util::OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
                 util::AuthorizeRequest<Auth> authorizer_request);
 
   CloudProvider(CloudProvider&& other) noexcept;

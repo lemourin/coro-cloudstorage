@@ -1,6 +1,7 @@
 #include "coro/cloudstorage/providers/one_drive.h"
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+#include "coro/cloudstorage/util/generator_utils.h"
 
 namespace coro::cloudstorage {
 
@@ -325,7 +326,7 @@ OneDrive::Auth::AuthData GetAuthData<OneDrive>() {
 template <>
 auto AbstractCloudProvider::Create<OneDrive::CloudProvider>(
     OneDrive::CloudProvider p) -> std::unique_ptr<CloudProvider> {
-  return CreateAbstractCloudProvider(std::move(p));
+  return CreateAbstractCloudProvider<OneDrive>(std::move(p));
 }
 
 }  // namespace util

@@ -1,9 +1,6 @@
 #ifndef CORO_CLOUDSTORAGE_FUSE_MERGED_CLOUD_PROVIDER_H
 #define CORO_CLOUDSTORAGE_FUSE_MERGED_CLOUD_PROVIDER_H
 
-#include <iostream>
-
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/util/stop_token_or.h"
 #include "coro/when_all.h"
@@ -55,9 +52,7 @@ struct MergedCloudProvider {
   class CloudProvider;
 };
 
-class MergedCloudProvider::CloudProvider
-    : public coro::cloudstorage::CloudProvider<MergedCloudProvider,
-                                               CloudProvider> {
+class MergedCloudProvider::CloudProvider {
  public:
   bool IsFileContentSizeRequired(const Directory &d) const;
   bool IsFileContentSizeRequired(const Root &d) const;

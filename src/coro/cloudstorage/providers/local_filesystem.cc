@@ -223,7 +223,7 @@ namespace util {
 template <>
 auto AbstractCloudProvider::Create<LocalFileSystem::CloudProvider>(
     LocalFileSystem::CloudProvider p) -> std::unique_ptr<CloudProvider> {
-  return CreateAbstractCloudProvider(std::move(p));
+  return CreateAbstractCloudProvider<LocalFileSystem>(std::move(p));
 }
 
 }  // namespace util

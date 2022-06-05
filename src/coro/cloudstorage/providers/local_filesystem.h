@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <optional>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/auth_token_manager.h"
@@ -57,8 +56,7 @@ struct LocalFileSystem {
   static inline constexpr const auto& kIcon = util::kAssetsProvidersLocalPng;
 };
 
-class LocalFileSystem::CloudProvider
-    : public coro::cloudstorage::CloudProvider<LocalFileSystem, CloudProvider> {
+class LocalFileSystem::CloudProvider {
  public:
   CloudProvider(coro::util::ThreadPool* thread_pool, Auth::AuthToken auth_token)
       : thread_pool_(thread_pool), auth_token_(std::move(auth_token)) {}

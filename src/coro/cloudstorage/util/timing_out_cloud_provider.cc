@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/util/timing_out_cloud_provider.h"
 
+#include "coro/util/raii_utils.h"
+
 namespace coro::cloudstorage::util {
 
 bool TimingOutCloudProvider::IsFileContentSizeRequired(

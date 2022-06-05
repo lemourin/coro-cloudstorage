@@ -1,7 +1,6 @@
 #ifndef CORO_CLOUDSTORAGE_WEBDAV_HANDLER_H
 #define CORO_CLOUDSTORAGE_WEBDAV_HANDLER_H
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/cloudstorage/util/file_utils.h"
 #include "coro/cloudstorage/util/handler_utils.h"

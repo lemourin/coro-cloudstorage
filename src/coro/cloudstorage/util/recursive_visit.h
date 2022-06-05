@@ -3,7 +3,8 @@
 
 #include <vector>
 
-#include "coro/cloudstorage/cloud_provider.h"
+#include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+#include "coro/cloudstorage/util/cloud_provider_utils.h"
 #include "coro/when_all.h"
 
 namespace coro::cloudstorage::util {
@@ -13,7 +14,7 @@ Task<> RecursiveVisit(CloudProvider* provider, Item item, const F& func,
                       stdx::stop_token stop_token) {
   if constexpr (IsDirectory<Item, CloudProvider>) {
     std::vector<Task<>> tasks;
-    FOR_CO_AWAIT(auto& page, provider->ListDirectory(item, stop_token)) {
+    FOR_CO_AWAIT(auto& page, ListDirectory(provider, item, stop_token)) {
       for (const auto& entry : page.items) {
         tasks.emplace_back(std::visit(
             [&](auto& entry) {

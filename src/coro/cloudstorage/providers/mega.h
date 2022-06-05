@@ -3,7 +3,6 @@
 
 #include <array>
 
-#include "coro/cloudstorage/cloud_provider.h"
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/auth_handler.h"
@@ -13,6 +12,7 @@
 #include "coro/cloudstorage/util/thumbnail_generator.h"
 #include "coro/cloudstorage/util/thumbnail_options.h"
 #include "coro/http/http_parse.h"
+#include "coro/shared_promise.h"
 #include "coro/stdx/stop_token.h"
 #include "coro/util/event_loop.h"
 #include "coro/util/function_traits.h"
@@ -108,8 +108,7 @@ struct Mega {
   static inline const auto& kIcon = util::kAssetsProvidersMegaPng;
 };
 
-class Mega::CloudProvider
-    : public coro::cloudstorage::CloudProvider<Mega, CloudProvider> {
+class Mega::CloudProvider {
  public:
   CloudProvider(const coro::http::Http* http,
                 const coro::util::EventLoop* event_loop,

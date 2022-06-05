@@ -1,5 +1,8 @@
 #include "coro/cloudstorage/util/webdav_handler.h"
 
+#include "coro/cloudstorage/util/cloud_provider_utils.h"
+#include "coro/cloudstorage/util/string_utils.h"
+
 namespace coro::cloudstorage::util {
 
 namespace {
@@ -27,6 +30,7 @@ struct CreateDirectoryF {
 
 struct CreateFileF {
   Task<Response> operator()(AbstractCloudProvider::Directory item) && {
+    auto content = ToFileContent(provider, item, std::move(request));
     co_await provider->CreateFile(std::move(item), std::move(name),
                                   std::move(content), std::move(stop_token));
     co_return Response{.status = 201};
@@ -38,7 +42,7 @@ struct CreateFileF {
 
   CloudProvider* provider;
   std::string name;
-  typename CloudProvider::FileContent content;
+  Request request;
   stdx::stop_token stop_token;
 };
 
@@ -150,8 +154,8 @@ Task<Response> HandleExistingItem(CloudProvider* provider, Request request,
     auto destination_name = destination.back();
     ItemT new_item = d;
     if (!Equal(GetDirectoryPath(path), destination_path)) {
-      auto destination_directory = co_await provider->GetItemByPathComponents(
-          destination_path, stop_token);
+      auto destination_directory = co_await GetItemByPathComponents(
+          provider, destination_path, stop_token);
       auto item = co_await std::visit(
           MoveItemF<Item>{provider, std::move(d), std::move(stop_token)},
           std::move(destination_directory));
@@ -184,7 +188,7 @@ Task<Response> HandleExistingItem(CloudProvider* provider, Request request,
           .status = 207,
           .headers = {{"Content-Type", "text/xml"}},
           .body = GetWebDavResponse(
-              d, provider->ListDirectory(d, std::move(stop_token)),
+              d, ListDirectory(provider, d, std::move(stop_token)),
               std::move(request), directory_path)};
     } else {
       co_return Response{.status = 207,
@@ -209,25 +213,23 @@ auto WebDAVHandler::operator()(Request request,
     }
     co_return co_await std::visit(
         CreateDirectoryF{provider_, path.back(), stop_token},
-        co_await provider_->GetItemByPathComponents(GetDirectoryPath(path),
-                                                    stop_token));
+        co_await GetItemByPathComponents(provider_, GetDirectoryPath(path),
+                                         stop_token));
   } else if (request.method == http::Method::kPut) {
     if (path.empty()) {
       throw CloudException("invalid path");
     }
     co_return co_await std::visit(
-        CreateFileF{provider_, path.back(),
-                    ToFileContent<CloudProvider>(std::move(request)),
-                    stop_token},
-        co_await provider_->GetItemByPathComponents(GetDirectoryPath(path),
-                                                    stop_token));
+        CreateFileF{provider_, path.back(), std::move(request), stop_token},
+        co_await GetItemByPathComponents(provider_, GetDirectoryPath(path),
+                                         stop_token));
   } else {
     co_return co_await std::visit(
         [&](const auto& d) {
           return HandleExistingItem(provider_, std::move(request), path, d,
                                     stop_token);
         },
-        co_await provider_->GetItemByPathComponents(path, stop_token));
+        co_await GetItemByPathComponents(provider_, path, stop_token));
   }
 }
 
