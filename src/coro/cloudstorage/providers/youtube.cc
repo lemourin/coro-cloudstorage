@@ -31,7 +31,7 @@ std::string GetEndpoint(std::string_view path) {
 
 std::string EscapeRegex(std::string_view input) {
   re::regex special_characters{R"([-[\]{}()*+?.,\^$|#\s])"};
-  return re::regex_replace(std::string(input), special_characters, R"(\$&)");
+  return re::regex_replace(std::string(input), special_characters, R"(\\$&)");
 }
 
 std::string XmlAttributes(
@@ -426,7 +426,7 @@ std::function<std::string(std::string_view)> GetDescrambler(
       Find(page_data, {re::regex(StrCat(EscapeRegex(descrambler),
                                         R"(=function[^{]*\{([^}]*)\};)"))})
           .value();
-  auto helper = Find(rules, {re::regex(R"(;([a-zA-Z0-9]*)\.)")}).value();
+  auto helper = Find(rules, {re::regex(R"(;([^\.]*)\.)")}).value();
   auto transforms =
       Find(page_data,
            {re::regex(StrCat(EscapeRegex(helper), R"(=\{([\s\S]*?)\};)"))})
