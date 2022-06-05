@@ -37,6 +37,11 @@ struct YouTube {
     std::string name;
   };
 
+  struct ThumbnailData {
+    std::optional<std::string> default_quality_url;
+    std::optional<std::string> high_quality_url;
+  };
+
   struct RootDirectory : ItemData {
     Presentation presentation;
   };
@@ -55,7 +60,7 @@ struct YouTube {
     static constexpr std::string_view mime_type = "application/octet-stream";
     std::string video_id;
     int64_t timestamp;
-    std::optional<std::string> thumbnail_url;
+    ThumbnailData thumbnail;
   };
 
   struct MuxedStreamMp4 : MuxedStreamWebm {};
@@ -72,7 +77,7 @@ struct YouTube {
     static constexpr int64_t size = kDashManifestSize;
     std::string video_id;
     int64_t timestamp;
-    std::optional<std::string> thumbnail_url;
+    ThumbnailData thumbnail;
   };
 
   struct StreamData {
@@ -153,13 +158,16 @@ struct YouTube::CloudProvider
   Generator<std::string> GetFileContent(DashManifest file, http::Range range,
                                         stdx::stop_token stop_token);
 
-  Task<Thumbnail> GetItemThumbnail(DashManifest item, http::Range range,
+  Task<Thumbnail> GetItemThumbnail(DashManifest item, ThumbnailQuality,
+                                   http::Range range,
                                    stdx::stop_token stop_token);
 
-  Task<Thumbnail> GetItemThumbnail(MuxedStreamMp4 item, http::Range range,
+  Task<Thumbnail> GetItemThumbnail(MuxedStreamMp4 item, ThumbnailQuality,
+                                   http::Range range,
                                    stdx::stop_token stop_token);
 
-  Task<Thumbnail> GetItemThumbnail(MuxedStreamWebm item, http::Range range,
+  Task<Thumbnail> GetItemThumbnail(MuxedStreamWebm item, ThumbnailQuality,
+                                   http::Range range,
                                    stdx::stop_token stop_token);
 
  private:
@@ -173,7 +181,8 @@ struct YouTube::CloudProvider
                                             stdx::stop_token stop_token);
 
   template <typename Item>
-  Task<Thumbnail> GetItemThumbnailImpl(Item item, http::Range range,
+  Task<Thumbnail> GetItemThumbnailImpl(Item item, ThumbnailQuality quality,
+                                       http::Range range,
                                        stdx::stop_token stop_token);
 
   Task<std::string> GetVideoUrl(std::string video_id, int64_t itag,
