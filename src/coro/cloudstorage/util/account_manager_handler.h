@@ -91,7 +91,7 @@ class AccountManagerHandler {
 
   void OnCloudProviderCreated(CloudProviderAccount* account);
 
-  CloudProviderAccount* CreateAccount(
+  CloudProviderAccount CreateAccount(
       AbstractCloudProvider::Auth::AuthToken auth_token,
       std::shared_ptr<std::optional<std::string>> username);
 

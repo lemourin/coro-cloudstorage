@@ -74,10 +74,10 @@ AccountManagerHandler::AccountManagerHandler(
 
   for (auto auth_token : settings_manager_.LoadTokenData()) {
     auto id = std::move(auth_token.id);
-    auto* account =
+    auto& account = accounts_.emplace_back(
         CreateAccount(std::move(auth_token),
-                      std::make_shared<std::optional<std::string>>(id));
-    OnCloudProviderCreated(account);
+                      std::make_shared<std::optional<std::string>>(id)));
+    OnCloudProviderCreated(&account);
   }
 }
 
@@ -234,7 +234,6 @@ void AccountManagerHandler::OnCloudProviderCreated(
                 .prefix = StrCat("/", account_id),
                 .handler = CloudProviderHandler(&provider, thumbnail_generator_,
                                                 &settings_manager_)});
-
     account_listener_->OnCreate(account);
   } catch (...) {
     RemoveHandler(account_id);
@@ -257,10 +256,10 @@ Task<> AccountManagerHandler::RemoveCloudProvider(const F& predicate) {
   }
 }
 
-CloudProviderAccount* AccountManagerHandler::CreateAccount(
+CloudProviderAccount AccountManagerHandler::CreateAccount(
     AbstractCloudProvider::Auth::AuthToken auth_token,
     std::shared_ptr<std::optional<std::string>> username) {
-  return &accounts_.emplace_back(
+  return CloudProviderAccount(
       username->value_or(""), version_++,
       factory_->Create(std::move(auth_token),
                        OnAuthTokenChanged{&settings_manager_, username}));
@@ -270,28 +269,22 @@ Task<CloudProviderAccount*> AccountManagerHandler::Create(
     AbstractCloudProvider::Auth::AuthToken auth_token,
     stdx::stop_token stop_token) {
   auto username = std::make_shared<std::optional<std::string>>(std::nullopt);
-  auto* account = CreateAccount(auth_token, username);
-  auto version = account->version_;
-  auto& provider = account->provider();
-  bool on_create_called = false;
+  auto account = CreateAccount(auth_token, username);
+  auto version = account.version_;
+  auto& provider = account.provider();
   std::exception_ptr exception;
   try {
     auto general_data = co_await provider.GetGeneralData(std::move(stop_token));
     *username = std::move(general_data.username);
-    account->username_ = **username;
+    account.username_ = **username;
+    account.id_ = GetAccountId(account.type(), account.username());
     co_await RemoveCloudProvider([&](const auto& entry) {
-      return entry.version_ < version &&
-             entry.id() == GetAccountId(provider.GetId(), **username);
+      return entry.version_ < version && entry.id() == account.id();
     });
-    for (const auto& entry : accounts_) {
-      if (entry.version_ == version) {
-        OnCloudProviderCreated(account);
-        on_create_called = true;
-        settings_manager_.SaveToken(std::move(auth_token), **username);
-        break;
-      }
-    }
-    co_return account;
+    auto& d = accounts_.emplace_back(std::move(account));
+    OnCloudProviderCreated(&d);
+    settings_manager_.SaveToken(std::move(auth_token), **username);
+    co_return &d;
   } catch (...) {
     exception = std::current_exception();
   }
