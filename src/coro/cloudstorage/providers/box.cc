@@ -295,7 +295,7 @@ Box::Auth::AuthData GetAuthData<Box>() {
 template <>
 auto AbstractCloudProvider::Create<Box>(Box p)
     -> std::unique_ptr<AbstractCloudProvider> {
-  return CreateAbstractCloudProvider<Box>(std::move(p));
+  return CreateAbstractCloudProvider(std::move(p));
 }
 
 }  // namespace util

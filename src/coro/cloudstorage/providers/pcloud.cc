@@ -326,7 +326,7 @@ PCloud::Auth::AuthData GetAuthData<PCloud>() {
 template <>
 auto AbstractCloudProvider::Create<PCloud>(PCloud p)
     -> std::unique_ptr<AbstractCloudProvider> {
-  return CreateAbstractCloudProvider<PCloud>(std::move(p));
+  return CreateAbstractCloudProvider(std::move(p));
 }
 
 }  // namespace util

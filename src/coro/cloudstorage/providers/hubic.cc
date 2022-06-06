@@ -264,7 +264,7 @@ HubiC::Auth::AuthData GetAuthData<HubiC>() {
 template <>
 auto AbstractCloudProvider::Create<HubiC>(HubiC p)
     -> std::unique_ptr<AbstractCloudProvider> {
-  return CreateAbstractCloudProvider<HubiC>(std::move(p));
+  return CreateAbstractCloudProvider(std::move(p));
 }
 
 }  // namespace util

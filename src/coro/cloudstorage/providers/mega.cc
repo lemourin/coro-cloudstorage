@@ -768,7 +768,7 @@ auto Mega::CreateFile(DirectoryT parent, std::string_view name,
 
 auto Mega::TrySetThumbnail(File file, stdx::stop_token stop_token)
     -> Task<File> {
-  auto impl = CreateAbstractCloudProviderImpl<Mega>(this);
+  auto impl = CreateAbstractCloudProviderImpl(this);
   switch (GetFileType(impl.Convert(file).mime_type)) {
     case FileType::kImage:
     case FileType::kVideo: {
@@ -1251,7 +1251,7 @@ Mega::Auth::AuthData GetAuthData<Mega>() {
 template <>
 auto AbstractCloudProvider::Create<Mega>(Mega p)
     -> std::unique_ptr<AbstractCloudProvider> {
-  return CreateAbstractCloudProvider<Mega>(std::move(p));
+  return CreateAbstractCloudProvider(std::move(p));
 }
 
 }  // namespace util
