@@ -553,15 +553,14 @@ nlohmann::json YouTube::StreamData::GetBestAudio(
   return *json;
 }
 
-auto YouTube::CloudProvider::GetRoot(stdx::stop_token) -> Task<RootDirectory> {
+auto YouTube::GetRoot(stdx::stop_token) -> Task<RootDirectory> {
   RootDirectory d = {};
   d.id = "/";
   d.presentation = Presentation::kDash;
   co_return d;
 }
 
-auto YouTube::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
-    -> Task<GeneralData> {
+auto YouTube::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
   json json = co_await auth_manager_.FetchJson(
       Request{.url = "https://openidconnect.googleapis.com/v1/userinfo"},
       std::move(stop_token));
@@ -569,9 +568,9 @@ auto YouTube::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
   co_return result;
 }
 
-auto YouTube::CloudProvider::ListDirectoryPage(
-    StreamDirectory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) -> Task<PageData> {
+auto YouTube::ListDirectoryPage(StreamDirectory directory,
+                                std::optional<std::string> page_token,
+                                stdx::stop_token stop_token) -> Task<PageData> {
   PageData result;
   StreamData data = co_await stream_cache_.Get(directory.video_id, stop_token);
   for (const auto& formats : {data.adaptive_formats, data.formats}) {
@@ -585,9 +584,9 @@ auto YouTube::CloudProvider::ListDirectoryPage(
   co_return result;
 }
 
-auto YouTube::CloudProvider::ListDirectoryPage(
-    Playlist directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) -> Task<PageData> {
+auto YouTube::ListDirectoryPage(Playlist directory,
+                                std::optional<std::string> page_token,
+                                stdx::stop_token stop_token) -> Task<PageData> {
   PageData result;
   std::vector<std::pair<std::string, std::string>> headers{
       {"part", "snippet"},
@@ -641,9 +640,9 @@ auto YouTube::CloudProvider::ListDirectoryPage(
   co_return result;
 }
 
-auto YouTube::CloudProvider::ListDirectoryPage(
-    RootDirectory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) -> Task<PageData> {
+auto YouTube::ListDirectoryPage(RootDirectory directory,
+                                std::optional<std::string> page_token,
+                                stdx::stop_token stop_token) -> Task<PageData> {
   PageData result;
   Request request = {
       .url = GetEndpoint("/channels") + "?" +
@@ -672,8 +671,8 @@ auto YouTube::CloudProvider::ListDirectoryPage(
   co_return result;
 }
 
-Generator<std::string> YouTube::CloudProvider::GetFileContent(
-    Stream file, http::Range range, stdx::stop_token stop_token) {
+Generator<std::string> YouTube::GetFileContent(Stream file, http::Range range,
+                                               stdx::stop_token stop_token) {
   if (!range.end) {
     range.end = file.size - 1;
   }
@@ -688,20 +687,23 @@ Generator<std::string> YouTube::CloudProvider::GetFileContent(
   }
 }
 
-Generator<std::string> YouTube::CloudProvider::GetFileContent(
-    MuxedStreamWebm file, http::Range range, stdx::stop_token stop_token) {
+Generator<std::string> YouTube::GetFileContent(MuxedStreamWebm file,
+                                               http::Range range,
+                                               stdx::stop_token stop_token) {
   return GetMuxedFileContent(std::move(file), range, "webm",
                              std::move(stop_token));
 }
 
-Generator<std::string> YouTube::CloudProvider::GetFileContent(
-    MuxedStreamMp4 file, http::Range range, stdx::stop_token stop_token) {
+Generator<std::string> YouTube::GetFileContent(MuxedStreamMp4 file,
+                                               http::Range range,
+                                               stdx::stop_token stop_token) {
   return GetMuxedFileContent(std::move(file), range, "mp4",
                              std::move(stop_token));
 }
 
-Generator<std::string> YouTube::CloudProvider::GetFileContent(
-    DashManifest file, http::Range range, stdx::stop_token stop_token) {
+Generator<std::string> YouTube::GetFileContent(DashManifest file,
+                                               http::Range range,
+                                               stdx::stop_token stop_token) {
   StreamData data =
       co_await stream_cache_.Get(file.video_id, std::move(stop_token));
   auto strip_extension = [](std::string_view str) {
@@ -710,46 +712,40 @@ Generator<std::string> YouTube::CloudProvider::GetFileContent(
   std::string dash_manifest = GenerateDashManifest(
       util::StrCat("../streams", strip_extension(file.id), "/"),
       strip_extension(file.name), data.adaptive_formats);
-  if ((range.end && range.end >= kDashManifestSize) ||
-      range.start >= kDashManifestSize) {
+  if ((range.end && range.end >= DashManifest::size) ||
+      range.start >= DashManifest::size) {
     throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
   }
-  dash_manifest.resize(kDashManifestSize, ' ');
+  dash_manifest.resize(DashManifest::size, ' ');
   co_yield std::move(dash_manifest)
       .substr(static_cast<size_t>(range.start),
-              static_cast<size_t>(range.end.value_or(kDashManifestSize - 1) -
+              static_cast<size_t>(range.end.value_or(DashManifest::size - 1) -
                                   range.start + 1));
 }
 
-auto YouTube::CloudProvider::GetItemThumbnail(DashManifest item,
-                                              ThumbnailQuality quality,
-                                              http::Range range,
-                                              stdx::stop_token stop_token)
+auto YouTube::GetItemThumbnail(DashManifest item, ThumbnailQuality quality,
+                               http::Range range, stdx::stop_token stop_token)
     -> Task<Thumbnail> {
   return GetItemThumbnailImpl(std::move(item), quality, range,
                               std::move(stop_token));
 }
 
-auto YouTube::CloudProvider::GetItemThumbnail(MuxedStreamMp4 item,
-                                              ThumbnailQuality quality,
-                                              http::Range range,
-                                              stdx::stop_token stop_token)
+auto YouTube::GetItemThumbnail(MuxedStreamMp4 item, ThumbnailQuality quality,
+                               http::Range range, stdx::stop_token stop_token)
     -> Task<Thumbnail> {
   return GetItemThumbnailImpl(std::move(item), quality, range,
                               std::move(stop_token));
 }
 
-auto YouTube::CloudProvider::GetItemThumbnail(MuxedStreamWebm item,
-                                              ThumbnailQuality quality,
-                                              http::Range range,
-                                              stdx::stop_token stop_token)
+auto YouTube::GetItemThumbnail(MuxedStreamWebm item, ThumbnailQuality quality,
+                               http::Range range, stdx::stop_token stop_token)
     -> Task<Thumbnail> {
   return GetItemThumbnailImpl(std::move(item), quality, range,
                               std::move(stop_token));
 }
 
 template <typename MuxedStream>
-Generator<std::string> YouTube::CloudProvider::GetMuxedFileContent(
+Generator<std::string> YouTube::GetMuxedFileContent(
     MuxedStream file, http::Range range, std::string_view type,
     stdx::stop_token stop_token) {
   if (range.start != 0 || range.end) {
@@ -766,7 +762,7 @@ Generator<std::string> YouTube::CloudProvider::GetMuxedFileContent(
   auto best_audio = data.GetBestAudio(StrCat("audio/", type));
   audio_stream.itag = best_audio["itag"];
   audio_stream.size = std::stoll(std::string(best_audio["contentLength"]));
-  auto impl = CreateAbstractCloudProviderImpl<YouTube>(this);
+  auto impl = CreateAbstractCloudProviderImpl(this);
   FOR_CO_AWAIT(
       std::string & chunk,
       (*muxer_)(&impl, impl.Convert(std::move(video_stream)), &impl,
@@ -777,7 +773,7 @@ Generator<std::string> YouTube::CloudProvider::GetMuxedFileContent(
   }
 }
 
-Generator<std::string> YouTube::CloudProvider::GetFileContentImpl(
+Generator<std::string> YouTube::GetFileContentImpl(
     Stream file, http::Range range, stdx::stop_token stop_token) {
   std::string video_url =
       co_await GetVideoUrl(file.video_id, file.itag, stop_token);
@@ -807,10 +803,9 @@ Generator<std::string> YouTube::CloudProvider::GetFileContentImpl(
 }
 
 template <typename ItemT>
-auto YouTube::CloudProvider::GetItemThumbnailImpl(ItemT item,
-                                                  ThumbnailQuality quality,
-                                                  http::Range range,
-                                                  stdx::stop_token stop_token)
+auto YouTube::GetItemThumbnailImpl(ItemT item, ThumbnailQuality quality,
+                                   http::Range range,
+                                   stdx::stop_token stop_token)
     -> Task<Thumbnail> {
   std::optional<std::string> url = [&]() -> std::optional<std::string> {
     switch (quality) {
@@ -836,8 +831,8 @@ auto YouTube::CloudProvider::GetItemThumbnailImpl(ItemT item,
   co_return result;
 }
 
-Task<std::string> YouTube::CloudProvider::GetVideoUrl(
-    std::string video_id, int64_t itag, stdx::stop_token stop_token) const {
+Task<std::string> YouTube::GetVideoUrl(std::string video_id, int64_t itag,
+                                       stdx::stop_token stop_token) const {
   StreamData data = co_await stream_cache_.Get(video_id, stop_token);
   std::optional<std::string> url;
   for (const auto& formats : {data.adaptive_formats, data.formats}) {
@@ -866,8 +861,8 @@ Task<std::string> YouTube::CloudProvider::GetVideoUrl(
   co_return *url;
 }
 
-auto YouTube::CloudProvider::GetStreamData::operator()(
-    std::string video_id, stdx::stop_token stop_token) const
+auto YouTube::GetStreamData::operator()(std::string video_id,
+                                        stdx::stop_token stop_token) const
     -> Task<StreamData> {
   std::string page =
       co_await GetVideoPage(http, std::move(video_id), stop_token);
@@ -898,9 +893,9 @@ YouTube::Auth::AuthData GetAuthData<YouTube>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<YouTube::CloudProvider>(
-    YouTube::CloudProvider p) -> std::unique_ptr<CloudProvider> {
-  return CreateAbstractCloudProvider<YouTube>(std::move(p));
+auto AbstractCloudProvider::Create<YouTube>(YouTube p)
+    -> std::unique_ptr<AbstractCloudProvider> {
+  return CreateAbstractCloudProvider(std::move(p));
 }
 
 }  // namespace util

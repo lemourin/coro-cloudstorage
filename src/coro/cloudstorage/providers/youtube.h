@@ -18,17 +18,16 @@
 
 namespace coro::cloudstorage {
 
-struct YouTube {
+class YouTube {
+ public:
   using json = nlohmann::json;
-  using Request = http::Request<>;
-
-  static inline constexpr int32_t kDashManifestSize = 16192;
+  using Request = http::Request<std::string>;
 
   struct Auth : GoogleDrive::Auth {
     static std::string GetAuthorizationUrl(const AuthData& data);
   };
 
-  struct CloudProvider;
+  using AuthManager = util::AuthManager<Auth>;
 
   enum class Presentation { kDash, kStream, kMuxedStreamWebm, kMuxedStreamMp4 };
 
@@ -74,7 +73,7 @@ struct YouTube {
 
   struct DashManifest : ItemData {
     static constexpr std::string_view mime_type = "application/dash+xml";
-    static constexpr int64_t size = kDashManifestSize;
+    static constexpr int64_t size = 16192;
     std::string video_id;
     int64_t timestamp;
     ThumbnailData thumbnail;
@@ -116,14 +115,9 @@ struct YouTube {
 
   static constexpr std::string_view kId = "youtube";
   static inline constexpr auto& kIcon = util::kAssetsProvidersYoutubePng;
-};
 
-struct YouTube::CloudProvider {
-  using Request = http::Request<std::string>;
-  using AuthManager = util::AuthManager<Auth>;
-
-  CloudProvider(AuthManager auth_manager, const http::Http* http,
-                const util::Muxer* muxer)
+  YouTube(AuthManager auth_manager, const http::Http* http,
+          const util::Muxer* muxer)
       : auth_manager_(std::move(auth_manager)),
         http_(http),
         muxer_(muxer),
