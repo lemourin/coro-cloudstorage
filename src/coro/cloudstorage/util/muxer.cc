@@ -131,6 +131,7 @@ MuxerContext::Stream MuxerContext::CreateStream(AVIOContext* io_context,
 }
 
 Generator<std::string> MuxerContext::GetContent() {
+  int previous_progress = 0;
   while (true) {
     for (auto& stream : streams_) {
       if (!stream.is_eof && !stream.packet) {
@@ -176,7 +177,12 @@ Generator<std::string> MuxerContext::GetContent() {
     if (!picked_stream) {
       break;
     }
-    std::cerr << "WRITING " << picked_stream->packet->pts << '\n';
+    int current_progress = static_cast<int>(100 * picked_stream->packet->pts /
+                                            picked_stream->stream->duration);
+    if (current_progress > previous_progress) {
+      previous_progress = current_progress;
+      std::cerr << "TRANSCODE PROGRESS " << current_progress << "%\n";
+    }
     CheckAVError(
         av_write_frame(format_context_.get(), picked_stream->packet.get()),
         "av_write_frame");
@@ -186,6 +192,8 @@ Generator<std::string> MuxerContext::GetContent() {
   CheckAVError(av_write_frame(format_context_.get(), nullptr),
                "av_write_frame");
   CheckAVError(av_write_trailer(format_context_.get()), "av_write_trailer");
+
+  std::cerr << "TRANSCODE DONE\n";
 
   FOR_CO_AWAIT(std::string & chunk, ReadFile(thread_pool_, file_.get())) {
     co_yield std::move(chunk);
