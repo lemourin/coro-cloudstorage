@@ -18,7 +18,8 @@ class CloudFactoryContext {
   explicit CloudFactoryContext(event_base* event_base)
       : event_loop_(event_base),
         thread_pool_(&event_loop_),
-        http_(coro::http::CacheHttpConfig{}, event_base),
+        http_(coro::http::CacheHttpConfig{}, event_base,
+              GetDirectoryPath(GetConfigFilePath())),
         thumbnail_generator_(&thread_pool_, &event_loop_),
         muxer_(&event_loop_, &thread_pool_),
         random_engine_(std::random_device()()),
