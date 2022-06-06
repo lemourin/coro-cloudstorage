@@ -28,14 +28,14 @@ OpenStack::Item ToItem(const nlohmann::json& json) {
 
 }  // namespace
 
-auto OpenStack::CloudProvider::GetRoot(stdx::stop_token) const
-    -> Task<Directory> {
+auto OpenStack::GetRoot(stdx::stop_token) const -> Task<Directory> {
   co_return Directory{};
 }
 
-auto OpenStack::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) -> Task<PageData> {
+auto OpenStack::ListDirectoryPage(Directory directory,
+                                  std::optional<std::string> page_token,
+                                  stdx::stop_token stop_token)
+    -> Task<PageData> {
   auto response = co_await auth_manager_.FetchJson(
       Request{.url = GetEndpoint(util::StrCat(
                   "/", "?",
@@ -53,8 +53,8 @@ auto OpenStack::CloudProvider::ListDirectoryPage(
   co_return page_data;
 }
 
-Generator<std::string> OpenStack::CloudProvider::GetFileContent(
-    File file, http::Range range, stdx::stop_token stop_token) {
+Generator<std::string> OpenStack::GetFileContent(File file, http::Range range,
+                                                 stdx::stop_token stop_token) {
   auto response = co_await auth_manager_.Fetch(
       Request{.url = GetEndpoint(util::StrCat("/", http::EncodeUri(file.id))),
               .headers = {http::ToRangeHeader(range)}},
@@ -64,9 +64,8 @@ Generator<std::string> OpenStack::CloudProvider::GetFileContent(
   }
 }
 
-auto OpenStack::CloudProvider::CreateDirectory(Directory parent,
-                                               std::string_view name,
-                                               stdx::stop_token stop_token)
+auto OpenStack::CreateDirectory(Directory parent, std::string_view name,
+                                stdx::stop_token stop_token)
     -> Task<Directory> {
   std::string new_id;
   new_id += parent.id;
@@ -84,8 +83,7 @@ auto OpenStack::CloudProvider::CreateDirectory(Directory parent,
 }
 
 template <typename ItemT>
-Task<> OpenStack::CloudProvider::RemoveItem(ItemT item,
-                                            stdx::stop_token stop_token) {
+Task<> OpenStack::RemoveItem(ItemT item, stdx::stop_token stop_token) {
   co_await Visit(
       item,
       [&](const auto& entry) -> Task<> {
@@ -95,9 +93,8 @@ Task<> OpenStack::CloudProvider::RemoveItem(ItemT item,
 }
 
 template <typename ItemT>
-Task<ItemT> OpenStack::CloudProvider::MoveItem(ItemT source,
-                                               Directory destination,
-                                               stdx::stop_token stop_token) {
+Task<ItemT> OpenStack::MoveItem(ItemT source, Directory destination,
+                                stdx::stop_token stop_token) {
   std::string destination_path = destination.id;
   if (!destination_path.empty()) {
     destination_path += "/";
@@ -108,9 +105,8 @@ Task<ItemT> OpenStack::CloudProvider::MoveItem(ItemT source,
 }
 
 template <typename ItemT>
-Task<ItemT> OpenStack::CloudProvider::RenameItem(ItemT item,
-                                                 std::string new_name,
-                                                 stdx::stop_token stop_token) {
+Task<ItemT> OpenStack::RenameItem(ItemT item, std::string new_name,
+                                  stdx::stop_token stop_token) {
   auto destination_path = util::GetDirectoryPath(item.id);
   if (!destination_path.empty()) {
     destination_path += "/";
@@ -121,8 +117,8 @@ Task<ItemT> OpenStack::CloudProvider::RenameItem(ItemT item,
 }
 
 template <typename Item>
-Task<Item> OpenStack::CloudProvider::GetItem(std::string_view id,
-                                             stdx::stop_token stop_token) {
+Task<Item> OpenStack::GetItem(std::string_view id,
+                              stdx::stop_token stop_token) {
   auto json = co_await auth_manager_.FetchJson(
       Request{.url = util::StrCat(GetEndpoint("/"), "?",
                                   http::FormDataToString({{"format", "json"},
@@ -133,10 +129,8 @@ Task<Item> OpenStack::CloudProvider::GetItem(std::string_view id,
   co_return ToItemImpl<Item>(json[0]);
 }
 
-auto OpenStack::CloudProvider::CreateFile(Directory parent,
-                                          std::string_view name,
-                                          FileContent content,
-                                          stdx::stop_token stop_token)
+auto OpenStack::CreateFile(Directory parent, std::string_view name,
+                           FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
   auto new_id = parent.id;
   if (!new_id.empty()) {
@@ -156,8 +150,8 @@ auto OpenStack::CloudProvider::CreateFile(Directory parent,
   co_return co_await GetItem<File>(new_id, std::move(stop_token));
 }
 
-Task<> OpenStack::CloudProvider::RemoveItemImpl(std::string_view id,
-                                                stdx::stop_token stop_token) {
+Task<> OpenStack::RemoveItemImpl(std::string_view id,
+                                 stdx::stop_token stop_token) {
   co_await auth_manager_.Fetch(
       Request{.url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(id))),
               .method = http::Method::kDelete,
@@ -166,9 +160,8 @@ Task<> OpenStack::CloudProvider::RemoveItemImpl(std::string_view id,
 }
 
 template <typename ItemT>
-Task<> OpenStack::CloudProvider::Move(const ItemT& root,
-                                      std::string_view destination,
-                                      stdx::stop_token stop_token) {
+Task<> OpenStack::Move(const ItemT& root, std::string_view destination,
+                       stdx::stop_token stop_token) {
   co_await Visit(
       root,
       [&](const auto& source) -> Task<> {
@@ -181,9 +174,9 @@ Task<> OpenStack::CloudProvider::Move(const ItemT& root,
 }
 
 template <typename ItemT>
-Task<> OpenStack::CloudProvider::MoveItemImpl(const ItemT& source,
-                                              std::string_view destination,
-                                              stdx::stop_token stop_token) {
+Task<> OpenStack::MoveItemImpl(const ItemT& source,
+                               std::string_view destination,
+                               stdx::stop_token stop_token) {
   Request request{
       .url = GetEndpoint(util::StrCat("/", http::EncodeUri(source.id))),
       .method = http::Method::kCopy,
@@ -195,14 +188,13 @@ Task<> OpenStack::CloudProvider::MoveItemImpl(const ItemT& source,
 }
 
 template <typename ItemT, typename F>
-Task<> OpenStack::CloudProvider::Visit(ItemT item, const F& func,
-                                       stdx::stop_token stop_token) {
+Task<> OpenStack::Visit(ItemT item, const F& func,
+                        stdx::stop_token stop_token) {
   return util::RecursiveVisit<OpenStack>(this, std::move(item), func,
                                          std::move(stop_token));
 }
 
-std::string OpenStack::CloudProvider::GetEndpoint(
-    std::string_view endpoint) const {
+std::string OpenStack::GetEndpoint(std::string_view endpoint) const {
   return util::StrCat(auth_token().endpoint, "/", auth_token().bucket,
                       endpoint);
 }
@@ -229,23 +221,21 @@ OpenStack::Auth::AuthToken ToAuthToken<OpenStack::Auth::AuthToken>(
 }
 }  // namespace util
 
-template auto OpenStack::CloudProvider::RenameItem<OpenStack::File>(
-    File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
+template auto OpenStack::RenameItem(File item, std::string new_name,
+                                    stdx::stop_token stop_token) -> Task<File>;
 
-template auto OpenStack::CloudProvider::RenameItem<OpenStack::Directory>(
-    Directory item, std::string new_name, stdx::stop_token stop_token)
+template auto OpenStack::RenameItem(Directory item, std::string new_name,
+                                    stdx::stop_token stop_token)
     -> Task<Directory>;
 
-template auto OpenStack::CloudProvider::MoveItem<OpenStack::File>(
-    File, Directory, stdx::stop_token) -> Task<File>;
+template auto OpenStack::MoveItem(File, Directory, stdx::stop_token)
+    -> Task<File>;
 
-template auto OpenStack::CloudProvider::MoveItem<OpenStack::Directory>(
-    Directory, Directory, stdx::stop_token) -> Task<Directory>;
+template auto OpenStack::MoveItem(Directory, Directory, stdx::stop_token)
+    -> Task<Directory>;
 
-template auto OpenStack::CloudProvider::RemoveItem<OpenStack::File>(
-    File item, stdx::stop_token) -> Task<>;
+template auto OpenStack::RemoveItem(File item, stdx::stop_token) -> Task<>;
 
-template auto OpenStack::CloudProvider::RemoveItem<OpenStack::Directory>(
-    Directory item, stdx::stop_token) -> Task<>;
+template auto OpenStack::RemoveItem(Directory item, stdx::stop_token) -> Task<>;
 
 }  // namespace coro::cloudstorage

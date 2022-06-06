@@ -10,10 +10,10 @@
 
 namespace coro::cloudstorage::util {
 
-class TimingOutCloudProvider : public AbstractCloudProvider::CloudProvider {
+class TimingOutCloudProvider : public AbstractCloudProvider {
  public:
   TimingOutCloudProvider(coro::util::EventLoop* event_loop, int timeout_ms,
-                         AbstractCloudProvider::CloudProvider* provider)
+                         AbstractCloudProvider* provider)
       : event_loop_(event_loop), timeout_ms_(timeout_ms), provider_(provider) {}
 
   bool IsFileContentSizeRequired(
@@ -123,7 +123,7 @@ class TimingOutCloudProvider : public AbstractCloudProvider::CloudProvider {
 
   coro::util::EventLoop* event_loop_;
   int timeout_ms_;
-  AbstractCloudProvider::CloudProvider* provider_;
+  AbstractCloudProvider* provider_;
 };
 
 }  // namespace coro::cloudstorage::util

@@ -216,22 +216,21 @@ Task<AmazonS3::Auth::AuthToken> GetAuthToken(const coro::http::Http& http,
 
 }  // namespace
 
-auto AmazonS3::CloudProvider::GetRoot(stdx::stop_token) const
-    -> Task<Directory> {
+auto AmazonS3::GetRoot(stdx::stop_token) const -> Task<Directory> {
   Directory d{{.id = ""}};
   co_return d;
 }
 
-auto AmazonS3::CloudProvider::GetGeneralData(stdx::stop_token) const
-    -> Task<GeneralData> {
+auto AmazonS3::GetGeneralData(stdx::stop_token) const -> Task<GeneralData> {
   GeneralData data{.username =
                        http::ParseUri(auth_token_.endpoint).host.value()};
   co_return data;
 }
 
-auto AmazonS3::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) const -> Task<PageData> {
+auto AmazonS3::ListDirectoryPage(Directory directory,
+                                 std::optional<std::string> page_token,
+                                 stdx::stop_token stop_token) const
+    -> Task<PageData> {
   std::vector<std::pair<std::string, std::string>> params = {
       {"list-type", "2"}, {"prefix", directory.id}, {"delimiter", "/"}};
   if (page_token) {
@@ -244,7 +243,7 @@ auto AmazonS3::CloudProvider::ListDirectoryPage(
   co_return ToPageData(directory, response);
 }
 
-Generator<std::string> AmazonS3::CloudProvider::GetFileContent(
+Generator<std::string> AmazonS3::GetFileContent(
     File file, http::Range range, stdx::stop_token stop_token) const {
   auto request = Request{
       .url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(file.id))),
@@ -254,9 +253,8 @@ Generator<std::string> AmazonS3::CloudProvider::GetFileContent(
 }
 
 template <typename ItemT>
-Task<ItemT> AmazonS3::CloudProvider::RenameItem(ItemT item,
-                                                std::string new_name,
-                                                stdx::stop_token stop_token) {
+Task<ItemT> AmazonS3::RenameItem(ItemT item, std::string new_name,
+                                 stdx::stop_token stop_token) {
   auto destination_path = util::GetDirectoryPath(item.id);
   if (!destination_path.empty()) {
     destination_path += "/";
@@ -269,9 +267,8 @@ Task<ItemT> AmazonS3::CloudProvider::RenameItem(ItemT item,
   co_return co_await GetItem<ItemT>(destination_path, std::move(stop_token));
 }
 
-auto AmazonS3::CloudProvider::CreateDirectory(Directory parent,
-                                              std::string name,
-                                              stdx::stop_token stop_token) const
+auto AmazonS3::CreateDirectory(Directory parent, std::string name,
+                               stdx::stop_token stop_token) const
     -> Task<Directory> {
   auto id = util::StrCat(parent.id, name, "/");
   auto request =
@@ -286,8 +283,7 @@ auto AmazonS3::CloudProvider::CreateDirectory(Directory parent,
 }
 
 template <typename ItemT>
-Task<> AmazonS3::CloudProvider::RemoveItem(ItemT item,
-                                           stdx::stop_token stop_token) {
+Task<> AmazonS3::RemoveItem(ItemT item, stdx::stop_token stop_token) {
   co_await Visit(
       item,
       [&](const auto& entry) -> Task<> {
@@ -297,9 +293,8 @@ Task<> AmazonS3::CloudProvider::RemoveItem(ItemT item,
 }
 
 template <typename ItemT>
-Task<ItemT> AmazonS3::CloudProvider::MoveItem(ItemT source,
-                                              Directory destination,
-                                              stdx::stop_token stop_token) {
+Task<ItemT> AmazonS3::MoveItem(ItemT source, Directory destination,
+                               stdx::stop_token stop_token) {
   auto destination_path = util::StrCat(destination.id, source.name);
   if constexpr (std::is_same_v<ItemT, Directory>) {
     destination_path += "/";
@@ -308,11 +303,9 @@ Task<ItemT> AmazonS3::CloudProvider::MoveItem(ItemT source,
   co_return co_await GetItem<ItemT>(destination_path, std::move(stop_token));
 }
 
-auto AmazonS3::CloudProvider::CreateFile(Directory parent,
-                                         std::string_view name,
-                                         FileContent content,
-                                         stdx::stop_token stop_token) const
-    -> Task<File> {
+auto AmazonS3::CreateFile(Directory parent, std::string_view name,
+                          FileContent content,
+                          stdx::stop_token stop_token) const -> Task<File> {
   auto new_id = util::StrCat(parent.id, name);
   auto request = http::Request<>{
       .url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(new_id))),
@@ -324,8 +317,8 @@ auto AmazonS3::CloudProvider::CreateFile(Directory parent,
 }
 
 template <typename ItemT>
-Task<ItemT> AmazonS3::CloudProvider::GetItem(
-    std::string_view id, stdx::stop_token stop_token) const {
+Task<ItemT> AmazonS3::GetItem(std::string_view id,
+                              stdx::stop_token stop_token) const {
   pugi::xml_document response = co_await FetchXml(
       Request{
           .url = GetEndpoint("/") + "?" +
@@ -375,19 +368,18 @@ AmazonS3::Auth::AuthHandler::operator()(http::Request<> request,
   }
 }
 
-std::string AmazonS3::CloudProvider::GetEndpoint(std::string_view href) const {
+std::string AmazonS3::GetEndpoint(std::string_view href) const {
   return util::StrCat(auth_token_.endpoint, href);
 }
 
 template <typename ItemT, typename F>
-Task<> AmazonS3::CloudProvider::Visit(ItemT item, const F& func,
-                                      stdx::stop_token stop_token) {
+Task<> AmazonS3::Visit(ItemT item, const F& func, stdx::stop_token stop_token) {
   return util::RecursiveVisit<AmazonS3>(this, std::move(item), func,
                                         std::move(stop_token));
 }
 
-Task<> AmazonS3::CloudProvider::RemoveItemImpl(
-    std::string_view id, stdx::stop_token stop_token) const {
+Task<> AmazonS3::RemoveItemImpl(std::string_view id,
+                                stdx::stop_token stop_token) const {
   co_await Fetch(
       Request{.url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(id))),
               .method = http::Method::kDelete,
@@ -396,9 +388,8 @@ Task<> AmazonS3::CloudProvider::RemoveItemImpl(
 }
 
 template <typename ItemT>
-Task<> AmazonS3::CloudProvider::Move(const ItemT& root,
-                                     std::string_view destination,
-                                     stdx::stop_token stop_token) {
+Task<> AmazonS3::Move(const ItemT& root, std::string_view destination,
+                      stdx::stop_token stop_token) {
   co_await Visit(
       root,
       [&](const auto& source) -> Task<> {
@@ -411,9 +402,8 @@ Task<> AmazonS3::CloudProvider::Move(const ItemT& root,
 }
 
 template <typename ItemT>
-Task<> AmazonS3::CloudProvider::MoveItemImpl(
-    const ItemT& source, std::string_view destination,
-    stdx::stop_token stop_token) const {
+Task<> AmazonS3::MoveItemImpl(const ItemT& source, std::string_view destination,
+                              stdx::stop_token stop_token) const {
   Request request{
       .url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(destination))),
       .method = http::Method::kPut,
@@ -428,15 +418,15 @@ Task<> AmazonS3::CloudProvider::MoveItemImpl(
 }
 
 template <typename RequestT>
-Task<http::Response<>> AmazonS3::CloudProvider::Fetch(
-    RequestT request, stdx::stop_token stop_token) const {
+Task<http::Response<>> AmazonS3::Fetch(RequestT request,
+                                       stdx::stop_token stop_token) const {
   AuthorizeRequest(auth_token_, request);
   co_return co_await http_->FetchOk(std::move(request), std::move(stop_token));
 }
 
 template <typename RequestT>
-Task<pugi::xml_document> AmazonS3::CloudProvider::FetchXml(
-    RequestT request, stdx::stop_token stop_token) const {
+Task<pugi::xml_document> AmazonS3::FetchXml(RequestT request,
+                                            stdx::stop_token stop_token) const {
   if (request.body) {
     request.headers.emplace_back("Content-Type", "application/xml");
   }
@@ -478,30 +468,28 @@ AmazonS3::Auth::AuthData GetAuthData<AmazonS3>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<AmazonS3::CloudProvider>(
-    AmazonS3::CloudProvider p) -> std::unique_ptr<CloudProvider> {
+auto AbstractCloudProvider::Create<AmazonS3>(AmazonS3 p)
+    -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider<AmazonS3>(std::move(p));
 }
 
 }  // namespace util
 
-template auto AmazonS3::CloudProvider::RenameItem<AmazonS3::File>(
-    File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
+template auto AmazonS3::RenameItem(File item, std::string new_name,
+                                   stdx::stop_token stop_token) -> Task<File>;
 
-template auto AmazonS3::CloudProvider::RenameItem<AmazonS3::Directory>(
-    Directory item, std::string new_name, stdx::stop_token stop_token)
+template auto AmazonS3::RenameItem(Directory item, std::string new_name,
+                                   stdx::stop_token stop_token)
     -> Task<Directory>;
 
-template auto AmazonS3::CloudProvider::MoveItem<AmazonS3::File>(
-    File, Directory, stdx::stop_token) -> Task<File>;
+template auto AmazonS3::MoveItem(File, Directory, stdx::stop_token)
+    -> Task<File>;
 
-template auto AmazonS3::CloudProvider::MoveItem<AmazonS3::Directory>(
-    Directory, Directory, stdx::stop_token) -> Task<Directory>;
+template auto AmazonS3::MoveItem(Directory, Directory, stdx::stop_token)
+    -> Task<Directory>;
 
-template auto AmazonS3::CloudProvider::RemoveItem<AmazonS3::File>(
-    File, stdx::stop_token) -> Task<>;
+template auto AmazonS3::RemoveItem(File, stdx::stop_token) -> Task<>;
 
-template auto AmazonS3::CloudProvider::RemoveItem<AmazonS3::Directory>(
-    Directory, stdx::stop_token) -> Task<>;
+template auto AmazonS3::RemoveItem(Directory, stdx::stop_token) -> Task<>;
 
 }  // namespace coro::cloudstorage

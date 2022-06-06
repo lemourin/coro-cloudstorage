@@ -13,7 +13,11 @@
 
 namespace coro::cloudstorage {
 
-struct Box {
+class Box {
+ public:
+  using json = nlohmann::json;
+  using Request = http::Request<std::string>;
+
   struct GeneralData {
     std::string username;
     int64_t space_used;
@@ -80,15 +84,9 @@ struct Box {
 
   static constexpr std::string_view kId = "box";
   static inline constexpr auto& kIcon = util::kAssetsProvidersBoxPng;
-};
 
-class Box::CloudProvider {
- public:
-  using json = nlohmann::json;
-  using Request = http::Request<std::string>;
-
-  CloudProvider(coro::cloudstorage::util::AuthManager<Auth> auth_manager,
-                const coro::http::Http* http)
+  Box(coro::cloudstorage::util::AuthManager<Auth> auth_manager,
+      const coro::http::Http* http)
       : auth_manager_(std::move(auth_manager)), http_(http) {}
 
   Task<Directory> GetRoot(stdx::stop_token);

@@ -26,7 +26,7 @@ class CloudFactory : public util::AbstractCloudFactory {
                util::RandomNumberGenerator* random_number_generator,
                util::AuthData auth_data = util::AuthData{});
 
-  std::unique_ptr<util::AbstractCloudProvider::CloudProvider> Create(
+  std::unique_ptr<util::AbstractCloudProvider> Create(
       util::AbstractCloudProvider::Auth::AuthToken auth_token,
       std::function<void(const util::AbstractCloudProvider::Auth::AuthToken&)>
           on_token_updated) const override;

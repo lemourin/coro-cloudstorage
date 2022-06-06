@@ -11,7 +11,8 @@
 
 namespace coro::cloudstorage {
 
-struct LocalFileSystem {
+class LocalFileSystem {
+ public:
   struct Auth {
     struct AuthToken {
       std::string root;
@@ -19,8 +20,6 @@ struct LocalFileSystem {
 
     struct AuthHandler;
   };
-
-  class CloudProvider;
 
   struct GeneralData {
     std::string username;
@@ -54,11 +53,9 @@ struct LocalFileSystem {
 
   static constexpr std::string_view kId = "local";
   static inline constexpr const auto& kIcon = util::kAssetsProvidersLocalPng;
-};
 
-class LocalFileSystem::CloudProvider {
- public:
-  CloudProvider(coro::util::ThreadPool* thread_pool, Auth::AuthToken auth_token)
+  LocalFileSystem(coro::util::ThreadPool* thread_pool,
+                  Auth::AuthToken auth_token)
       : thread_pool_(thread_pool), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) const;

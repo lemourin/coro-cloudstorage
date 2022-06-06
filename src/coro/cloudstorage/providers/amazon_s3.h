@@ -22,6 +22,8 @@ namespace coro::cloudstorage {
 
 class AmazonS3 {
  public:
+  using Request = http::Request<std::string>;
+
   struct GeneralData {
     std::string username;
   };
@@ -67,14 +69,8 @@ class AmazonS3 {
 
   static constexpr std::string_view kId = "amazons3";
   static inline constexpr auto& kIcon = util::kAssetsProvidersAmazons3Png;
-};
 
-class AmazonS3::CloudProvider {
- public:
-  using Request = http::Request<std::string>;
-
-  CloudProvider(const coro::http::Http* http,
-                AmazonS3::Auth::AuthToken auth_token)
+  AmazonS3(const coro::http::Http* http, AmazonS3::Auth::AuthToken auth_token)
       : http_(http), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) const;

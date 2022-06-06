@@ -144,13 +144,12 @@ auto Dropbox::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,
   co_return AuthToken{.access_token = json["access_token"]};
 }
 
-auto Dropbox::CloudProvider::GetRoot(stdx::stop_token) -> Task<Directory> {
+auto Dropbox::GetRoot(stdx::stop_token) -> Task<Directory> {
   Directory d{{.id = ""}};
   co_return d;
 }
 
-auto Dropbox::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
-    -> Task<GeneralData> {
+auto Dropbox::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
   Task<json> task1 = util::FetchJson(
       *http_,
       Request{
@@ -175,9 +174,9 @@ auto Dropbox::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
                         .space_total = json2["allocation"]["allocated"]};
 }
 
-auto Dropbox::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) -> Task<PageData> {
+auto Dropbox::ListDirectoryPage(Directory directory,
+                                std::optional<std::string> page_token,
+                                stdx::stop_token stop_token) -> Task<PageData> {
   http::Request<std::string> request;
   if (page_token) {
     json body;
@@ -205,8 +204,8 @@ auto Dropbox::CloudProvider::ListDirectoryPage(
   co_return page_data;
 }
 
-Generator<std::string> Dropbox::CloudProvider::GetFileContent(
-    File file, http::Range range, stdx::stop_token stop_token) {
+Generator<std::string> Dropbox::GetFileContent(File file, http::Range range,
+                                               stdx::stop_token stop_token) {
   json json;
   json["path"] = file.id;
   auto request = Request{
@@ -223,8 +222,8 @@ Generator<std::string> Dropbox::CloudProvider::GetFileContent(
 }
 
 template <typename ItemT>
-Task<ItemT> Dropbox::CloudProvider::RenameItem(ItemT item, std::string new_name,
-                                               stdx::stop_token stop_token) {
+Task<ItemT> Dropbox::RenameItem(ItemT item, std::string new_name,
+                                stdx::stop_token stop_token) {
   auto request = Request{.url = GetEndpoint("/files/move_v2"),
                          .method = http::Method::kPost};
   json json;
@@ -236,9 +235,8 @@ Task<ItemT> Dropbox::CloudProvider::RenameItem(ItemT item, std::string new_name,
   co_return ToItemImpl<ItemT>(response["metadata"]);
 }
 
-auto Dropbox::CloudProvider::CreateDirectory(Directory parent, std::string name,
-                                             stdx::stop_token stop_token)
-    -> Task<Directory> {
+auto Dropbox::CreateDirectory(Directory parent, std::string name,
+                              stdx::stop_token stop_token) -> Task<Directory> {
   auto request = Request{.url = GetEndpoint("/files/create_folder_v2"),
                          .method = http::Method::kPost};
   json json;
@@ -249,8 +247,7 @@ auto Dropbox::CloudProvider::CreateDirectory(Directory parent, std::string name,
   co_return ToItemImpl<Directory>(response["metadata"]);
 }
 
-Task<> Dropbox::CloudProvider::RemoveItem(Item item,
-                                          stdx::stop_token stop_token) {
+Task<> Dropbox::RemoveItem(Item item, stdx::stop_token stop_token) {
   auto request = Request{.url = GetEndpoint("/files/delete"),
                          .method = http::Method::kPost};
   json json;
@@ -261,9 +258,8 @@ Task<> Dropbox::CloudProvider::RemoveItem(Item item,
 }
 
 template <typename ItemT>
-Task<ItemT> Dropbox::CloudProvider::MoveItem(ItemT source,
-                                             Directory destination,
-                                             stdx::stop_token stop_token) {
+Task<ItemT> Dropbox::MoveItem(ItemT source, Directory destination,
+                              stdx::stop_token stop_token) {
   auto request = Request{.url = GetEndpoint("/files/move_v2"),
                          .method = http::Method::kPost};
   json json;
@@ -275,9 +271,8 @@ Task<ItemT> Dropbox::CloudProvider::MoveItem(ItemT source,
   co_return ToItemImpl<ItemT>(response["metadata"]);
 }
 
-auto Dropbox::CloudProvider::CreateFile(Directory parent, std::string_view name,
-                                        FileContent content,
-                                        stdx::stop_token stop_token)
+auto Dropbox::CreateFile(Directory parent, std::string_view name,
+                         FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
   if (content.size < 150 * 1024 * 1024) {
     json json;
@@ -323,9 +318,8 @@ auto Dropbox::CloudProvider::CreateFile(Directory parent, std::string_view name,
   }
 }
 
-auto Dropbox::CloudProvider::GetItemThumbnail(File file, http::Range range,
-                                              stdx::stop_token stop_token)
-    -> Task<Thumbnail> {
+auto Dropbox::GetItemThumbnail(File file, http::Range range,
+                               stdx::stop_token stop_token) -> Task<Thumbnail> {
   auto is_supported = [](std::string_view extension) {
     for (std::string_view e :
          {"jpg", "jpeg", "png", "tiff", "tif", "gif", "bmp", "mkv", "mp4"}) {
@@ -367,25 +361,24 @@ Dropbox::Auth::AuthData GetAuthData<Dropbox>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<Dropbox::CloudProvider>(
-    Dropbox::CloudProvider p) -> std::unique_ptr<CloudProvider> {
+auto AbstractCloudProvider::Create<Dropbox>(Dropbox p)
+    -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider<Dropbox>(std::move(p));
 }
 
 }  // namespace util
 
-template auto Dropbox::CloudProvider::RenameItem<Dropbox::File>(
-    File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
+template auto Dropbox::RenameItem(File item, std::string new_name,
+                                  stdx::stop_token stop_token) -> Task<File>;
 
-template auto Dropbox::CloudProvider::RenameItem<Dropbox::Directory>(
-    Directory item, std::string new_name, stdx::stop_token stop_token)
+template auto Dropbox::RenameItem(Directory item, std::string new_name,
+                                  stdx::stop_token stop_token)
     -> Task<Directory>;
 
-template auto Dropbox::CloudProvider::MoveItem<Dropbox::File>(File, Directory,
-                                                              stdx::stop_token)
+template auto Dropbox::MoveItem(File, Directory, stdx::stop_token)
     -> Task<File>;
 
-template auto Dropbox::CloudProvider::MoveItem<Dropbox::Directory>(
-    Directory, Directory, stdx::stop_token) -> Task<Directory>;
+template auto Dropbox::MoveItem(Directory, Directory, stdx::stop_token)
+    -> Task<Directory>;
 
 }  // namespace coro::cloudstorage

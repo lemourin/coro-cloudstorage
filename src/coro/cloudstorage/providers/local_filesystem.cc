@@ -121,16 +121,16 @@ LocalFileSystem::Auth::AuthHandler::operator()(http::Request<> request,
   }
 }
 
-auto LocalFileSystem::CloudProvider::GetRoot(stdx::stop_token) const
-    -> Task<Directory> {
+auto LocalFileSystem::GetRoot(stdx::stop_token) const -> Task<Directory> {
   Directory d{};
   d.id = auth_token_.root;
   d.name = "root";
   co_return d;
 }
 
-auto LocalFileSystem::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string>, stdx::stop_token) const
+auto LocalFileSystem::ListDirectoryPage(Directory directory,
+                                        std::optional<std::string>,
+                                        stdx::stop_token) const
     -> Task<PageData> {
   co_return co_await thread_pool_->Do([&] {
     PageData page_data;
@@ -149,7 +149,7 @@ auto LocalFileSystem::CloudProvider::ListDirectoryPage(
   });
 }
 
-auto LocalFileSystem::CloudProvider::GetGeneralData(stdx::stop_token) const
+auto LocalFileSystem::GetGeneralData(stdx::stop_token) const
     -> Task<GeneralData> {
   co_return co_await thread_pool_->Do([&] {
     auto space = std::filesystem::space(auth_token_.root);
@@ -160,7 +160,7 @@ auto LocalFileSystem::CloudProvider::GetGeneralData(stdx::stop_token) const
   });
 }
 
-Generator<std::string> LocalFileSystem::CloudProvider::GetFileContent(
+Generator<std::string> LocalFileSystem::GetFileContent(
     File file, http::Range range, stdx::stop_token stop_token) const {
   std::ifstream stream = co_await thread_pool_->Do(
       [&] { return std::ifstream(file.id, std::ifstream::binary); });
@@ -188,59 +188,55 @@ Generator<std::string> LocalFileSystem::CloudProvider::GetFileContent(
 }
 
 template <typename ItemT>
-Task<ItemT> LocalFileSystem::CloudProvider::RenameItem(
-    ItemT item, std::string new_name, stdx::stop_token stop_token) {
+Task<ItemT> LocalFileSystem::RenameItem(ItemT item, std::string new_name,
+                                        stdx::stop_token stop_token) {
   throw std::runtime_error("unimplemented");
 }
 
-auto LocalFileSystem::CloudProvider::CreateDirectory(
-    Directory parent, std::string name, stdx::stop_token stop_token)
+auto LocalFileSystem::CreateDirectory(Directory parent, std::string name,
+                                      stdx::stop_token stop_token)
     -> Task<Directory> {
   throw std::runtime_error("unimplemented");
 }
 
-Task<> LocalFileSystem::CloudProvider::RemoveItem(Item item,
-                                                  stdx::stop_token stop_token) {
+Task<> LocalFileSystem::RemoveItem(Item item, stdx::stop_token stop_token) {
   throw std::runtime_error("unimplemented");
 }
 
 template <typename ItemT>
-Task<ItemT> LocalFileSystem::CloudProvider::MoveItem(
-    ItemT source, Directory destination, stdx::stop_token stop_token) {
+Task<ItemT> LocalFileSystem::MoveItem(ItemT source, Directory destination,
+                                      stdx::stop_token stop_token) {
   throw std::runtime_error("unimplemented");
 }
 
-auto LocalFileSystem::CloudProvider::CreateFile(Directory parent,
-                                                std::string_view name,
-                                                FileContent content,
-                                                stdx::stop_token stop_token)
-    -> Task<File> {
+auto LocalFileSystem::CreateFile(Directory parent, std::string_view name,
+                                 FileContent content,
+                                 stdx::stop_token stop_token) -> Task<File> {
   throw std::runtime_error("unimplemented");
 }
 
 namespace util {
 
 template <>
-auto AbstractCloudProvider::Create<LocalFileSystem::CloudProvider>(
-    LocalFileSystem::CloudProvider p) -> std::unique_ptr<CloudProvider> {
+auto AbstractCloudProvider::Create<LocalFileSystem>(LocalFileSystem p)
+    -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider<LocalFileSystem>(std::move(p));
 }
 
 }  // namespace util
 
-template auto LocalFileSystem::CloudProvider::RenameItem<LocalFileSystem::File>(
-    File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
+template auto LocalFileSystem::RenameItem(File item, std::string new_name,
+                                          stdx::stop_token stop_token)
+    -> Task<File>;
 
-template auto
-LocalFileSystem::CloudProvider::RenameItem<LocalFileSystem::Directory>(
-    Directory item, std::string new_name, stdx::stop_token stop_token)
+template auto LocalFileSystem::RenameItem(Directory item, std::string new_name,
+                                          stdx::stop_token stop_token)
     -> Task<Directory>;
 
-template auto LocalFileSystem::CloudProvider::MoveItem<LocalFileSystem::File>(
-    File, Directory, stdx::stop_token) -> Task<File>;
+template auto LocalFileSystem::MoveItem(File, Directory, stdx::stop_token)
+    -> Task<File>;
 
-template auto
-    LocalFileSystem::CloudProvider::MoveItem<LocalFileSystem::Directory>(
-        Directory, Directory, stdx::stop_token) -> Task<Directory>;
+template auto LocalFileSystem::MoveItem(Directory, Directory, stdx::stop_token)
+    -> Task<Directory>;
 
 }  // namespace coro::cloudstorage

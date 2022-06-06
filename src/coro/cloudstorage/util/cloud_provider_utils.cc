@@ -9,7 +9,7 @@ namespace {
 using Item = AbstractCloudProvider::Item;
 
 Task<Item> GetItemByPathComponents(
-    const AbstractCloudProvider::CloudProvider* p,
+    const AbstractCloudProvider* p,
     AbstractCloudProvider::Directory current_directory,
     std::span<const std::string> components, stdx::stop_token stop_token) {
   if (components.empty()) {
@@ -43,7 +43,7 @@ Task<Item> GetItemByPathComponents(
   throw CloudException(CloudException::Type::kNotFound);
 }
 
-Task<Item> GetItemByPath(const AbstractCloudProvider::CloudProvider* d,
+Task<Item> GetItemByPath(const AbstractCloudProvider* d,
                          AbstractCloudProvider::Directory current_directory,
                          std::string_view path, stdx::stop_token stop_token) {
   co_return co_await GetItemByPathComponents(
@@ -66,13 +66,13 @@ FileType GetFileType(std::string_view mime_type) {
 }
 
 Task<Item> GetItemByPathComponents(
-    const AbstractCloudProvider::CloudProvider* d,
+    const AbstractCloudProvider* d,
     std::span<const std::string> components, stdx::stop_token stop_token) {
   co_return co_await GetItemByPathComponents(d, co_await d->GetRoot(stop_token),
                                              components, stop_token);
 }
 
-Task<Item> GetItemByPath(const AbstractCloudProvider::CloudProvider* d,
+Task<Item> GetItemByPath(const AbstractCloudProvider* d,
                          std::string path, stdx::stop_token stop_token) {
   co_return co_await GetItemByPath(d, co_await d->GetRoot(stop_token),
                                    std::move(path), stop_token);

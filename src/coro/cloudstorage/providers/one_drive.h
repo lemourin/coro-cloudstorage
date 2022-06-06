@@ -9,7 +9,10 @@
 
 namespace coro::cloudstorage {
 
-struct OneDrive {
+class OneDrive {
+ public:
+  using Request = http::Request<std::string>;
+
   using json = nlohmann::json;
 
   static constexpr std::string_view kId = "onedrive";
@@ -40,8 +43,6 @@ struct OneDrive {
         const coro::http::Http& http, AuthData auth_data, std::string code,
         stdx::stop_token stop_token);
   };
-
-  struct CloudProvider;
 
   struct GeneralData {
     std::string username;
@@ -84,13 +85,8 @@ struct OneDrive {
     int64_t size;
     std::string mime_type;
   };
-};
 
-struct OneDrive::CloudProvider {
-  using Request = http::Request<std::string>;
-
-  CloudProvider(util::AuthManager<Auth> auth_manager,
-                const coro::http::Http* http)
+  OneDrive(util::AuthManager<Auth> auth_manager, const coro::http::Http* http)
       : auth_manager_(std::move(auth_manager)), http_(http) {}
 
   Task<Directory> GetRoot(stdx::stop_token);

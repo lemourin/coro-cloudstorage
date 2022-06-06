@@ -18,6 +18,8 @@ namespace coro::cloudstorage {
 
 class OpenStack {
  public:
+  using Request = http::Request<std::string>;
+
   struct ItemData {
     std::string id;
     std::string name;
@@ -61,15 +63,7 @@ class OpenStack {
     }
   };
 
-  class CloudProvider;
-};
-
-class OpenStack::CloudProvider {
- public:
-  using Request = http::Request<std::string>;
-
-  CloudProvider(util::AuthManager<Auth> auth_manager,
-                const coro::http::Http* http)
+  OpenStack(util::AuthManager<Auth> auth_manager, const coro::http::Http* http)
       : auth_manager_(std::move(auth_manager)), http_(http) {}
 
   Task<Directory> GetRoot(stdx::stop_token) const;

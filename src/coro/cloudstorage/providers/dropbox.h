@@ -12,7 +12,11 @@
 
 namespace coro::cloudstorage {
 
-struct Dropbox {
+class Dropbox {
+ public:
+  using json = nlohmann::json;
+  using Request = http::Request<std::string>;
+
   struct GeneralData {
     std::string username;
     int64_t space_used;
@@ -75,19 +79,10 @@ struct Dropbox {
     static inline constexpr std::string_view mime_type = "image/jpeg";
   };
 
-  class CloudProvider;
-
   static constexpr std::string_view kId = "dropbox";
   static inline constexpr auto& kIcon = util::kAssetsProvidersDropboxPng;
-};
 
-class Dropbox::CloudProvider {
- public:
-  using json = nlohmann::json;
-  using Request = http::Request<std::string>;
-
-  CloudProvider(const coro::http::Http* http,
-                Dropbox::Auth::AuthToken auth_token)
+  Dropbox(const coro::http::Http* http, Dropbox::Auth::AuthToken auth_token)
       : http_(http), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token);

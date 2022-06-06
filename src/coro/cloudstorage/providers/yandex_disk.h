@@ -13,7 +13,11 @@
 
 namespace coro::cloudstorage {
 
-struct YandexDisk {
+class YandexDisk {
+ public:
+  using json = nlohmann::json;
+  using Request = http::Request<std::string>;
+
   struct GeneralData {
     std::string username;
     int64_t space_used;
@@ -72,20 +76,12 @@ struct YandexDisk {
     std::string mime_type;
   };
 
-  class CloudProvider;
-
   static constexpr std::string_view kId = "yandex";
   static inline constexpr auto& kIcon = util::kAssetsProvidersYandexPng;
-};
 
-class YandexDisk::CloudProvider {
- public:
-  using json = nlohmann::json;
-  using Request = http::Request<std::string>;
-
-  CloudProvider(const coro::http::Http* http,
-                const coro::util::EventLoop* event_loop,
-                YandexDisk::Auth::AuthToken auth_token)
+  YandexDisk(const coro::http::Http* http,
+             const coro::util::EventLoop* event_loop,
+             YandexDisk::Auth::AuthToken auth_token)
       : http_(http),
         event_loop_(event_loop),
         auth_token_(std::move(auth_token)) {}

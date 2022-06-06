@@ -6,16 +6,16 @@
 namespace coro::cloudstorage::util {
 
 template <typename T, typename CloudProvider>
-concept IsFile = requires(typename CloudProvider::CloudProvider& provider, T v,
-                          http::Range range, stdx::stop_token stop_token) {
+concept IsFile = requires(CloudProvider& provider, T v, http::Range range,
+                          stdx::stop_token stop_token) {
                    {
                      provider.GetFileContent(v, range, stop_token)
                      } -> GeneratorLike<std::string_view>;
                  };
 
 template <typename T, typename CloudProvider>
-concept IsDirectory = requires(typename CloudProvider::CloudProvider& provider,
-                               T v, std::optional<std::string> page_token,
+concept IsDirectory = requires(CloudProvider& provider, T v,
+                               std::optional<std::string> page_token,
                                stdx::stop_token stop_token) {
                         {
                           provider.ListDirectoryPage(v, page_token, stop_token)
@@ -23,19 +23,18 @@ concept IsDirectory = requires(typename CloudProvider::CloudProvider& provider,
                       };
 
 template <typename Parent, typename CloudProvider>
-concept CanCreateFile =
-    requires(typename CloudProvider::CloudProvider& provider, Parent parent,
-             std::string_view name, typename CloudProvider::FileContent content,
-             stdx::stop_token stop_token,
-             decltype(provider.CreateFile(parent, name, std::move(content),
-                                          stop_token)) item_promise,
-             typename decltype(item_promise)::type item) {
-      { item } -> IsFile<CloudProvider>;
-    };
+concept CanCreateFile = requires(
+    CloudProvider& provider, Parent parent, std::string_view name,
+    typename CloudProvider::FileContent content, stdx::stop_token stop_token,
+    decltype(provider.CreateFile(parent, name, std::move(content),
+                                 stop_token)) item_promise,
+    typename decltype(item_promise)::type item) {
+                          { item } -> IsFile<CloudProvider>;
+                        };
 
 template <typename T, typename CloudProvider>
 concept CanRename = requires(
-    typename CloudProvider::CloudProvider& provider, T v, std::string new_name,
+    CloudProvider& provider, T v, std::string new_name,
     stdx::stop_token stop_token,
     decltype(provider.RenameItem(v, new_name, stop_token)) item_promise,
     typename decltype(item_promise)::type item) {
@@ -45,15 +44,15 @@ concept CanRename = requires(
                     };
 
 template <typename T, typename CloudProvider>
-concept CanRemove = requires(typename CloudProvider::CloudProvider& provider,
-                             T v, stdx::stop_token stop_token) {
-                      { provider.RemoveItem(v, stop_token) } -> Awaitable<void>;
-                    };
+concept CanRemove =
+    requires(CloudProvider& provider, T v, stdx::stop_token stop_token) {
+      { provider.RemoveItem(v, stop_token) } -> Awaitable<void>;
+    };
 
 template <typename Source, typename Destination, typename CloudProvider>
 concept CanMove = requires(
-    typename CloudProvider::CloudProvider& provider, Source source,
-    Destination destination, stdx::stop_token stop_token,
+    CloudProvider& provider, Source source, Destination destination,
+    stdx::stop_token stop_token,
     decltype(provider.MoveItem(source, destination, stop_token)) item_promise,
     typename decltype(item_promise)::type item) {
                     {
@@ -64,8 +63,8 @@ concept CanMove = requires(
 template <typename Parent, typename CloudProvider>
 concept CanCreateDirectory =
     requires(
-        typename CloudProvider::CloudProvider& provider, Parent v,
-        std::string name, stdx::stop_token stop_token,
+        CloudProvider& provider, Parent v, std::string name,
+        stdx::stop_token stop_token,
         decltype(provider.CreateDirectory(v, name, stop_token)) item_promise,
         typename decltype(item_promise)::type item) {
       { item } -> stdx::convertible_to<typename CloudProvider::Item>;
@@ -73,8 +72,8 @@ concept CanCreateDirectory =
 
 template <typename Item, typename CloudProvider>
 concept HasThumbnail =
-    requires(typename CloudProvider::CloudProvider& provider, Item v,
-             http::Range range, stdx::stop_token stop_token,
+    requires(CloudProvider& provider, Item v, http::Range range,
+             stdx::stop_token stop_token,
              decltype(provider.GetItemThumbnail(v, range,
                                                 stop_token)) thumbnail_promise,
              typename decltype(thumbnail_promise)::type thumbnail) {
@@ -85,9 +84,8 @@ concept HasThumbnail =
 
 template <typename Item, typename CloudProvider>
 concept HasQualityThumbnail =
-    requires(typename CloudProvider::CloudProvider& provider, Item v,
-             ThumbnailQuality quality, http::Range range,
-             stdx::stop_token stop_token,
+    requires(CloudProvider& provider, Item v, ThumbnailQuality quality,
+             http::Range range, stdx::stop_token stop_token,
              decltype(provider.GetItemThumbnail(v, quality, range,
                                                 stop_token)) thumbnail_promise,
              typename decltype(thumbnail_promise)::type thumbnail) {
@@ -97,12 +95,10 @@ concept HasQualityThumbnail =
     };
 
 template <typename Directory, typename CloudProvider>
-concept HasIsFileContentSizeRequired = requires(
-    typename CloudProvider::CloudProvider& provider, const Directory& d) {
-                                         {
-                                           provider.IsFileContentSizeRequired(d)
-                                           } -> stdx::convertible_to<bool>;
-                                       };
+concept HasIsFileContentSizeRequired =
+    requires(CloudProvider& provider, const Directory& d) {
+      { provider.IsFileContentSizeRequired(d) } -> stdx::convertible_to<bool>;
+    };
 
 template <typename T>
 concept HasMimeType =
@@ -159,17 +155,10 @@ class AbstractCloudProviderImplOwningSupplier {
 };
 
 template <typename TypeT, typename CloudProviderSupplier>
-class AbstractCloudProviderImpl : public AbstractCloudProvider::CloudProvider,
+class AbstractCloudProviderImpl : public AbstractCloudProvider,
                                   public CloudProviderSupplier {
  public:
-  using CloudProviderT = typename TypeT::CloudProvider;
-  using Directory = AbstractCloudProvider::Directory;
-  using File = AbstractCloudProvider::File;
-  using GeneralData = AbstractCloudProvider::GeneralData;
-  using Thumbnail = AbstractCloudProvider::Thumbnail;
-  using PageData = AbstractCloudProvider::PageData;
-  using FileContent = AbstractCloudProvider::FileContent;
-  using Item = AbstractCloudProvider::Item;
+  using CloudProviderT = TypeT;
 
   template <typename... Args>
   explicit AbstractCloudProviderImpl(Args&&... args)
@@ -591,8 +580,7 @@ auto CreateAbstractCloudProviderImpl(T impl) {
 }
 
 template <typename Type, typename T>
-std::unique_ptr<AbstractCloudProvider::CloudProvider>
-CreateAbstractCloudProvider(T impl) {
+std::unique_ptr<AbstractCloudProvider> CreateAbstractCloudProvider(T impl) {
   auto d = CreateAbstractCloudProviderImpl<Type>(std::move(impl));
   return std::make_unique<decltype(d)>(std::move(d));
 }

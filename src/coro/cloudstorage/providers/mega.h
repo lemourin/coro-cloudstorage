@@ -21,7 +21,8 @@
 
 namespace coro::cloudstorage {
 
-struct Mega {
+class Mega {
+ public:
   struct Auth {
     struct AuthToken {
       std::string email;
@@ -102,32 +103,25 @@ struct Mega {
     int64_t size;
   };
 
-  class CloudProvider;
-
   static constexpr std::string_view kId = "mega";
   static inline const auto& kIcon = util::kAssetsProvidersMegaPng;
-};
 
-class Mega::CloudProvider {
- public:
-  CloudProvider(const coro::http::Http* http,
-                const coro::util::EventLoop* event_loop,
-                util::RandomNumberGenerator* random_number_generator,
-                util::ThumbnailGenerator thumbnail_generator,
-                Auth::AuthToken auth_token)
+  Mega(const coro::http::Http* http, const coro::util::EventLoop* event_loop,
+       util::RandomNumberGenerator* random_number_generator,
+       util::ThumbnailGenerator thumbnail_generator, Auth::AuthToken auth_token)
       : http_(http),
         event_loop_(event_loop),
         random_number_generator_(random_number_generator),
         thumbnail_generator_(thumbnail_generator),
         auth_token_(std::move(auth_token)) {}
 
-  CloudProvider(CloudProvider&& other) noexcept;
-  CloudProvider(const CloudProvider&) = delete;
+  Mega(Mega&& other) noexcept;
+  Mega(const Mega&) = delete;
 
-  CloudProvider& operator=(CloudProvider&& other) noexcept;
-  CloudProvider& operator=(const CloudProvider&) = delete;
+  Mega& operator=(Mega&& other) noexcept;
+  Mega& operator=(const Mega&) = delete;
 
-  ~CloudProvider() { stop_source_.request_stop(); }
+  ~Mega() { stop_source_.request_stop(); }
 
   Task<Root> GetRoot(stdx::stop_token stop_token);
 
@@ -244,7 +238,7 @@ class Mega::CloudProvider {
 
   struct DoInit {
     Task<> operator()() const;
-    CloudProvider* p;
+    Mega* p;
   };
 
   const coro::http::Http* http_;
@@ -262,16 +256,13 @@ class Mega::CloudProvider {
 
 class Mega::Auth::AuthHandler {
  public:
-  using CloudProviderT = CloudProvider;
-
-  explicit AuthHandler(CloudProviderT provider)
-      : provider_(std::move(provider)) {}
+  explicit AuthHandler(Mega provider) : provider_(std::move(provider)) {}
 
   Task<std::variant<http::Response<>, Auth::AuthToken>> operator()(
       http::Request<> request, stdx::stop_token stop_token);
 
  private:
-  CloudProviderT provider_;
+  Mega provider_;
 };
 
 namespace util {

@@ -111,13 +111,12 @@ auto PCloud::Auth::ExchangeAuthorizationCode(
                       .hostname = std::move(hostname)};
 }
 
-auto PCloud::CloudProvider::GetRoot(stdx::stop_token) -> Task<Directory> {
+auto PCloud::GetRoot(stdx::stop_token) -> Task<Directory> {
   Directory d{{.id = 0}};
   co_return d;
 }
 
-auto PCloud::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
-    -> Task<GeneralData> {
+auto PCloud::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
   Request request{.url = GetEndpoint("/userinfo")};
   auto response = co_await FetchJson(*http_, auth_token_.access_token,
                                      std::move(request), std::move(stop_token));
@@ -126,9 +125,9 @@ auto PCloud::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
                         .space_total = response["quota"]};
 }
 
-auto PCloud::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) -> Task<PageData> {
+auto PCloud::ListDirectoryPage(Directory directory,
+                               std::optional<std::string> page_token,
+                               stdx::stop_token stop_token) -> Task<PageData> {
   Request request{
       .url = GetEndpoint("/listfolder") + "?" +
              http::FormDataToString({{"folderid", std::to_string(directory.id)},
@@ -142,8 +141,8 @@ auto PCloud::CloudProvider::ListDirectoryPage(
   co_return result;
 }
 
-Generator<std::string> PCloud::CloudProvider::GetFileContent(
-    File file, http::Range range, stdx::stop_token stop_token) {
+Generator<std::string> PCloud::GetFileContent(File file, http::Range range,
+                                              stdx::stop_token stop_token) {
   Request request{
       .url = GetEndpoint("/getfilelink") + "?" +
              http::FormDataToString({{"fileid", std::to_string(file.id)}})};
@@ -159,9 +158,8 @@ Generator<std::string> PCloud::CloudProvider::GetFileContent(
   }
 }
 
-auto PCloud::CloudProvider::RenameItem(Directory item, std::string new_name,
-                                       stdx::stop_token stop_token)
-    -> Task<Directory> {
+auto PCloud::RenameItem(Directory item, std::string new_name,
+                        stdx::stop_token stop_token) -> Task<Directory> {
   Request request{
       .url = GetEndpoint("/renamefolder") + "?" +
              http::FormDataToString({{"folderid", std::to_string(item.id)},
@@ -173,9 +171,8 @@ auto PCloud::CloudProvider::RenameItem(Directory item, std::string new_name,
   co_return ToItemImpl<Directory>(response["metadata"]);
 }
 
-auto PCloud::CloudProvider::RenameItem(File item, std::string new_name,
-                                       stdx::stop_token stop_token)
-    -> Task<File> {
+auto PCloud::RenameItem(File item, std::string new_name,
+                        stdx::stop_token stop_token) -> Task<File> {
   Request request{
       .url = GetEndpoint("/renamefile") + "?" +
              http::FormDataToString({{"fileid", std::to_string(item.id)},
@@ -187,9 +184,8 @@ auto PCloud::CloudProvider::RenameItem(File item, std::string new_name,
   co_return ToItemImpl<File>(response["metadata"]);
 }
 
-auto PCloud::CloudProvider::CreateDirectory(Directory parent, std::string name,
-                                            stdx::stop_token stop_token)
-    -> Task<Directory> {
+auto PCloud::CreateDirectory(Directory parent, std::string name,
+                             stdx::stop_token stop_token) -> Task<Directory> {
   Request request{
       .url = GetEndpoint("/createfolder") + "?" +
              http::FormDataToString({{"folderid", std::to_string(parent.id)},
@@ -201,8 +197,7 @@ auto PCloud::CloudProvider::CreateDirectory(Directory parent, std::string name,
   co_return ToItemImpl<Directory>(response["metadata"]);
 }
 
-Task<> PCloud::CloudProvider::RemoveItem(File item,
-                                         stdx::stop_token stop_token) {
+Task<> PCloud::RemoveItem(File item, stdx::stop_token stop_token) {
   Request request{
       .url = GetEndpoint("/deletefile") + "?" +
              http::FormDataToString({{"fileid", std::to_string(item.id)}}),
@@ -211,8 +206,7 @@ Task<> PCloud::CloudProvider::RemoveItem(File item,
                  std::move(stop_token));
 }
 
-Task<> PCloud::CloudProvider::RemoveItem(Directory item,
-                                         stdx::stop_token stop_token) {
+Task<> PCloud::RemoveItem(Directory item, stdx::stop_token stop_token) {
   Request request{
       .url = GetEndpoint("/deletefolderrecursive") + "?" +
              http::FormDataToString({{"folderid", std::to_string(item.id)}}),
@@ -221,9 +215,8 @@ Task<> PCloud::CloudProvider::RemoveItem(Directory item,
                  std::move(stop_token));
 }
 
-auto PCloud::CloudProvider::MoveItem(Directory source, Directory destination,
-                                     stdx::stop_token stop_token)
-    -> Task<Directory> {
+auto PCloud::MoveItem(Directory source, Directory destination,
+                      stdx::stop_token stop_token) -> Task<Directory> {
   Request request{.url = GetEndpoint("/renamefolder") + "?" +
                          http::FormDataToString(
                              {{"folderid", std::to_string(source.id)},
@@ -235,9 +228,8 @@ auto PCloud::CloudProvider::MoveItem(Directory source, Directory destination,
   co_return ToItemImpl<Directory>(response["metadata"]);
 }
 
-auto PCloud::CloudProvider::MoveItem(File source, Directory destination,
-                                     stdx::stop_token stop_token)
-    -> Task<File> {
+auto PCloud::MoveItem(File source, Directory destination,
+                      stdx::stop_token stop_token) -> Task<File> {
   Request request{.url = GetEndpoint("/renamefile") + "?" +
                          http::FormDataToString(
                              {{"fileid", std::to_string(source.id)},
@@ -249,9 +241,8 @@ auto PCloud::CloudProvider::MoveItem(File source, Directory destination,
   co_return ToItemImpl<File>(response["metadata"]);
 }
 
-auto PCloud::CloudProvider::CreateFile(Directory parent, std::string_view name,
-                                       FileContent content,
-                                       stdx::stop_token stop_token)
+auto PCloud::CreateFile(Directory parent, std::string_view name,
+                        FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
   http::Request<> request{
       .url = GetEndpoint("/uploadfile") + "?" +
@@ -272,9 +263,8 @@ auto PCloud::CloudProvider::CreateFile(Directory parent, std::string_view name,
   co_return ToItemImpl<File>(response["metadata"][0]);
 }
 
-auto PCloud::CloudProvider::GetItemThumbnail(File file, http::Range range,
-                                             stdx::stop_token stop_token)
-    -> Task<Thumbnail> {
+auto PCloud::GetItemThumbnail(File file, http::Range range,
+                              stdx::stop_token stop_token) -> Task<Thumbnail> {
   Request request{
       .url = GetEndpoint("/getthumb") + "?" +
              http::FormDataToString(
@@ -290,7 +280,7 @@ auto PCloud::CloudProvider::GetItemThumbnail(File file, http::Range range,
   co_return result;
 }
 
-std::string PCloud::CloudProvider::GetEndpoint(std::string_view path) const {
+std::string PCloud::GetEndpoint(std::string_view path) const {
   return auth_token_.hostname + std::string(path);
 }
 
@@ -334,8 +324,8 @@ PCloud::Auth::AuthData GetAuthData<PCloud>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<PCloud::CloudProvider>(
-    PCloud::CloudProvider p) -> std::unique_ptr<CloudProvider> {
+auto AbstractCloudProvider::Create<PCloud>(PCloud p)
+    -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider<PCloud>(std::move(p));
 }
 

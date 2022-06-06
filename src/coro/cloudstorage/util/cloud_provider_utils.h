@@ -27,12 +27,12 @@ auto ListDirectory(CloudProviderT* d, DirectoryT directory,
 }
 
 Task<AbstractCloudProvider::Item> GetItemByPathComponents(
-    const AbstractCloudProvider::CloudProvider*,
-    std::span<const std::string> components, stdx::stop_token stop_token);
-
-Task<AbstractCloudProvider::Item> GetItemByPath(
-    const AbstractCloudProvider::CloudProvider*, std::string path,
+    const AbstractCloudProvider*, std::span<const std::string> components,
     stdx::stop_token stop_token);
+
+Task<AbstractCloudProvider::Item> GetItemByPath(const AbstractCloudProvider*,
+                                                std::string path,
+                                                stdx::stop_token stop_token);
 
 }  // namespace coro::cloudstorage::util
 

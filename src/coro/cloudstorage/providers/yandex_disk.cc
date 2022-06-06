@@ -74,12 +74,12 @@ auto YandexDisk::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,
   co_return AuthToken{.access_token = json["access_token"]};
 }
 
-auto YandexDisk::CloudProvider::GetRoot(stdx::stop_token) -> Task<Directory> {
+auto YandexDisk::GetRoot(stdx::stop_token) -> Task<Directory> {
   Directory d{{.id = "disk:/"}};
   co_return d;
 }
 
-auto YandexDisk::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
+auto YandexDisk::GetGeneralData(stdx::stop_token stop_token)
     -> Task<GeneralData> {
   Task<json> task1 =
       FetchJson(Request{.url = "https://login.yandex.ru/info"}, stop_token);
@@ -91,9 +91,10 @@ auto YandexDisk::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
                         .space_total = json2["total_space"]};
 }
 
-auto YandexDisk::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) -> Task<PageData> {
+auto YandexDisk::ListDirectoryPage(Directory directory,
+                                   std::optional<std::string> page_token,
+                                   stdx::stop_token stop_token)
+    -> Task<PageData> {
   std::vector<std::pair<std::string, std::string>> params = {
       {"path", directory.id}};
   if (page_token) {
@@ -115,8 +116,8 @@ auto YandexDisk::CloudProvider::ListDirectoryPage(
   co_return page_data;
 }
 
-auto YandexDisk::CloudProvider::GetFileContent(File file, http::Range range,
-                                               stdx::stop_token stop_token)
+auto YandexDisk::GetFileContent(File file, http::Range range,
+                                stdx::stop_token stop_token)
     -> Generator<std::string> {
   Request request{.url = GetEndpoint("/disk/resources/download") + "?" +
                          http::FormDataToString({{"path", file.id}})};
@@ -133,16 +134,14 @@ auto YandexDisk::CloudProvider::GetFileContent(File file, http::Range range,
 }
 
 template <typename ItemT>
-Task<ItemT> YandexDisk::CloudProvider::RenameItem(ItemT item,
-                                                  std::string new_name,
-                                                  stdx::stop_token stop_token) {
+Task<ItemT> YandexDisk::RenameItem(ItemT item, std::string new_name,
+                                   stdx::stop_token stop_token) {
   co_return co_await MoveItem<ItemT>(
       item.id, GetParentPath(item.id) + "/" + new_name, std::move(stop_token));
 }
 
-auto YandexDisk::CloudProvider::CreateDirectory(Directory parent,
-                                                std::string name,
-                                                stdx::stop_token stop_token)
+auto YandexDisk::CreateDirectory(Directory parent, std::string name,
+                                 stdx::stop_token stop_token)
     -> Task<Directory> {
   Request request{
       .url = GetEndpoint("/disk/resources/") + "?" +
@@ -154,8 +153,7 @@ auto YandexDisk::CloudProvider::CreateDirectory(Directory parent,
       co_await FetchJson(std::move(request), std::move(stop_token)));
 }
 
-Task<> YandexDisk::CloudProvider::RemoveItem(Item item,
-                                             stdx::stop_token stop_token) {
+Task<> YandexDisk::RemoveItem(Item item, stdx::stop_token stop_token) {
   Request request{
       .url =
           GetEndpoint("/disk/resources") + "?" +
@@ -176,18 +174,15 @@ Task<> YandexDisk::CloudProvider::RemoveItem(Item item,
 }
 
 template <typename ItemT>
-Task<ItemT> YandexDisk::CloudProvider::MoveItem(ItemT source,
-                                                Directory destination,
-                                                stdx::stop_token stop_token) {
+Task<ItemT> YandexDisk::MoveItem(ItemT source, Directory destination,
+                                 stdx::stop_token stop_token) {
   co_return co_await MoveItem<ItemT>(source.id,
                                      Concatenate(destination.id, source.name),
                                      std::move(stop_token));
 }
 
-auto YandexDisk::CloudProvider::CreateFile(Directory parent,
-                                           std::string_view name,
-                                           FileContent content,
-                                           stdx::stop_token stop_token)
+auto YandexDisk::CreateFile(Directory parent, std::string_view name,
+                            FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
   Request request{
       .url = GetEndpoint("/disk/resources/upload") + "?" +
@@ -205,8 +200,8 @@ auto YandexDisk::CloudProvider::CreateFile(Directory parent,
       co_await FetchJson(std::move(request), std::move(stop_token)));
 }
 
-auto YandexDisk::CloudProvider::GetItemThumbnail(File item, http::Range range,
-                                                 stdx::stop_token stop_token)
+auto YandexDisk::GetItemThumbnail(File item, http::Range range,
+                                  stdx::stop_token stop_token)
     -> Task<Thumbnail> {
   if (!item.thumbnail_url) {
     throw CloudException(CloudException::Type::kNotFound);
@@ -226,9 +221,8 @@ auto YandexDisk::CloudProvider::GetItemThumbnail(File item, http::Range range,
 }
 
 template <typename ItemT>
-Task<ItemT> YandexDisk::CloudProvider::MoveItem(std::string_view from,
-                                                std::string_view path,
-                                                stdx::stop_token stop_token) {
+Task<ItemT> YandexDisk::MoveItem(std::string_view from, std::string_view path,
+                                 stdx::stop_token stop_token) {
   Request request{
       .url = GetEndpoint("/disk/resources/move") + "?" +
              http::FormDataToString({{"from", from}, {"path", path}}),
@@ -249,8 +243,8 @@ Task<ItemT> YandexDisk::CloudProvider::MoveItem(std::string_view from,
       co_await FetchJson(std::move(request), std::move(stop_token)));
 }
 
-Task<> YandexDisk::CloudProvider::PollStatus(std::string_view url,
-                                             stdx::stop_token stop_token) {
+Task<> YandexDisk::PollStatus(std::string_view url,
+                              stdx::stop_token stop_token) {
   int backoff = 100;
   while (true) {
     Request request{.url = std::string(url)};
@@ -269,8 +263,8 @@ Task<> YandexDisk::CloudProvider::PollStatus(std::string_view url,
   }
 }
 
-Task<nlohmann::json> YandexDisk::CloudProvider::FetchJson(
-    Request request, stdx::stop_token stop_token) const {
+Task<nlohmann::json> YandexDisk::FetchJson(Request request,
+                                           stdx::stop_token stop_token) const {
   request.headers.emplace_back("Content-Type", "application/json");
   request.headers.emplace_back("Authorization",
                                "OAuth " + auth_token_.access_token);
@@ -288,24 +282,26 @@ YandexDisk::Auth::AuthData GetAuthData<YandexDisk>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<YandexDisk::CloudProvider>(
-    YandexDisk::CloudProvider p) -> std::unique_ptr<CloudProvider> {
+auto AbstractCloudProvider::Create<YandexDisk>(YandexDisk p)
+    -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider<YandexDisk>(std::move(p));
 }
 
 }  // namespace util
 
-template auto YandexDisk::CloudProvider::RenameItem<YandexDisk::File>(
+template auto YandexDisk::RenameItem<YandexDisk::File>(
     File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
 
-template auto YandexDisk::CloudProvider::RenameItem<YandexDisk::Directory>(
+template auto YandexDisk::RenameItem<YandexDisk::Directory>(
     Directory item, std::string new_name, stdx::stop_token stop_token)
     -> Task<Directory>;
 
-template auto YandexDisk::CloudProvider::MoveItem<YandexDisk::File>(
-    File, Directory, stdx::stop_token) -> Task<File>;
+template auto YandexDisk::MoveItem<YandexDisk::File>(File, Directory,
+                                                     stdx::stop_token)
+    -> Task<File>;
 
-template auto YandexDisk::CloudProvider::MoveItem<YandexDisk::Directory>(
-    Directory, Directory, stdx::stop_token) -> Task<Directory>;
+template auto YandexDisk::MoveItem<YandexDisk::Directory>(Directory, Directory,
+                                                          stdx::stop_token)
+    -> Task<Directory>;
 
 }  // namespace coro::cloudstorage

@@ -18,9 +18,8 @@ inline std::string GetAccountId(std::string_view id,
 
 class CloudProviderAccount {
  public:
-  CloudProviderAccount(
-      std::string username, int64_t version,
-      std::unique_ptr<AbstractCloudProvider::CloudProvider> account)
+  CloudProviderAccount(std::string username, int64_t version,
+                       std::unique_ptr<AbstractCloudProvider> account)
       : username_(std::move(username)),
         version_(version),
         type_(account->GetId()),
@@ -41,7 +40,7 @@ class CloudProviderAccount {
   int64_t version_;
   std::string type_;
   std::string id_;
-  std::unique_ptr<AbstractCloudProvider::CloudProvider> provider_;
+  std::unique_ptr<AbstractCloudProvider> provider_;
   stdx::stop_source stop_source_;
 };
 

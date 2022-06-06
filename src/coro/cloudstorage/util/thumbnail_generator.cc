@@ -311,9 +311,8 @@ std::string GenerateThumbnail(AVIOContext* io_context,
 }  // namespace
 
 Task<std::string> ThumbnailGenerator::operator()(
-    AbstractCloudProvider::CloudProvider* provider,
-    AbstractCloudProvider::File file, ThumbnailOptions options,
-    stdx::stop_token stop_token) const {
+    AbstractCloudProvider* provider, AbstractCloudProvider::File file,
+    ThumbnailOptions options, stdx::stop_token stop_token) const {
   std::unique_ptr<AVIOContext, AVIOContextDeleter> io_context;
   co_return co_await thread_pool_->Do([&] {
     io_context = CreateIOContext(event_loop_, provider, std::move(file),

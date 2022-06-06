@@ -14,7 +14,7 @@ class ThumbnailGenerator {
                      const coro::util::EventLoop* event_loop)
       : thread_pool_(thread_pool), event_loop_(event_loop) {}
 
-  Task<std::string> operator()(AbstractCloudProvider::CloudProvider* provider,
+  Task<std::string> operator()(AbstractCloudProvider* provider,
                                AbstractCloudProvider::File file,
                                ThumbnailOptions options,
                                stdx::stop_token stop_token) const;

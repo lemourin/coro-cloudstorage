@@ -18,8 +18,7 @@ struct AVIOContextDeleter {
 };
 
 std::unique_ptr<AVIOContext, AVIOContextDeleter> CreateIOContext(
-    const coro::util::EventLoop* event_loop,
-    AbstractCloudProvider::CloudProvider* provider,
+    const coro::util::EventLoop* event_loop, AbstractCloudProvider* provider,
     AbstractCloudProvider::File file, stdx::stop_token stop_token);
 
 }  // namespace coro::cloudstorage::util

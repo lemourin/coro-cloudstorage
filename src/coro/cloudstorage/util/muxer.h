@@ -14,12 +14,12 @@ class Muxer {
         coro::util::ThreadPool* thread_pool)
       : event_loop_(event_loop), thread_pool_(thread_pool) {}
 
-  Generator<std::string> operator()(
-      AbstractCloudProvider::CloudProvider* video_cloud_provider,
-      AbstractCloudProvider::File video_track,
-      AbstractCloudProvider::CloudProvider* audio_cloud_provider,
-      AbstractCloudProvider::File audio_track, MediaContainer container,
-      stdx::stop_token stop_token) const;
+  Generator<std::string> operator()(AbstractCloudProvider* video_cloud_provider,
+                                    AbstractCloudProvider::File video_track,
+                                    AbstractCloudProvider* audio_cloud_provider,
+                                    AbstractCloudProvider::File audio_track,
+                                    MediaContainer container,
+                                    stdx::stop_token stop_token) const;
 
  private:
   template <typename F1, typename F2>

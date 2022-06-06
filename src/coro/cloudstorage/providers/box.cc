@@ -135,13 +135,12 @@ auto Box::Auth::RefreshAccessToken(const coro::http::Http& http,
                       .refresh_token = json["refresh_token"]};
 }
 
-auto Box::CloudProvider::GetRoot(stdx::stop_token) -> Task<Directory> {
+auto Box::GetRoot(stdx::stop_token) -> Task<Directory> {
   Directory root{{.id = "0"}};
   co_return root;
 }
 
-auto Box::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
-    -> Task<GeneralData> {
+auto Box::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
   auto json = co_await auth_manager_.FetchJson(
       Request{.url = GetEndpoint("/users/me")}, std::move(stop_token));
   co_return GeneralData{.username = json["login"],
@@ -149,9 +148,9 @@ auto Box::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
                         .space_total = json["space_amount"]};
 }
 
-auto Box::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) -> Task<PageData> {
+auto Box::ListDirectoryPage(Directory directory,
+                            std::optional<std::string> page_token,
+                            stdx::stop_token stop_token) -> Task<PageData> {
   std::vector<std::pair<std::string, std::string>> params = {
       {"fields", std::string(kFileProperties)}};
   if (page_token) {
@@ -174,8 +173,8 @@ auto Box::CloudProvider::ListDirectoryPage(
   co_return std::move(result);
 }
 
-Generator<std::string> Box::CloudProvider::GetFileContent(
-    File file, http::Range range, stdx::stop_token stop_token) {
+Generator<std::string> Box::GetFileContent(File file, http::Range range,
+                                           stdx::stop_token stop_token) {
   Request request{.url = GetEndpoint("/files/" + file.id + "/content"),
                   .headers = {http::ToRangeHeader(range)}};
   auto response = co_await auth_manager_.Fetch(std::move(request), stop_token);
@@ -187,22 +186,20 @@ Generator<std::string> Box::CloudProvider::GetFileContent(
   FOR_CO_AWAIT(auto& chunk, response.body) { co_yield std::move(chunk); }
 }
 
-auto Box::CloudProvider::RenameItem(Directory item, std::string new_name,
-                                    stdx::stop_token stop_token)
-    -> Task<Directory> {
+auto Box::RenameItem(Directory item, std::string new_name,
+                     stdx::stop_token stop_token) -> Task<Directory> {
   return RenameItemImpl<Directory>(&auth_manager_, "/folders/", std::move(item),
                                    std::move(new_name), std::move(stop_token));
 }
 
-auto Box::CloudProvider::RenameItem(File item, std::string new_name,
-                                    stdx::stop_token stop_token) -> Task<File> {
+auto Box::RenameItem(File item, std::string new_name,
+                     stdx::stop_token stop_token) -> Task<File> {
   return RenameItemImpl<File>(&auth_manager_, "/files/", std::move(item),
                               std::move(new_name), std::move(stop_token));
 }
 
-auto Box::CloudProvider::CreateDirectory(Directory parent, std::string name,
-                                         stdx::stop_token stop_token)
-    -> Task<Directory> {
+auto Box::CreateDirectory(Directory parent, std::string name,
+                          stdx::stop_token stop_token) -> Task<Directory> {
   json request;
   request["name"] = std::move(name);
   request["parent"]["id"] = std::move(parent.id);
@@ -214,36 +211,34 @@ auto Box::CloudProvider::CreateDirectory(Directory parent, std::string name,
   co_return ToItemImpl<Directory>(response);
 }
 
-Task<> Box::CloudProvider::RemoveItem(File item, stdx::stop_token stop_token) {
+Task<> Box::RemoveItem(File item, stdx::stop_token stop_token) {
   Request request = {.url = GetEndpoint("/files/" + item.id),
                      .method = http::Method::kDelete};
   co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
 }
 
-Task<> Box::CloudProvider::RemoveItem(Directory item,
-                                      stdx::stop_token stop_token) {
+Task<> Box::RemoveItem(Directory item, stdx::stop_token stop_token) {
   Request request{.url = GetEndpoint("/folders/" + item.id) + "?" +
                          http::FormDataToString({{"recursive", "true"}}),
                   .method = http::Method::kDelete};
   co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
 }
 
-auto Box::CloudProvider::MoveItem(Directory source, Directory destination,
-                                  stdx::stop_token stop_token)
-    -> Task<Directory> {
+auto Box::MoveItem(Directory source, Directory destination,
+                   stdx::stop_token stop_token) -> Task<Directory> {
   return MoveItemImpl<Directory>(&auth_manager_, "/folders/", std::move(source),
                                  std::move(destination), std::move(stop_token));
 }
 
-auto Box::CloudProvider::MoveItem(File source, Directory destination,
-                                  stdx::stop_token stop_token) -> Task<File> {
+auto Box::MoveItem(File source, Directory destination,
+                   stdx::stop_token stop_token) -> Task<File> {
   return MoveItemImpl<File>(&auth_manager_, "/files/", std::move(source),
                             std::move(destination), std::move(stop_token));
 }
 
-auto Box::CloudProvider::CreateFile(Directory parent, std::string_view name,
-                                    FileContent content,
-                                    stdx::stop_token stop_token) -> Task<File> {
+auto Box::CreateFile(Directory parent, std::string_view name,
+                     FileContent content, stdx::stop_token stop_token)
+    -> Task<File> {
   std::optional<std::string> id;
   FOR_CO_AWAIT(const auto& page, ListDirectory(this, parent, stop_token)) {
     for (const auto& item : page.items) {
@@ -271,9 +266,8 @@ auto Box::CloudProvider::CreateFile(Directory parent, std::string_view name,
   co_return ToItemImpl<File>(response["entries"][0]);
 }
 
-auto Box::CloudProvider::GetItemThumbnail(File file, http::Range range,
-                                          stdx::stop_token stop_token)
-    -> Task<Thumbnail> {
+auto Box::GetItemThumbnail(File file, http::Range range,
+                           stdx::stop_token stop_token) -> Task<Thumbnail> {
   Request request{.url = GetEndpoint("/files/" + file.id + "/thumbnail.png"),
                   .headers = {ToRangeHeader(range)}};
   auto response =
@@ -299,8 +293,8 @@ Box::Auth::AuthData GetAuthData<Box>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<Box::CloudProvider>(Box::CloudProvider p)
-    -> std::unique_ptr<CloudProvider> {
+auto AbstractCloudProvider::Create<Box>(Box p)
+    -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider<Box>(std::move(p));
 }
 

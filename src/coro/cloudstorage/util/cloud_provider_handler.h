@@ -21,7 +21,7 @@ namespace coro::cloudstorage::util {
 
 class CloudProviderHandler {
  public:
-  using CloudProvider = AbstractCloudProvider::CloudProvider;
+  using CloudProvider = AbstractCloudProvider;
   using Request = http::Request<>;
   using Response = http::Response<>;
 

@@ -535,7 +535,7 @@ CloudException ToException(int status) {
 
 }  // namespace
 
-Mega::CloudProvider::CloudProvider(CloudProvider&& other) noexcept
+Mega::Mega(Mega&& other) noexcept
     : http_(other.http_),
       event_loop_(other.event_loop_),
       random_number_generator_(other.random_number_generator_),
@@ -547,8 +547,7 @@ Mega::CloudProvider::CloudProvider(CloudProvider&& other) noexcept
       file_tree_(std::move(other.file_tree_)),
       stop_source_(std::move(other.stop_source_)) {}
 
-Mega::CloudProvider& Mega::CloudProvider::operator=(
-    CloudProvider&& other) noexcept {
+Mega& Mega::operator=(Mega&& other) noexcept {
   http_ = other.http_;
   event_loop_ = other.event_loop_;
   random_number_generator_ = other.random_number_generator_;
@@ -562,7 +561,7 @@ Mega::CloudProvider& Mega::CloudProvider::operator=(
   return *this;
 }
 
-auto Mega::CloudProvider::GetRoot(stdx::stop_token stop_token) -> Task<Root> {
+auto Mega::GetRoot(stdx::stop_token stop_token) -> Task<Root> {
   co_await LazyInit(std::move(stop_token));
   for (const auto& [key, value] : items_) {
     if (std::holds_alternative<Root>(value)) {
@@ -572,8 +571,7 @@ auto Mega::CloudProvider::GetRoot(stdx::stop_token stop_token) -> Task<Root> {
   throw CloudException(CloudException::Type::kNotFound);
 }
 
-auto Mega::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
-    -> Task<GeneralData> {
+auto Mega::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
   nlohmann::json command;
   command["a"] = "uq";
   command["xfer"] = 1;
@@ -585,9 +583,8 @@ auto Mega::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
 }
 
 template <typename DirectoryT, typename>
-auto Mega::CloudProvider::ListDirectoryPage(DirectoryT directory,
-                                            std::optional<std::string>,
-                                            coro::stdx::stop_token stop_token)
+auto Mega::ListDirectoryPage(DirectoryT directory, std::optional<std::string>,
+                             coro::stdx::stop_token stop_token)
     -> Task<PageData> {
   co_await LazyInit(std::move(stop_token));
   if (!items_.contains(directory.id)) {
@@ -604,8 +601,8 @@ auto Mega::CloudProvider::ListDirectoryPage(DirectoryT directory,
   co_return page_data;
 }
 
-Generator<std::string> Mega::CloudProvider::GetFileContent(
-    File file, http::Range range, coro::stdx::stop_token stop_token) {
+Generator<std::string> Mega::GetFileContent(File file, http::Range range,
+                                            coro::stdx::stop_token stop_token) {
   if (range.start >= file.size || (range.end && *range.end >= file.size)) {
     throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
   }
@@ -628,8 +625,8 @@ Generator<std::string> Mega::CloudProvider::GetFileContent(
 }
 
 template <typename ItemT, typename>
-Task<ItemT> Mega::CloudProvider::RenameItem(ItemT item, std::string new_name,
-                                            stdx::stop_token stop_token) {
+Task<ItemT> Mega::RenameItem(ItemT item, std::string new_name,
+                             stdx::stop_token stop_token) {
   nlohmann::json command;
   command["a"] = "a";
   item.name = new_name;
@@ -642,8 +639,7 @@ Task<ItemT> Mega::CloudProvider::RenameItem(ItemT item, std::string new_name,
 }
 
 template <typename ItemT, typename>
-Task<> Mega::CloudProvider::RemoveItem(ItemT item,
-                                       stdx::stop_token stop_token) {
+Task<> Mega::RemoveItem(ItemT item, stdx::stop_token stop_token) {
   nlohmann::json command;
   command["a"] = "d";
   command["n"] = ToHandle(item.id);
@@ -652,8 +648,8 @@ Task<> Mega::CloudProvider::RemoveItem(ItemT item,
 }
 
 template <typename ItemT, typename DirectoryT, typename>
-Task<ItemT> Mega::CloudProvider::MoveItem(ItemT source, DirectoryT destination,
-                                          stdx::stop_token stop_token) {
+Task<ItemT> Mega::MoveItem(ItemT source, DirectoryT destination,
+                           stdx::stop_token stop_token) {
   nlohmann::json command;
   command["a"] = "m";
   command["n"] = ToHandle(source.id);
@@ -666,9 +662,8 @@ Task<ItemT> Mega::CloudProvider::MoveItem(ItemT source, DirectoryT destination,
 }
 
 template <typename DirectoryT, typename>
-auto Mega::CloudProvider::CreateDirectory(DirectoryT parent, std::string name,
-                                          stdx::stop_token stop_token)
-    -> Task<Directory> {
+auto Mega::CreateDirectory(DirectoryT parent, std::string name,
+                           stdx::stop_token stop_token) -> Task<Directory> {
   Directory directory{};
   directory.compkey = GenerateKey<uint8_t, 16>();
   directory.parent = parent.id;
@@ -690,9 +685,8 @@ auto Mega::CloudProvider::CreateDirectory(DirectoryT parent, std::string name,
   co_return std::get<Directory>(item);
 }
 
-auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
-                                           stdx::stop_token stop_token)
-    -> Task<Thumbnail> {
+auto Mega::GetItemThumbnail(File item, http::Range range,
+                            stdx::stop_token stop_token) -> Task<Thumbnail> {
   if (item.thumbnail_id) {
     co_return co_await GetItemThumbnailImpl(std::move(item), range,
                                             std::move(stop_token));
@@ -703,9 +697,8 @@ auto Mega::CloudProvider::GetItemThumbnail(File item, http::Range range,
 }
 
 template <typename DirectoryT, typename>
-auto Mega::CloudProvider::CreateFile(DirectoryT parent, std::string_view name,
-                                     FileContent content,
-                                     stdx::stop_token stop_token)
+auto Mega::CreateFile(DirectoryT parent, std::string_view name,
+                      FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
   nlohmann::json upload_response =
       co_await CreateUpload(content.size, stop_token);
@@ -773,8 +766,7 @@ auto Mega::CloudProvider::CreateFile(DirectoryT parent, std::string_view name,
                                      std::move(stop_token));
 }
 
-auto Mega::CloudProvider::TrySetThumbnail(File file,
-                                          stdx::stop_token stop_token)
+auto Mega::TrySetThumbnail(File file, stdx::stop_token stop_token)
     -> Task<File> {
   auto impl = CreateAbstractCloudProviderImpl<Mega>(this);
   switch (GetFileType(impl.Convert(file).mime_type)) {
@@ -798,9 +790,8 @@ auto Mega::CloudProvider::TrySetThumbnail(File file,
   co_return file;
 }
 
-auto Mega::CloudProvider::SetThumbnail(File file, std::string thumbnail,
-                                       stdx::stop_token stop_token)
-    -> Task<File> {
+auto Mega::SetThumbnail(File file, std::string thumbnail,
+                        stdx::stop_token stop_token) -> Task<File> {
   std::string encoded =
       EncodeAttributeContent(ToFileKey(file.compkey), thumbnail);
   nlohmann::json command;
@@ -834,9 +825,8 @@ auto Mega::CloudProvider::SetThumbnail(File file, std::string thumbnail,
   }
 }
 
-auto Mega::CloudProvider::GetSession(Auth::UserCredential credential,
-                                     stdx::stop_token stop_token)
-    -> Task<Auth::AuthToken> {
+auto Mega::GetSession(Auth::UserCredential credential,
+                      stdx::stop_token stop_token) -> Task<Auth::AuthToken> {
   auto prelogin_data = co_await Prelogin(credential.email, stop_token);
   nlohmann::json command;
   command["a"] = "us";
@@ -866,7 +856,7 @@ auto Mega::CloudProvider::GetSession(Auth::UserCredential credential,
 }
 
 template <typename T, size_t Size>
-std::array<T, Size> Mega::CloudProvider::GenerateKey() const {
+std::array<T, Size> Mega::GenerateKey() const {
   std::array<T, Size> key{};
   for (T& c : key) {
     c = random_number_generator_->template Get<T>();
@@ -874,8 +864,7 @@ std::array<T, Size> Mega::CloudProvider::GenerateKey() const {
   return key;
 }
 
-auto Mega::CloudProvider::FindByName(uint64_t parent,
-                                     std::string_view name) const
+auto Mega::FindByName(uint64_t parent, std::string_view name) const
     -> std::optional<File> {
   auto nodes = file_tree_.find(parent);
   if (nodes == file_tree_.end()) {
@@ -893,13 +882,12 @@ auto Mega::CloudProvider::FindByName(uint64_t parent,
   return std::nullopt;
 }
 
-std::string Mega::CloudProvider::GetEncryptedItemKey(
-    std::span<const uint8_t> key) const {
+std::string Mega::GetEncryptedItemKey(std::span<const uint8_t> key) const {
   return ToBase64(BlockEncrypt(auth_token_.pkey, ToStringView(key)));
 }
 
-auto Mega::CloudProvider::GetItemThumbnailImpl(File item, http::Range range,
-                                               stdx::stop_token stop_token)
+auto Mega::GetItemThumbnailImpl(File item, http::Range range,
+                                stdx::stop_token stop_token)
     -> Task<Thumbnail> {
   if (!item.thumbnail_id) {
     throw CloudException(CloudException::Type::kNotFound);
@@ -931,7 +919,7 @@ auto Mega::CloudProvider::GetItemThumbnailImpl(File item, http::Range range,
   co_return thumbnail;
 }
 
-Task<> Mega::CloudProvider::LazyInit(stdx::stop_token stop_token) {
+Task<> Mega::LazyInit(stdx::stop_token stop_token) {
   if (!init_) {
     init_.emplace(DoInit{this});
     co_await init_->Get(std::move(stop_token));
@@ -948,8 +936,7 @@ Task<> Mega::CloudProvider::LazyInit(stdx::stop_token stop_token) {
   co_await init_->Get(std::move(stop_token));
 }
 
-auto Mega::CloudProvider::Prelogin(std::string_view email,
-                                   stdx::stop_token stop_token)
+auto Mega::Prelogin(std::string_view email, stdx::stop_token stop_token)
     -> Task<PreloginData> {
   nlohmann::json command;
   command["a"] = "us0";
@@ -962,8 +949,8 @@ auto Mega::CloudProvider::Prelogin(std::string_view email,
   co_return data;
 }
 
-Task<nlohmann::json> Mega::CloudProvider::DoCommand(
-    nlohmann::json command, stdx::stop_token stop_token) {
+Task<nlohmann::json> Mega::DoCommand(nlohmann::json command,
+                                     stdx::stop_token stop_token) {
   nlohmann::json body;
   body.emplace_back(std::move(command));
   nlohmann::json response = co_await FetchJsonWithBackoff(
@@ -975,8 +962,8 @@ Task<nlohmann::json> Mega::CloudProvider::DoCommand(
 }
 
 template <typename Request>
-Task<nlohmann::json> Mega::CloudProvider::FetchJson(
-    Request request, stdx::stop_token stop_token) {
+Task<nlohmann::json> Mega::FetchJson(Request request,
+                                     stdx::stop_token stop_token) {
   std::vector<std::pair<std::string, std::string>> params = {
       {"id", std::to_string(id_++)}};
   if (!auth_token_.session.empty()) {
@@ -1003,8 +990,8 @@ Task<nlohmann::json> Mega::CloudProvider::FetchJson(
 }
 
 template <typename TaskF>
-auto Mega::CloudProvider::DoWithBackoff(const TaskF& task, int retry_count,
-                                        stdx::stop_token stop_token)
+auto Mega::DoWithBackoff(const TaskF& task, int retry_count,
+                         stdx::stop_token stop_token)
     -> Task<typename decltype(task())::type> {
   int backoff_ms = 0;
   while (true) {
@@ -1033,7 +1020,7 @@ auto Mega::CloudProvider::DoWithBackoff(const TaskF& task, int retry_count,
   }
 }
 
-Task<nlohmann::json> Mega::CloudProvider::FetchJsonWithBackoff(
+Task<nlohmann::json> Mega::FetchJsonWithBackoff(
     http::Request<std::string> request, int retry_count,
     stdx::stop_token stop_token) {
   co_return co_await DoWithBackoff(
@@ -1043,26 +1030,24 @@ Task<nlohmann::json> Mega::CloudProvider::FetchJsonWithBackoff(
       retry_count, stop_token);
 }
 
-Task<nlohmann::json> Mega::CloudProvider::GetFileSystem(
-    stdx::stop_token stop_token) {
+Task<nlohmann::json> Mega::GetFileSystem(stdx::stop_token stop_token) {
   nlohmann::json command;
   command["a"] = "f";
   command["c"] = 1;
   co_return co_await DoCommand(std::move(command), std::move(stop_token));
 }
 
-Task<nlohmann::json> Mega::CloudProvider::NewDownload(
-    uint64_t id, stdx::stop_token stop_token) {
+Task<nlohmann::json> Mega::NewDownload(uint64_t id,
+                                       stdx::stop_token stop_token) {
   nlohmann::json command;
   command["a"] = "g";
   command["g"] = 1;
   command["n"] = ToHandle(id);
-  co_return co_await Mega::CloudProvider::DoCommand(std::move(command),
-                                                    std::move(stop_token));
+  co_return co_await DoCommand(std::move(command), std::move(stop_token));
 }
 
-Task<nlohmann::json> Mega::CloudProvider::GetAttribute(
-    uint64_t id, stdx::stop_token stop_token) {
+Task<nlohmann::json> Mega::GetAttribute(uint64_t id,
+                                        stdx::stop_token stop_token) {
   nlohmann::json command;
   command["a"] = "ufa";
   command["r"] = 1;
@@ -1070,15 +1055,15 @@ Task<nlohmann::json> Mega::CloudProvider::GetAttribute(
   co_return co_await DoCommand(std::move(command), std::move(stop_token));
 }
 
-Task<nlohmann::json> Mega::CloudProvider::CreateUpload(
-    int64_t size, stdx::stop_token stop_token) {
+Task<nlohmann::json> Mega::CreateUpload(int64_t size,
+                                        stdx::stop_token stop_token) {
   nlohmann::json command;
   command["a"] = "u";
   command["s"] = size;
   co_return co_await DoCommand(std::move(command), std::move(stop_token));
 }
 
-void Mega::CloudProvider::AddItem(Item e) {
+void Mega::AddItem(Item e) {
   std::visit(
       [&]<typename T>(T&& item) {
         auto id = item.id;
@@ -1094,8 +1079,7 @@ void Mega::CloudProvider::AddItem(Item e) {
       std::move(e));
 }
 
-Task<> Mega::CloudProvider::PollEvents(std::string ssn,
-                                       stdx::stop_token stop_token) noexcept {
+Task<> Mega::PollEvents(std::string ssn, stdx::stop_token stop_token) noexcept {
   int backoff_ms = 0;
   while (!stop_token.stop_requested()) {
     try {
@@ -1135,8 +1119,7 @@ Task<> Mega::CloudProvider::PollEvents(std::string ssn,
   }
 }
 
-auto Mega::CloudProvider::HandleAttributeUpdateEvent(std::string_view attr,
-                                                     uint64_t handle)
+auto Mega::HandleAttributeUpdateEvent(std::string_view attr, uint64_t handle)
     -> const Item* {
   if (auto it = items_.find(handle); it != items_.end()) {
     if (auto* file = std::get_if<File>(&it->second)) {
@@ -1149,13 +1132,13 @@ auto Mega::CloudProvider::HandleAttributeUpdateEvent(std::string_view attr,
   return nullptr;
 }
 
-void Mega::CloudProvider::HandleAddItemEvent(const nlohmann::json& json) {
+void Mega::HandleAddItemEvent(const nlohmann::json& json) {
   for (const nlohmann::json& item : json["t"]["f"]) {
     AddItem(ToItem(item, auth_token_.pkey));
   }
 }
 
-void Mega::CloudProvider::HandleUpdateItemEvent(const nlohmann::json& json) {
+void Mega::HandleUpdateItemEvent(const nlohmann::json& json) {
   uint64_t handle = DecodeHandle(std::string(json["n"]));
   if (auto it = items_.find(handle); it != items_.end()) {
     std::visit(
@@ -1178,7 +1161,7 @@ void Mega::CloudProvider::HandleUpdateItemEvent(const nlohmann::json& json) {
   }
 }
 
-void Mega::CloudProvider::HandleRemoveItemEvent(uint64_t handle) {
+void Mega::HandleRemoveItemEvent(uint64_t handle) {
   if (auto it = items_.find(handle); it != items_.end()) {
     std::visit(
         [&]<typename T>(const T& d) {
@@ -1197,7 +1180,7 @@ void Mega::CloudProvider::HandleRemoveItemEvent(uint64_t handle) {
   }
 }
 
-Task<> Mega::CloudProvider::DoInit::operator()() const {
+Task<> Mega::DoInit::operator()() const {
   auto stop_token = p->stop_source_.get_token();
   auto json = co_await p->GetFileSystem(stop_token);
   if (stop_token.stop_requested()) {
@@ -1266,85 +1249,65 @@ Mega::Auth::AuthData GetAuthData<Mega>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<Mega::CloudProvider>(Mega::CloudProvider p)
-    -> std::unique_ptr<CloudProvider> {
+auto AbstractCloudProvider::Create<Mega>(Mega p)
+    -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider<Mega>(std::move(p));
 }
 
 }  // namespace util
 
-template auto Mega::CloudProvider::ListDirectoryPage(Directory,
-                                                     std::optional<std::string>,
-                                                     coro::stdx::stop_token)
-    -> Task<PageData>;
+template auto Mega::ListDirectoryPage(Directory, std::optional<std::string>,
+                                      coro::stdx::stop_token) -> Task<PageData>;
 
-template auto Mega::CloudProvider::ListDirectoryPage(Root,
-                                                     std::optional<std::string>,
-                                                     coro::stdx::stop_token)
-    -> Task<PageData>;
+template auto Mega::ListDirectoryPage(Root, std::optional<std::string>,
+                                      coro::stdx::stop_token) -> Task<PageData>;
 
-template auto Mega::CloudProvider::ListDirectoryPage(Inbox,
-                                                     std::optional<std::string>,
-                                                     coro::stdx::stop_token)
-    -> Task<PageData>;
+template auto Mega::ListDirectoryPage(Inbox, std::optional<std::string>,
+                                      coro::stdx::stop_token) -> Task<PageData>;
 
-template auto Mega::CloudProvider::ListDirectoryPage(Trash,
-                                                     std::optional<std::string>,
-                                                     coro::stdx::stop_token)
-    -> Task<PageData>;
+template auto Mega::ListDirectoryPage(Trash, std::optional<std::string>,
+                                      coro::stdx::stop_token) -> Task<PageData>;
 
-template auto Mega::CloudProvider::CreateDirectory(Root, std::string,
-                                                   stdx::stop_token)
+template auto Mega::CreateDirectory(Root, std::string, stdx::stop_token)
     -> Task<Directory>;
 
-template auto Mega::CloudProvider::CreateDirectory(Directory, std::string,
-                                                   stdx::stop_token)
+template auto Mega::CreateDirectory(Directory, std::string, stdx::stop_token)
     -> Task<Directory>;
 
-template auto Mega::CloudProvider::CreateFile(Directory, std::string_view,
-                                              FileContent, stdx::stop_token)
-    -> Task<File>;
+template auto Mega::CreateFile(Directory, std::string_view, FileContent,
+                               stdx::stop_token) -> Task<File>;
 
-template auto Mega::CloudProvider::CreateFile(Root, std::string_view,
-                                              FileContent, stdx::stop_token)
-    -> Task<File>;
+template auto Mega::CreateFile(Root, std::string_view, FileContent,
+                               stdx::stop_token) -> Task<File>;
 
-template auto Mega::CloudProvider::RenameItem(File item, std::string new_name,
-                                              stdx::stop_token stop_token)
-    -> Task<File>;
+template auto Mega::RenameItem(File item, std::string new_name,
+                               stdx::stop_token stop_token) -> Task<File>;
 
-template auto Mega::CloudProvider::RenameItem(Directory item,
-                                              std::string new_name,
-                                              stdx::stop_token stop_token)
+template auto Mega::RenameItem(Directory item, std::string new_name,
+                               stdx::stop_token stop_token) -> Task<Directory>;
+
+template auto Mega::MoveItem(File, Directory, stdx::stop_token) -> Task<File>;
+
+template auto Mega::MoveItem(File, Inbox, stdx::stop_token) -> Task<File>;
+
+template auto Mega::MoveItem(File, Trash, stdx::stop_token) -> Task<File>;
+
+template auto Mega::MoveItem(File, Root, stdx::stop_token) -> Task<File>;
+
+template auto Mega::MoveItem(Directory, Directory, stdx::stop_token)
     -> Task<Directory>;
 
-template auto Mega::CloudProvider::MoveItem(File, Directory, stdx::stop_token)
-    -> Task<File>;
-
-template auto Mega::CloudProvider::MoveItem(File, Inbox, stdx::stop_token)
-    -> Task<File>;
-
-template auto Mega::CloudProvider::MoveItem(File, Trash, stdx::stop_token)
-    -> Task<File>;
-
-template auto Mega::CloudProvider::MoveItem(File, Root, stdx::stop_token)
-    -> Task<File>;
-
-template auto Mega::CloudProvider::MoveItem(Directory, Directory,
-                                            stdx::stop_token)
+template auto Mega::MoveItem(Directory, Inbox, stdx::stop_token)
     -> Task<Directory>;
 
-template auto Mega::CloudProvider::MoveItem(Directory, Inbox, stdx::stop_token)
+template auto Mega::MoveItem(Directory, Trash, stdx::stop_token)
     -> Task<Directory>;
 
-template auto Mega::CloudProvider::MoveItem(Directory, Trash, stdx::stop_token)
+template auto Mega::MoveItem(Directory, Root, stdx::stop_token)
     -> Task<Directory>;
 
-template auto Mega::CloudProvider::MoveItem(Directory, Root, stdx::stop_token)
-    -> Task<Directory>;
+template Task<> Mega::RemoveItem(File, stdx::stop_token);
 
-template Task<> Mega::CloudProvider::RemoveItem(File, stdx::stop_token);
-
-template Task<> Mega::CloudProvider::RemoveItem(Directory, stdx::stop_token);
+template Task<> Mega::RemoveItem(Directory, stdx::stop_token);
 
 }  // namespace coro::cloudstorage

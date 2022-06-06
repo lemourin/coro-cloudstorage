@@ -135,14 +135,15 @@ auto GoogleDrive::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,
                       .refresh_token = json["refresh_token"]};
 }
 
-auto GoogleDrive::CloudProvider::GetRoot(stdx::stop_token) -> Task<Directory> {
+auto GoogleDrive::GetRoot(stdx::stop_token) -> Task<Directory> {
   Directory d{{.id = "root"}};
   co_return d;
 }
 
-auto GoogleDrive::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) -> Task<PageData> {
+auto GoogleDrive::ListDirectoryPage(Directory directory,
+                                    std::optional<std::string> page_token,
+                                    stdx::stop_token stop_token)
+    -> Task<PageData> {
   std::vector<std::pair<std::string, std::string>> params = {
       {"q", "'" + directory.id + "' in parents"},
       {"fields",
@@ -165,7 +166,7 @@ auto GoogleDrive::CloudProvider::ListDirectoryPage(
                              : std::nullopt};
 }
 
-auto GoogleDrive::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
+auto GoogleDrive::GetGeneralData(stdx::stop_token stop_token)
     -> Task<GeneralData> {
   auto request = Request{.url = GetEndpoint("/about?fields=user,storageQuota")};
   json json = co_await auth_manager_.FetchJson(std::move(request),
@@ -181,8 +182,7 @@ auto GoogleDrive::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
                          : std::nullopt};
 }
 
-auto GoogleDrive::CloudProvider::GetItem(std::string id,
-                                         stdx::stop_token stop_token)
+auto GoogleDrive::GetItem(std::string id, stdx::stop_token stop_token)
     -> Task<Item> {
   auto request =
       Request{.url = GetEndpoint("/files/" + std::move(id)) + "?" +
@@ -192,7 +192,7 @@ auto GoogleDrive::CloudProvider::GetItem(std::string id,
   co_return ToItem(json);
 }
 
-Generator<std::string> GoogleDrive::CloudProvider::GetFileContent(
+Generator<std::string> GoogleDrive::GetFileContent(
     File file, http::Range range, stdx::stop_token stop_token) {
   auto request = Request{.url = GetEndpoint("/files/" + file.id) + "?alt=media",
                          .headers = {ToRangeHeader(range)}};
@@ -201,9 +201,8 @@ Generator<std::string> GoogleDrive::CloudProvider::GetFileContent(
   FOR_CO_AWAIT(std::string & body, response.body) { co_yield std::move(body); }
 }
 
-auto GoogleDrive::CloudProvider::CreateDirectory(Directory parent,
-                                                 std::string name,
-                                                 stdx::stop_token stop_token)
+auto GoogleDrive::CreateDirectory(Directory parent, std::string name,
+                                  stdx::stop_token stop_token)
     -> Task<Directory> {
   auto request =
       Request{.url = GetEndpoint("/files/") + "?" +
@@ -220,8 +219,7 @@ auto GoogleDrive::CloudProvider::CreateDirectory(Directory parent,
   co_return std::get<Directory>(ToItem(response));
 }
 
-Task<> GoogleDrive::CloudProvider::RemoveItem(Item item,
-                                              stdx::stop_token stop_token) {
+Task<> GoogleDrive::RemoveItem(Item item, stdx::stop_token stop_token) {
   auto request =
       Request{.url = GetEndpoint("/files/") +
                      std::visit([](const auto& d) { return d.id; }, item),
@@ -229,19 +227,16 @@ Task<> GoogleDrive::CloudProvider::RemoveItem(Item item,
   co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
 }
 
-auto GoogleDrive::CloudProvider::CreateFile(Directory parent,
-                                            std::string_view name,
-                                            FileContent content,
-                                            stdx::stop_token stop_token)
+auto GoogleDrive::CreateFile(Directory parent, std::string_view name,
+                             FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
   return CreateOrUpdateFile(std::move(parent), name, std::move(content),
                             std::move(stop_token));
 }
 
-auto GoogleDrive::CloudProvider::CreateOrUpdateFile(Directory parent,
-                                                    std::string_view name,
-                                                    FileContent content,
-                                                    stdx::stop_token stop_token)
+auto GoogleDrive::CreateOrUpdateFile(Directory parent, std::string_view name,
+                                     FileContent content,
+                                     stdx::stop_token stop_token)
     -> Task<File> {
   auto request =
       Request{.url = GetEndpoint("/files") + "?" +
@@ -262,10 +257,8 @@ auto GoogleDrive::CloudProvider::CreateOrUpdateFile(Directory parent,
   }
 }
 
-auto GoogleDrive::CloudProvider::UpdateFile(std::string_view id,
-                                            FileContent content,
-                                            stdx::stop_token stop_token)
-    -> Task<File> {
+auto GoogleDrive::UpdateFile(std::string_view id, FileContent content,
+                             stdx::stop_token stop_token) -> Task<File> {
   http::Request<> request{
       .url = "https://www.googleapis.com/upload/drive/v3/files/" +
              std::string(id) + "?" +
@@ -283,11 +276,9 @@ auto GoogleDrive::CloudProvider::UpdateFile(std::string_view id,
   co_return ToItemImpl<File>(response);
 }
 
-auto GoogleDrive::CloudProvider::CreateFileImpl(Directory parent,
-                                                std::string_view name,
-                                                FileContent content,
-                                                stdx::stop_token stop_token)
-    -> Task<File> {
+auto GoogleDrive::CreateFileImpl(Directory parent, std::string_view name,
+                                 FileContent content,
+                                 stdx::stop_token stop_token) -> Task<File> {
   json metadata;
   metadata["name"] = name;
   metadata["parents"].push_back(parent.id);
@@ -308,8 +299,8 @@ auto GoogleDrive::CloudProvider::CreateFileImpl(Directory parent,
 }
 
 template <typename ItemT>
-auto GoogleDrive::CloudProvider::GetItemThumbnail(ItemT item, http::Range range,
-                                                  stdx::stop_token stop_token)
+auto GoogleDrive::GetItemThumbnail(ItemT item, http::Range range,
+                                   stdx::stop_token stop_token)
     -> Task<Thumbnail> {
   Request request{.url = std::move(item.thumbnail_url),
                   .headers = {ToRangeHeader(range)}};
@@ -324,9 +315,8 @@ auto GoogleDrive::CloudProvider::GetItemThumbnail(ItemT item, http::Range range,
 }
 
 template <typename ItemT>
-auto GoogleDrive::CloudProvider::MoveItem(ItemT source, Directory destination,
-                                          stdx::stop_token stop_token)
-    -> Task<ItemT> {
+auto GoogleDrive::MoveItem(ItemT source, Directory destination,
+                           stdx::stop_token stop_token) -> Task<ItemT> {
   std::string remove_parents;
   for (auto& parent : source.parents) {
     remove_parents += parent + ",";
@@ -347,8 +337,8 @@ auto GoogleDrive::CloudProvider::MoveItem(ItemT source, Directory destination,
 }
 
 template <typename ItemT>
-Task<ItemT> GoogleDrive::CloudProvider::RenameItem(
-    ItemT item, std::string new_name, stdx::stop_token stop_token) {
+Task<ItemT> GoogleDrive::RenameItem(ItemT item, std::string new_name,
+                                    stdx::stop_token stop_token) {
   auto request =
       Request{.url = GetEndpoint("/files/" + item.id) + "?" +
                      http::FormDataToString({{"fields", kFileProperties}}),
@@ -371,35 +361,32 @@ GoogleDrive::Auth::AuthData GetAuthData<GoogleDrive>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<GoogleDrive::CloudProvider>(
-    GoogleDrive::CloudProvider p) -> std::unique_ptr<CloudProvider> {
+auto AbstractCloudProvider::Create<GoogleDrive>(
+    GoogleDrive p) -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider<GoogleDrive>(std::move(p));
 }
 
 }  // namespace util
 
-template auto GoogleDrive::CloudProvider::RenameItem(
-    File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
-
-template auto GoogleDrive::CloudProvider::RenameItem(
-    Directory item, std::string new_name, stdx::stop_token stop_token)
-    -> Task<Directory>;
-
-template auto GoogleDrive::CloudProvider::MoveItem(File, Directory,
-                                                   stdx::stop_token)
+template auto GoogleDrive::RenameItem(File item, std::string new_name,
+                                      stdx::stop_token stop_token)
     -> Task<File>;
 
-template auto GoogleDrive::CloudProvider::MoveItem(Directory, Directory,
-                                                   stdx::stop_token)
+template auto GoogleDrive::RenameItem(Directory item, std::string new_name,
+                                      stdx::stop_token stop_token)
     -> Task<Directory>;
 
-template auto GoogleDrive::CloudProvider::GetItemThumbnail(File, http::Range,
-                                                           stdx::stop_token)
+template auto GoogleDrive::MoveItem(File, Directory, stdx::stop_token)
+    -> Task<File>;
+
+template auto GoogleDrive::MoveItem(Directory, Directory, stdx::stop_token)
+    -> Task<Directory>;
+
+template auto GoogleDrive::GetItemThumbnail(File, http::Range, stdx::stop_token)
     -> Task<Thumbnail>;
 
-template auto GoogleDrive::CloudProvider::GetItemThumbnail(Directory,
-                                                           http::Range,
-                                                           stdx::stop_token)
+template auto GoogleDrive::GetItemThumbnail(Directory, http::Range,
+                                            stdx::stop_token)
     -> Task<Thumbnail>;
 
 }  // namespace coro::cloudstorage

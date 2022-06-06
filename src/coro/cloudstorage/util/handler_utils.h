@@ -25,7 +25,7 @@ std::string GetPath(const Request& request) {
 std::vector<std::string> GetEffectivePath(std::string_view uri_path);
 
 template <typename Request>
-auto ToFileContent(AbstractCloudProvider::CloudProvider* p,
+auto ToFileContent(AbstractCloudProvider* p,
                    const AbstractCloudProvider::Directory& parent,
                    Request request) {
   if (!request.body) {

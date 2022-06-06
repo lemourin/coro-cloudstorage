@@ -7,7 +7,8 @@
 
 namespace coro::cloudstorage::util {
 
-struct MergedCloudProvider {
+class MergedCloudProvider {
+ public:
   struct GeneralData {
     std::string username;
     std::optional<int64_t> space_used;
@@ -49,17 +50,12 @@ struct MergedCloudProvider {
 
   static inline constexpr std::string_view kId = "merged";
 
-  class CloudProvider;
-};
-
-class MergedCloudProvider::CloudProvider {
- public:
   bool IsFileContentSizeRequired(const Directory &d) const;
   bool IsFileContentSizeRequired(const Root &d) const;
 
-  void AddAccount(std::string id, AbstractCloudProvider::CloudProvider *p);
+  void AddAccount(std::string id, AbstractCloudProvider *p);
 
-  void RemoveAccount(AbstractCloudProvider::CloudProvider *p);
+  void RemoveAccount(AbstractCloudProvider *p);
 
   Task<Root> GetRoot(stdx::stop_token) const;
 
@@ -96,7 +92,7 @@ class MergedCloudProvider::CloudProvider {
  private:
   struct Account {
     std::string id;
-    AbstractCloudProvider::CloudProvider *provider;
+    AbstractCloudProvider *provider;
     stdx::stop_source stop_source;
   };
 

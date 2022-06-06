@@ -18,7 +18,9 @@
 
 namespace coro::cloudstorage {
 
-struct GoogleDrive {
+class GoogleDrive {
+ public:
+  using Request = http::Request<std::string>;
   using json = nlohmann::json;
 
   struct Auth {
@@ -45,8 +47,6 @@ struct GoogleDrive {
         const coro::http::Http& http, AuthData auth_data, std::string code,
         stdx::stop_token stop_token);
   };
-
-  class CloudProvider;
 
   struct GeneralData {
     std::string username;
@@ -89,14 +89,9 @@ struct GoogleDrive {
 
   static constexpr std::string_view kId = "google";
   static inline constexpr auto& kIcon = util::kAssetsProvidersGooglePng;
-};
 
-class GoogleDrive::CloudProvider {
- public:
-  using Request = http::Request<std::string>;
-
-  CloudProvider(util::AuthManager<Auth> auth_manager,
-                const coro::http::Http* http)
+  GoogleDrive(util::AuthManager<Auth> auth_manager,
+              const coro::http::Http* http)
       : auth_manager_(std::move(auth_manager)), http_(http) {}
 
   Task<Directory> GetRoot(stdx::stop_token);

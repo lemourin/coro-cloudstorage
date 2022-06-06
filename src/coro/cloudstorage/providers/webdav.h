@@ -16,6 +16,8 @@ namespace coro::cloudstorage {
 
 class WebDAV {
  public:
+  using Request = http::Request<std::string>;
+
   struct GeneralData {
     std::string username;
     std::optional<int64_t> space_used;
@@ -61,18 +63,10 @@ class WebDAV {
     std::optional<int64_t> size;
   };
 
-  class CloudProvider;
-
   static constexpr std::string_view kId = "webdav";
   static inline constexpr auto& kIcon = util::kAssetsProvidersWebdavPng;
-};
 
-class WebDAV::CloudProvider {
- public:
-  using Request = http::Request<std::string>;
-
-  CloudProvider(const coro::http::Http* http,
-                WebDAV::Auth::AuthToken auth_token)
+  WebDAV(const coro::http::Http* http, WebDAV::Auth::AuthToken auth_token)
       : http_(http), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token) const;

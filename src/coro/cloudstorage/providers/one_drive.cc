@@ -119,12 +119,12 @@ auto OneDrive::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,
   co_return auth_token;
 }
 
-auto OneDrive::CloudProvider::GetRoot(stdx::stop_token) -> Task<Directory> {
+auto OneDrive::GetRoot(stdx::stop_token) -> Task<Directory> {
   Directory d{{.id = "root"}};
   co_return d;
 }
 
-auto OneDrive::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
+auto OneDrive::GetGeneralData(stdx::stop_token stop_token)
     -> Task<GeneralData> {
   Task<json> task1 =
       auth_manager_.FetchJson(Request{.url = GetEndpoint("/me")}, stop_token);
@@ -136,9 +136,10 @@ auto OneDrive::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
                         .space_total = json2["quota"]["total"]};
 }
 
-auto OneDrive::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) -> Task<PageData> {
+auto OneDrive::ListDirectoryPage(Directory directory,
+                                 std::optional<std::string> page_token,
+                                 stdx::stop_token stop_token)
+    -> Task<PageData> {
   auto request = Request{
       .url = page_token.value_or(
           GetEndpoint("/drive/items/" + directory.id + "/children") + "?" +
@@ -157,8 +158,8 @@ auto OneDrive::CloudProvider::ListDirectoryPage(
                              : std::nullopt};
 }
 
-Generator<std::string> OneDrive::CloudProvider::GetFileContent(
-    File file, http::Range range, stdx::stop_token stop_token) {
+Generator<std::string> OneDrive::GetFileContent(File file, http::Range range,
+                                                stdx::stop_token stop_token) {
   auto request =
       Request{.url = GetEndpoint("/drive/items/" + file.id + "/content"),
               .headers = {http::ToRangeHeader(range)}};
@@ -174,9 +175,8 @@ Generator<std::string> OneDrive::CloudProvider::GetFileContent(
 }
 
 template <typename ItemT>
-Task<ItemT> OneDrive::CloudProvider::RenameItem(ItemT item,
-                                                std::string new_name,
-                                                stdx::stop_token stop_token) {
+Task<ItemT> OneDrive::RenameItem(ItemT item, std::string new_name,
+                                 stdx::stop_token stop_token) {
   auto request =
       Request{.url = GetEndpoint("/drive/items/" + item.id) + "?" +
                      http::FormDataToString({{"select", kFileProperties}}),
@@ -190,10 +190,8 @@ Task<ItemT> OneDrive::CloudProvider::RenameItem(ItemT item,
   co_return ToItemImpl<ItemT>(response);
 }
 
-auto OneDrive::CloudProvider::CreateDirectory(Directory parent,
-                                              std::string name,
-                                              stdx::stop_token stop_token)
-    -> Task<Directory> {
+auto OneDrive::CreateDirectory(Directory parent, std::string name,
+                               stdx::stop_token stop_token) -> Task<Directory> {
   auto request = Request{
       .url = GetEndpoint("/drive/items/") + std::move(parent.id) + "/children",
       .method = http::Method::kPost,
@@ -207,8 +205,7 @@ auto OneDrive::CloudProvider::CreateDirectory(Directory parent,
   co_return std::get<Directory>(ToItem(response));
 }
 
-Task<> OneDrive::CloudProvider::RemoveItem(Item item,
-                                           stdx::stop_token stop_token) {
+Task<> OneDrive::RemoveItem(Item item, stdx::stop_token stop_token) {
   auto request =
       Request{.url = GetEndpoint("/drive/items/") +
                      std::visit([](const auto& d) { return d.id; }, item),
@@ -217,9 +214,8 @@ Task<> OneDrive::CloudProvider::RemoveItem(Item item,
 }
 
 template <typename ItemT>
-Task<ItemT> OneDrive::CloudProvider::MoveItem(ItemT source,
-                                              Directory destination,
-                                              stdx::stop_token stop_token) {
+Task<ItemT> OneDrive::MoveItem(ItemT source, Directory destination,
+                               stdx::stop_token stop_token) {
   auto request = Request{.url = GetEndpoint("/drive/items/") + source.id,
                          .method = http::Method::kPatch,
                          .headers = {{"Content-Type", "application/json"}}};
@@ -235,10 +231,8 @@ Task<ItemT> OneDrive::CloudProvider::MoveItem(ItemT source,
   co_return ToItemImpl<ItemT>(response);
 }
 
-auto OneDrive::CloudProvider::CreateFile(Directory parent,
-                                         std::string_view name,
-                                         FileContent content,
-                                         stdx::stop_token stop_token)
+auto OneDrive::CreateFile(Directory parent, std::string_view name,
+                          FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
   if (content.size <= 4 * 1024 * 1024) {
     http::Request<> request{
@@ -274,8 +268,8 @@ auto OneDrive::CloudProvider::CreateFile(Directory parent,
 }
 
 template <typename ItemT>
-auto OneDrive::CloudProvider::GetItemThumbnail(ItemT item, http::Range range,
-                                               stdx::stop_token stop_token)
+auto OneDrive::GetItemThumbnail(ItemT item, http::Range range,
+                                stdx::stop_token stop_token)
     -> Task<Thumbnail> {
   if (!item.thumbnail_url) {
     throw CloudException(CloudException::Type::kNotFound);
@@ -292,7 +286,7 @@ auto OneDrive::CloudProvider::GetItemThumbnail(ItemT item, http::Range range,
   co_return result;
 }
 
-std::string OneDrive::CloudProvider::GetEndpoint(std::string_view path) const {
+std::string OneDrive::GetEndpoint(std::string_view path) const {
   const std::string& endpoint = auth_manager_.GetAuthToken().endpoint;
   if (endpoint.empty()) {
     throw CloudException(CloudException::Type::kUnauthorized);
@@ -300,9 +294,8 @@ std::string OneDrive::CloudProvider::GetEndpoint(std::string_view path) const {
   return endpoint + std::string(path);
 }
 
-auto OneDrive::CloudProvider::CreateUploadSession(Directory parent,
-                                                  std::string_view name,
-                                                  stdx::stop_token stop_token)
+auto OneDrive::CreateUploadSession(Directory parent, std::string_view name,
+                                   stdx::stop_token stop_token)
     -> Task<UploadSession> {
   http::Request<std::string> request{
       .url = GetEndpoint("/me/drive/items/") + parent.id + ":/" +
@@ -324,30 +317,30 @@ OneDrive::Auth::AuthData GetAuthData<OneDrive>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<OneDrive::CloudProvider>(
-    OneDrive::CloudProvider p) -> std::unique_ptr<CloudProvider> {
+auto AbstractCloudProvider::Create<OneDrive>(OneDrive p)
+    -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider<OneDrive>(std::move(p));
 }
 
 }  // namespace util
 
-template auto OneDrive::CloudProvider::RenameItem<OneDrive::File>(
-    File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
+template auto OneDrive::RenameItem(File item, std::string new_name,
+                                   stdx::stop_token stop_token) -> Task<File>;
 
-template auto OneDrive::CloudProvider::RenameItem<OneDrive::Directory>(
-    Directory item, std::string new_name, stdx::stop_token stop_token)
+template auto OneDrive::RenameItem(Directory item, std::string new_name,
+                                   stdx::stop_token stop_token)
     -> Task<Directory>;
 
-template auto OneDrive::CloudProvider::MoveItem<OneDrive::File>(
-    File, Directory, stdx::stop_token) -> Task<File>;
+template auto OneDrive::MoveItem(File, Directory, stdx::stop_token)
+    -> Task<File>;
 
-template auto OneDrive::CloudProvider::MoveItem<OneDrive::Directory>(
-    Directory, Directory, stdx::stop_token) -> Task<Directory>;
+template auto OneDrive::MoveItem(Directory, Directory, stdx::stop_token)
+    -> Task<Directory>;
 
-template auto OneDrive::CloudProvider::GetItemThumbnail<OneDrive::File>(
-    File, http::Range, stdx::stop_token) -> Task<Thumbnail>;
+template auto OneDrive::GetItemThumbnail(File, http::Range, stdx::stop_token)
+    -> Task<Thumbnail>;
 
-template auto OneDrive::CloudProvider::GetItemThumbnail<OneDrive::Directory>(
-    Directory, http::Range, stdx::stop_token) -> Task<Thumbnail>;
+template auto OneDrive::GetItemThumbnail(Directory, http::Range,
+                                         stdx::stop_token) -> Task<Thumbnail>;
 
 }  // namespace coro::cloudstorage

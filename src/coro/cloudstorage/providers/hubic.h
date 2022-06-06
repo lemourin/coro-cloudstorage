@@ -14,8 +14,14 @@
 
 namespace coro::cloudstorage {
 
-class HubiC : public OpenStack {
+class HubiC {
  public:
+  using File = OpenStack::File;
+  using Directory = OpenStack::Directory;
+  using Item = OpenStack::Item;
+  using PageData = OpenStack::PageData;
+  using FileContent = OpenStack::FileContent;
+
   struct GeneralData {
     std::string username;
     int64_t space_used;
@@ -43,24 +49,19 @@ class HubiC : public OpenStack {
         stdx::stop_token stop_token);
   };
 
-  class CloudProvider;
-
   static constexpr std::string_view kId = "hubic";
   static inline constexpr auto& kIcon = util::kAssetsProvidersHubicPng;
-};
 
-class HubiC::CloudProvider {
- public:
-  CloudProvider(const coro::http::Http* http, Auth::AuthToken auth_token,
-                Auth::AuthData auth_data,
-                util::OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
-                util::AuthorizeRequest<Auth> authorizer_request);
+  HubiC(const coro::http::Http* http, Auth::AuthToken auth_token,
+        Auth::AuthData auth_data,
+        util::OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
+        util::AuthorizeRequest<Auth> authorizer_request);
 
-  CloudProvider(CloudProvider&& other) noexcept;
-  CloudProvider(const CloudProvider&) = delete;
+  HubiC(HubiC&& other) noexcept;
+  HubiC(const HubiC&) = delete;
 
-  CloudProvider& operator=(CloudProvider&& other) noexcept;
-  CloudProvider& operator=(const CloudProvider&) = delete;
+  HubiC& operator=(HubiC&& other) noexcept;
+  HubiC& operator=(const HubiC&) = delete;
 
   Task<Directory> GetRoot(stdx::stop_token stop_token) const;
 
@@ -91,13 +92,13 @@ class HubiC::CloudProvider {
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token);
 
  private:
-  OpenStack::CloudProvider CreateOpenStackProvider();
+  OpenStack CreateOpenStackProvider();
 
   const coro::http::Http* http_;
   std::unique_ptr<const OpenStack::Auth::AuthToken*> current_openstack_token_ =
       std::make_unique<const OpenStack::Auth::AuthToken*>(nullptr);
   util::AuthManager<Auth> auth_manager_;
-  OpenStack::CloudProvider provider_;
+  OpenStack provider_;
 };
 
 namespace util {

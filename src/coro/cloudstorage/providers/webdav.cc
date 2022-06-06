@@ -223,12 +223,12 @@ WebDAV::Auth::AuthHandler::operator()(http::Request<> request,
   }
 }
 
-auto WebDAV::CloudProvider::GetRoot(stdx::stop_token) const -> Task<Directory> {
+auto WebDAV::GetRoot(stdx::stop_token) const -> Task<Directory> {
   Directory d{{.id = "/"}};
   co_return d;
 }
 
-auto WebDAV::CloudProvider::GetGeneralData(stdx::stop_token stop_token) const
+auto WebDAV::GetGeneralData(stdx::stop_token stop_token) const
     -> Task<GeneralData> {
   std::string username;
   auto uri = http::ParseUri(auth_token_.endpoint);
@@ -267,9 +267,10 @@ auto WebDAV::CloudProvider::GetGeneralData(stdx::stop_token stop_token) const
   co_return result;
 }
 
-auto WebDAV::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) const -> Task<PageData> {
+auto WebDAV::ListDirectoryPage(Directory directory,
+                               std::optional<std::string> page_token,
+                               stdx::stop_token stop_token) const
+    -> Task<PageData> {
   Request request{.url = GetEndpoint(directory.id),
                   .method = http::Method::kPropfind,
                   .headers = {{"Depth", "1"}}};
@@ -285,7 +286,7 @@ auto WebDAV::CloudProvider::ListDirectoryPage(
   co_return page;
 }
 
-Generator<std::string> WebDAV::CloudProvider::GetFileContent(
+Generator<std::string> WebDAV::GetFileContent(
     File file, http::Range range, stdx::stop_token stop_token) const {
   auto request = Request{.url = GetEndpoint(file.id),
                          .headers = {http::ToRangeHeader(range)}};
@@ -299,8 +300,8 @@ Generator<std::string> WebDAV::CloudProvider::GetFileContent(
 }
 
 template <typename ItemT>
-Task<ItemT> WebDAV::CloudProvider::RenameItem(
-    ItemT item, std::string new_name, stdx::stop_token stop_token) const {
+Task<ItemT> WebDAV::RenameItem(ItemT item, std::string new_name,
+                               stdx::stop_token stop_token) const {
   std::string destination = item.id;
   if (destination.empty()) {
     throw CloudException("invalid path");
@@ -318,8 +319,8 @@ Task<ItemT> WebDAV::CloudProvider::RenameItem(
                           std::move(stop_token));
 }
 
-auto WebDAV::CloudProvider::CreateDirectory(Directory parent, std::string name,
-                                            stdx::stop_token stop_token) const
+auto WebDAV::CreateDirectory(Directory parent, std::string name,
+                             stdx::stop_token stop_token) const
     -> Task<Directory> {
   auto endpoint = GetEndpoint(Concat(parent.id, name));
   Request request{.url = endpoint, .method = http::Method::kMkcol};
@@ -335,24 +336,22 @@ auto WebDAV::CloudProvider::CreateDirectory(Directory parent, std::string name,
 }
 
 template <typename ItemT>
-Task<> WebDAV::CloudProvider::RemoveItem(ItemT item,
-                                         stdx::stop_token stop_token) const {
+Task<> WebDAV::RemoveItem(ItemT item, stdx::stop_token stop_token) const {
   Request request{.url = GetEndpoint(item.id), .method = http::Method::kDelete};
   co_await Fetch(*http_, auth_token_.credential, std::move(request),
                  std::move(stop_token));
 }
 
 template <typename ItemT>
-Task<ItemT> WebDAV::CloudProvider::MoveItem(ItemT source, Directory destination,
-                                            stdx::stop_token stop_token) const {
+Task<ItemT> WebDAV::MoveItem(ItemT source, Directory destination,
+                             stdx::stop_token stop_token) const {
   co_return co_await Move(std::move(source),
                           Concat(destination.id, source.name),
                           std::move(stop_token));
 }
 
-auto WebDAV::CloudProvider::CreateFile(Directory parent, std::string_view name,
-                                       FileContent content,
-                                       stdx::stop_token stop_token) const
+auto WebDAV::CreateFile(Directory parent, std::string_view name,
+                        FileContent content, stdx::stop_token stop_token) const
     -> Task<File> {
   auto endpoint = GetEndpoint(Concat(parent.id, name));
   http::Request<> upload_request = {
@@ -376,8 +375,8 @@ auto WebDAV::CloudProvider::CreateFile(Directory parent, std::string_view name,
 }
 
 template <typename T>
-Task<T> WebDAV::CloudProvider::Move(T item, std::string destination,
-                                    stdx::stop_token stop_token) const {
+Task<T> WebDAV::Move(T item, std::string destination,
+                     stdx::stop_token stop_token) const {
   Request request{.url = GetEndpoint(item.id),
                   .method = http::Method::kMove,
                   .headers = {{"Destination", destination}}};
@@ -392,7 +391,7 @@ Task<T> WebDAV::CloudProvider::Move(T item, std::string destination,
       response.document_element().first_child(), response.ns())));
 }
 
-std::string WebDAV::CloudProvider::GetEndpoint(std::string_view href) const {
+std::string WebDAV::GetEndpoint(std::string_view href) const {
   auto uri = http::ParseUri(href);
   if (uri.host) {
     return std::string(href);
@@ -414,31 +413,29 @@ std::string WebDAV::CloudProvider::GetEndpoint(std::string_view href) const {
 namespace util {
 
 template <>
-auto AbstractCloudProvider::Create<WebDAV::CloudProvider>(
-    WebDAV::CloudProvider p) -> std::unique_ptr<CloudProvider> {
+auto AbstractCloudProvider::Create<WebDAV>(WebDAV p)
+    -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider<WebDAV>(std::move(p));
 }
 
 }  // namespace util
 
-template auto WebDAV::CloudProvider::RenameItem<WebDAV::File>(
-    File item, std::string new_name, stdx::stop_token stop_token) const
+template auto WebDAV::RenameItem(File item, std::string new_name,
+                                 stdx::stop_token stop_token) const
     -> Task<File>;
 
-template auto WebDAV::CloudProvider::RenameItem<WebDAV::Directory>(
-    Directory item, std::string new_name, stdx::stop_token stop_token) const
+template auto WebDAV::RenameItem(Directory item, std::string new_name,
+                                 stdx::stop_token stop_token) const
     -> Task<Directory>;
 
-template auto WebDAV::CloudProvider::MoveItem<WebDAV::File>(
-    File, Directory, stdx::stop_token) const -> Task<File>;
+template auto WebDAV::MoveItem(File, Directory, stdx::stop_token) const
+    -> Task<File>;
 
-template auto WebDAV::CloudProvider::MoveItem<WebDAV::Directory>(
-    Directory, Directory, stdx::stop_token) const -> Task<Directory>;
+template auto WebDAV::MoveItem(Directory, Directory, stdx::stop_token) const
+    -> Task<Directory>;
 
-template auto WebDAV::CloudProvider::RemoveItem<WebDAV::File>(
-    File, stdx::stop_token) const -> Task<>;
+template auto WebDAV::RemoveItem(File, stdx::stop_token) const -> Task<>;
 
-template auto WebDAV::CloudProvider::RemoveItem<WebDAV::Directory>(
-    Directory, stdx::stop_token) const -> Task<>;
+template auto WebDAV::RemoveItem(Directory, stdx::stop_token) const -> Task<>;
 
 }  // namespace coro::cloudstorage

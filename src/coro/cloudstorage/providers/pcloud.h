@@ -13,7 +13,8 @@
 
 namespace coro::cloudstorage {
 
-struct PCloud {
+class PCloud {
+ public:
   struct GeneralData {
     std::string username;
     int64_t space_used;
@@ -74,16 +75,10 @@ struct PCloud {
     std::string mime_type;
   };
 
-  class CloudProvider;
-
   static constexpr std::string_view kId = "pcloud";
   static inline constexpr auto& kIcon = util::kAssetsProvidersPcloudPng;
-};
 
-class PCloud::CloudProvider {
- public:
-  CloudProvider(const coro::http::Http* http,
-                PCloud::Auth::AuthToken auth_token)
+  PCloud(const coro::http::Http* http, PCloud::Auth::AuthToken auth_token)
       : http_(http), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token);

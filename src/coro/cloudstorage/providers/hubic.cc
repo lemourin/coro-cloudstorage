@@ -126,11 +126,10 @@ auto HubiC::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,
                       .openstack_auth_token = std::move(openstack_auth_token)};
 }
 
-HubiC::CloudProvider::CloudProvider(
-    const coro::http::Http* http, Auth::AuthToken auth_token,
-    Auth::AuthData auth_data,
-    util::OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
-    util::AuthorizeRequest<Auth> authorize_request)
+HubiC::HubiC(const coro::http::Http* http, Auth::AuthToken auth_token,
+             Auth::AuthData auth_data,
+             util::OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
+             util::AuthorizeRequest<Auth> authorize_request)
     : http_(http),
       auth_manager_(
           http, std::move(auth_token), std::move(on_auth_token_updated),
@@ -143,7 +142,7 @@ HubiC::CloudProvider::CloudProvider(
   *current_openstack_token_ = &provider_.auth_token();
 }
 
-HubiC::CloudProvider::CloudProvider(CloudProvider&& other) noexcept
+HubiC::HubiC(HubiC&& other) noexcept
     : http_(other.http_),
       current_openstack_token_(std::move(other.current_openstack_token_)),
       auth_manager_(std::move(other.auth_manager_)),
@@ -151,8 +150,7 @@ HubiC::CloudProvider::CloudProvider(CloudProvider&& other) noexcept
   *current_openstack_token_ = &provider_.auth_token();
 }
 
-HubiC::CloudProvider& HubiC::CloudProvider::operator=(
-    CloudProvider&& other) noexcept {
+HubiC& HubiC::operator=(HubiC&& other) noexcept {
   http_ = other.http_;
   current_openstack_token_ = std::move(other.current_openstack_token_);
   auth_manager_ = std::move(other.auth_manager_);
@@ -161,63 +159,57 @@ HubiC::CloudProvider& HubiC::CloudProvider::operator=(
   return *this;
 }
 
-auto HubiC::CloudProvider::GetRoot(stdx::stop_token stop_token) const
-    -> Task<Directory> {
+auto HubiC::GetRoot(stdx::stop_token stop_token) const -> Task<Directory> {
   return provider_.GetRoot(std::move(stop_token));
 }
 
-auto HubiC::CloudProvider::ListDirectoryPage(
-    Directory directory, std::optional<std::string> page_token,
-    stdx::stop_token stop_token) -> Task<PageData> {
+auto HubiC::ListDirectoryPage(Directory directory,
+                              std::optional<std::string> page_token,
+                              stdx::stop_token stop_token) -> Task<PageData> {
   return provider_.ListDirectoryPage(
       std::move(directory), std::move(page_token), std::move(stop_token));
 }
 
-auto HubiC::CloudProvider::GetFileContent(File file, http::Range range,
-                                          stdx::stop_token stop_token)
+auto HubiC::GetFileContent(File file, http::Range range,
+                           stdx::stop_token stop_token)
     -> Generator<std::string> {
   return provider_.GetFileContent(std::move(file), range,
                                   std::move(stop_token));
 }
 
-auto HubiC::CloudProvider::CreateDirectory(Directory parent,
-                                           std::string_view name,
-                                           stdx::stop_token stop_token)
-    -> Task<Directory> {
+auto HubiC::CreateDirectory(Directory parent, std::string_view name,
+                            stdx::stop_token stop_token) -> Task<Directory> {
   return provider_.CreateDirectory(std::move(parent), name,
                                    std::move(stop_token));
 }
 
 template <typename ItemT>
-Task<> HubiC::CloudProvider::RemoveItem(ItemT item,
-                                        stdx::stop_token stop_token) {
+Task<> HubiC::RemoveItem(ItemT item, stdx::stop_token stop_token) {
   return provider_.RemoveItem(std::move(item), std::move(stop_token));
 }
 
 template <typename ItemT>
-Task<ItemT> HubiC::CloudProvider::MoveItem(ItemT source, Directory destination,
-                                           stdx::stop_token stop_token) {
+Task<ItemT> HubiC::MoveItem(ItemT source, Directory destination,
+                            stdx::stop_token stop_token) {
   return provider_.MoveItem(std::move(source), std::move(destination),
                             std::move(stop_token));
 }
 
 template <typename ItemT>
-Task<ItemT> HubiC::CloudProvider::RenameItem(ItemT item, std::string new_name,
-                                             stdx::stop_token stop_token) {
+Task<ItemT> HubiC::RenameItem(ItemT item, std::string new_name,
+                              stdx::stop_token stop_token) {
   return provider_.RenameItem(std::move(item), std::move(new_name),
                               std::move(stop_token));
 }
 
-auto HubiC::CloudProvider::CreateFile(Directory parent, std::string_view name,
-                                      FileContent content,
-                                      stdx::stop_token stop_token)
+auto HubiC::CreateFile(Directory parent, std::string_view name,
+                       FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
   return provider_.CreateFile(std::move(parent), name, std::move(content),
                               std::move(stop_token));
 }
 
-auto HubiC::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
-    -> Task<GeneralData> {
+auto HubiC::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
   auto [json1, json2] = co_await WhenAll(
       auth_manager_.FetchJson(
           http::Request<std::string>{.url = GetEndpoint("/account")},
@@ -230,17 +222,16 @@ auto HubiC::CloudProvider::GetGeneralData(stdx::stop_token stop_token)
                         .space_total = json2["quota"]};
 }
 
-OpenStack::CloudProvider HubiC::CloudProvider::CreateOpenStackProvider() {
-  return OpenStack::CloudProvider(
-      util::AuthManager<OpenStack::Auth>(
-          http_, auth_manager_.GetAuthToken().openstack_auth_token,
-          util::OnAuthTokenUpdated<OpenStack::Auth::AuthToken>(
-              OnOpenStackTokenUpdated{&auth_manager_}),
-          util::RefreshToken<OpenStack::Auth>(
-              RefreshOpenStackToken{&auth_manager_, http_}),
-          util::AuthorizeRequest<OpenStack::Auth>(
-              OpenStack::AuthorizeRequest{})),
-      http_);
+OpenStack HubiC::CreateOpenStackProvider() {
+  return OpenStack(util::AuthManager<OpenStack::Auth>(
+                       http_, auth_manager_.GetAuthToken().openstack_auth_token,
+                       util::OnAuthTokenUpdated<OpenStack::Auth::AuthToken>(
+                           OnOpenStackTokenUpdated{&auth_manager_}),
+                       util::RefreshToken<OpenStack::Auth>(
+                           RefreshOpenStackToken{&auth_manager_, http_}),
+                       util::AuthorizeRequest<OpenStack::Auth>(
+                           OpenStack::AuthorizeRequest{})),
+                   http_);
 }
 
 namespace util {
@@ -271,34 +262,26 @@ HubiC::Auth::AuthData GetAuthData<HubiC>() {
 }
 
 template <>
-auto AbstractCloudProvider::Create<HubiC::CloudProvider>(HubiC::CloudProvider p)
-    -> std::unique_ptr<CloudProvider> {
+auto AbstractCloudProvider::Create<HubiC>(HubiC p)
+    -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider<HubiC>(std::move(p));
 }
 
 }  // namespace util
 
-template auto HubiC::CloudProvider::RenameItem<HubiC::File>(
-    File item, std::string new_name, stdx::stop_token stop_token) -> Task<File>;
+template auto HubiC::RenameItem(File item, std::string new_name,
+                                stdx::stop_token stop_token) -> Task<File>;
 
-template auto HubiC::CloudProvider::RenameItem<HubiC::Directory>(
-    Directory item, std::string new_name, stdx::stop_token stop_token)
+template auto HubiC::RenameItem(Directory item, std::string new_name,
+                                stdx::stop_token stop_token) -> Task<Directory>;
+
+template auto HubiC::MoveItem(File, Directory, stdx::stop_token) -> Task<File>;
+
+template auto HubiC::MoveItem(Directory, Directory, stdx::stop_token)
     -> Task<Directory>;
 
-template auto HubiC::CloudProvider::MoveItem<HubiC::File>(File, Directory,
-                                                          stdx::stop_token)
-    -> Task<File>;
+template auto HubiC::RemoveItem(File item, stdx::stop_token) -> Task<>;
 
-template auto HubiC::CloudProvider::MoveItem<HubiC::Directory>(Directory,
-                                                               Directory,
-                                                               stdx::stop_token)
-    -> Task<Directory>;
-
-template auto HubiC::CloudProvider::RemoveItem<HubiC::File>(File item,
-                                                            stdx::stop_token)
-    -> Task<>;
-
-template auto HubiC::CloudProvider::RemoveItem<HubiC::Directory>(
-    Directory item, stdx::stop_token) -> Task<>;
+template auto HubiC::RemoveItem(Directory item, stdx::stop_token) -> Task<>;
 
 }  // namespace coro::cloudstorage

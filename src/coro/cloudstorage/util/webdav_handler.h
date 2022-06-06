@@ -13,7 +13,7 @@ class WebDAVHandler {
  public:
   using Request = http::Request<>;
   using Response = http::Response<>;
-  using CloudProvider = AbstractCloudProvider::CloudProvider;
+  using CloudProvider = AbstractCloudProvider;
 
   explicit WebDAVHandler(CloudProvider* provider) : provider_(provider) {}
 

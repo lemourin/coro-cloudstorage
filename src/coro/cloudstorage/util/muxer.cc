@@ -211,9 +211,9 @@ auto Muxer::InParallel(F1&& f1, F2&& f2) const
 }
 
 Generator<std::string> Muxer::operator()(
-    AbstractCloudProvider::CloudProvider* video_cloud_provider,
+    AbstractCloudProvider* video_cloud_provider,
     AbstractCloudProvider::File video_track,
-    AbstractCloudProvider::CloudProvider* audio_cloud_provider,
+    AbstractCloudProvider* audio_cloud_provider,
     AbstractCloudProvider::File audio_track, MediaContainer container,
     stdx::stop_token stop_token) const {
   std::unique_ptr<AVIOContext, AVIOContextDeleter> video_io_context;

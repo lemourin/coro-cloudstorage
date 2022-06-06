@@ -9,7 +9,7 @@ namespace {
 
 struct Context {
   const coro::util::EventLoop* event_loop;
-  AbstractCloudProvider::CloudProvider* provider;
+  AbstractCloudProvider* provider;
   AbstractCloudProvider::File file;
   int64_t offset;
   stdx::stop_token stop_token;
@@ -26,8 +26,7 @@ void AVIOContextDeleter::operator()(AVIOContext* context) {
 }
 
 std::unique_ptr<AVIOContext, AVIOContextDeleter> CreateIOContext(
-    const coro::util::EventLoop* event_loop,
-    AbstractCloudProvider::CloudProvider* provider,
+    const coro::util::EventLoop* event_loop, AbstractCloudProvider* provider,
     AbstractCloudProvider::File file, stdx::stop_token stop_token) {
   const int kBufferSize = 4 * 1024 * 1024;
   auto buffer = static_cast<uint8_t*>(av_malloc(kBufferSize));

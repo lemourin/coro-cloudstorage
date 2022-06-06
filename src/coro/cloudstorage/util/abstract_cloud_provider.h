@@ -19,15 +19,6 @@
 namespace coro::cloudstorage::util {
 
 class AbstractCloudProvider {
- private:
-  struct ItemData {
-    std::string id;
-    std::string name;
-    std::optional<int64_t> size;
-    std::optional<int64_t> timestamp;
-    std::any impl;
-  };
-
  public:
   enum class Type {
     kAmazonS3,
@@ -73,11 +64,22 @@ class AbstractCloudProvider {
     virtual std::unique_ptr<AuthHandler> CreateAuthHandler() const = 0;
   };
 
-  struct File : ItemData {
+  struct File {
+    std::string id;
+    std::string name;
+    std::optional<int64_t> size;
+    std::optional<int64_t> timestamp;
     std::string mime_type;
+    std::any impl;
   };
 
-  struct Directory : ItemData {};
+  struct Directory {
+    std::string id;
+    std::string name;
+    std::optional<int64_t> size;
+    std::optional<int64_t> timestamp;
+    std::any impl;
+  };
 
   using Item = std::variant<File, Directory>;
 
@@ -103,15 +105,7 @@ class AbstractCloudProvider {
     std::string mime_type;
   };
 
-  class CloudProvider;
-
-  template <typename CloudProviderT>
-  static std::unique_ptr<CloudProvider> Create(CloudProviderT);
-};
-
-class AbstractCloudProvider::CloudProvider {
- public:
-  virtual ~CloudProvider() = default;
+  virtual ~AbstractCloudProvider() = default;
 
   virtual std::string_view GetId() const = 0;
 
@@ -163,6 +157,9 @@ class AbstractCloudProvider::CloudProvider {
   virtual Task<Thumbnail> GetItemThumbnail(
       Directory item, ThumbnailQuality, http::Range range,
       stdx::stop_token stop_token) const = 0;
+
+  template <typename CloudProviderT>
+  static std::unique_ptr<AbstractCloudProvider> Create(CloudProviderT);
 };
 
 }  // namespace coro::cloudstorage::util

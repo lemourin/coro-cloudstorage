@@ -9,7 +9,7 @@ class AbstractCloudFactory {
  public:
   virtual ~AbstractCloudFactory() = default;
 
-  virtual std::unique_ptr<AbstractCloudProvider::CloudProvider> Create(
+  virtual std::unique_ptr<AbstractCloudProvider> Create(
       AbstractCloudProvider::Auth::AuthToken auth_token,
       std::function<void(const AbstractCloudProvider::Auth::AuthToken&)>
           on_token_updated) const = 0;

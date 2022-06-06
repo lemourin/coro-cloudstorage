@@ -25,18 +25,18 @@ using ::coro::cloudstorage::util::AbstractCloudProvider;
 
 template <typename Auth>
 concept HasAuthData = requires(typename Auth::AuthData* d) {
-  { d } -> stdx::convertible_to<typename Auth::AuthData*>;
-};
+                        { d } -> stdx::convertible_to<typename Auth::AuthData*>;
+                      };
 
 template <typename T>
 concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
-  { v.GetAuthorizationUrl({}) } -> stdx::convertible_to<std::string>;
-};
+                                   {
+                                     v.GetAuthorizationUrl({})
+                                     } -> stdx::convertible_to<std::string>;
+                                 };
 
 template <typename T>
-concept HasAuthHandler = requires {
-  typename T::Auth::AuthHandler;
-};
+concept HasAuthHandler = requires { typename T::Auth::AuthHandler; };
 
 template <typename Auth>
 class RefreshTokenImpl {
@@ -199,7 +199,7 @@ class CloudFactoryUtil {
     }();
     auto injector = di::make_injector(di::bind<AuthToken>().to(auth_token),
                                       GetConfig(), std::move(auth_injector));
-    return injector.template create<typename CloudProvider::CloudProvider>();
+    return injector.template create<CloudProvider>();
   }
 
   auto GetAuthData() const {
@@ -258,7 +258,7 @@ class CloudFactoryImpl : public AbstractCloudFactory {
                    CloudFactoryUtil<CloudProvider> util)
       : type_(type), util_(std::move(util)), auth_(util_.CreateAuthImpl()) {}
 
-  std::unique_ptr<AbstractCloudProvider::CloudProvider> Create(
+  std::unique_ptr<AbstractCloudProvider> Create(
       AbstractCloudProvider::Auth::AuthToken auth_token,
       std::function<void(const AbstractCloudProvider::Auth::AuthToken&)>
           on_token_updated) const override {
@@ -346,7 +346,7 @@ std::unique_ptr<AbstractCloudFactory> CloudFactory::CreateCloudFactory(
   }
 }
 
-std::unique_ptr<AbstractCloudProvider::CloudProvider> CloudFactory::Create(
+std::unique_ptr<AbstractCloudProvider> CloudFactory::Create(
     AbstractCloudProvider::Auth::AuthToken auth_token,
     std::function<void(const AbstractCloudProvider::Auth::AuthToken&)>
         on_token_updated) const {
