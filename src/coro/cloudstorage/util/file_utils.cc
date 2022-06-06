@@ -12,6 +12,8 @@ namespace {
 std::string gAndroidTempDirectory;  // NOLINT
 #endif
 
+bool IsPathSeparator(char c) { return c == '/' || c == '\\'; }
+
 }  // namespace
 
 #ifdef __ANDROID__
@@ -63,24 +65,32 @@ std::unique_ptr<std::FILE, FileDeleter> CreateTmpFile() {
 }
 
 std::string GetFileName(std::string path) {
-  if (!path.empty() && path.back() == '/') {
+  while (!path.empty() && IsPathSeparator(path.back())) {
     path.pop_back();
   }
-  auto it = path.find_last_of('/');
+  auto it = [&] {
+    for (size_t it = path.size(); it-- > 0;) {
+      if (IsPathSeparator(path[it])) {
+        return it;
+      }
+    }
+    return std::string_view::npos;
+  }();
   return path.substr(it == std::string::npos ? 0 : it + 1);
 }
 
 std::string GetDirectoryPath(std::string path) {
-  if (path.empty()) {
-    throw std::runtime_error("invalid path");
-  }
-  if (path.back() == '/') {
+  while (!path.empty() && IsPathSeparator(path.back())) {
     path.pop_back();
   }
-  auto it = path.find_last_of('/');
-  if (it == std::string_view::npos) {
+  auto it = [&] {
+    for (size_t it = path.size(); it-- > 0;) {
+      if (IsPathSeparator(path[it])) {
+        return it;
+      }
+    }
     throw std::runtime_error("root has no parent");
-  }
+  }();
   return path.substr(0, it + 1);
 }
 
