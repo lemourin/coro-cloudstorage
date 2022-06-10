@@ -73,7 +73,7 @@ class YouTube {
 
   struct DashManifest : ItemData {
     static constexpr std::string_view mime_type = "application/dash+xml";
-    static constexpr int64_t size = 16192;
+    static constexpr int64_t size = 32384;
     std::string video_id;
     int64_t timestamp;
     ThumbnailData thumbnail;
