@@ -213,10 +213,11 @@ Generator<std::string> AccountManagerHandler::GetHomePage() const {
                  util::StrCat("/remove/", http::EncodeUri(account.id()))),
         fmt::arg("provider_id", http::EncodeUri(account.id())));
   }
-  co_yield fmt::format(
+  std::string content = fmt::format(
       fmt::runtime(kAssetsHtmlHomePageHtml),
       fmt::arg("supported_providers", std::move(supported_providers).str()),
       fmt::arg("content_table", std::move(content_table).str()));
+  co_yield std::move(content);
 }
 
 void AccountManagerHandler::OnCloudProviderCreated(

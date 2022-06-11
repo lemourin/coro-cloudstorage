@@ -708,14 +708,13 @@ auto Mega::CreateFile(DirectoryT parent, std::string_view name,
       std::span<const uint32_t>(compkey).subspan<0, 4>());
   std::array<uint32_t, 4> cbc_mac{};
   std::array<uint8_t, 32> compkey_bytes = ToBytes(MakeConstSpan(compkey));
-  auto response = co_await http_->Fetch(
-      http::Request<>{
-          .url = util::StrCat(upload_url, "/0"),
-          .method = http::Method::kPost,
-          .headers = {{"Content-Length", std::to_string(content.size)}},
-          .body = GetEncodedStream(ToBytes(key), compkey_bytes,
-                                   std::move(content.data), cbc_mac)},
-      stop_token);
+  http::Request<> request{
+      .url = util::StrCat(upload_url, "/0"),
+      .method = http::Method::kPost,
+      .headers = {{"Content-Length", std::to_string(content.size)}},
+      .body = GetEncodedStream(ToBytes(key), compkey_bytes,
+                               std::move(content.data), cbc_mac)};
+  auto response = co_await http_->Fetch(std::move(request), stop_token);
   if (response.status / 100 != 2) {
     throw http::HttpException(response.status);
   }

@@ -64,9 +64,11 @@ bool IsRoot(std::string_view path) { return GetEffectivePath(path).empty(); }
 Generator<std::string> GetDashPlayer(std::string path) {
   std::stringstream stream;
   stream << "<source src='" << path << "'>";
-  co_yield fmt::format(fmt::runtime(kAssetsHtmlDashPlayerHtml),
-                       fmt::arg("poster", StrCat(path, "?hq_thumbnail=true")),
-                       fmt::arg("source", std::move(stream).str()));
+  std::string content =
+      fmt::format(fmt::runtime(kAssetsHtmlDashPlayerHtml),
+                  fmt::arg("poster", StrCat(path, "?hq_thumbnail=true")),
+                  fmt::arg("source", std::move(stream).str()));
+  co_yield std::move(content);
 }
 
 std::string_view GetIconName(AbstractCloudProvider::Directory) {
@@ -284,13 +286,14 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
       "</head>"
       "<body class='root-container'>"
       "<table class='content-table'>";
-  co_yield fmt::format(
+  std::string parent_entry = fmt::format(
       fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", ".."),
       fmt::arg("size", ""), fmt::arg("timestamp", ""),
       fmt::arg("url", GetDirectoryPath(path)),
       fmt::arg("thumbnail_url",
                StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
                       "?thumbnail=true")));
+  co_yield std::move(parent_entry);
   FOR_CO_AWAIT(const auto& page, page_data) {
     for (const auto& item : page.items) {
       co_yield std::visit(
