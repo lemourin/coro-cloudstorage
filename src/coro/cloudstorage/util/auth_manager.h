@@ -96,8 +96,7 @@ class AuthManager {
     if (!http::HasHeader(request.headers, "Accept", "application/json")) {
       request.headers.emplace_back("Accept", "application/json");
     }
-    http::ResponseLike auto response =
-        co_await Fetch(std::move(request), std::move(stop_token));
+    auto response = co_await Fetch(std::move(request), std::move(stop_token));
     std::string body = co_await http::GetBody(std::move(response.body));
     co_return nlohmann::json::parse(std::move(body));
   }

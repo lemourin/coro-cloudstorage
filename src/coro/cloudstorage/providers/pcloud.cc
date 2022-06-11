@@ -58,7 +58,7 @@ Task<http::Response<>> Fetch(const coro::http::Http& http,
                              std::string access_token, Request request,
                              stdx::stop_token stop_token) {
   request.headers.emplace_back("Authorization", "Bearer " + access_token);
-  http::ResponseLike auto response =
+  auto response =
       co_await http.Fetch(std::move(request), std::move(stop_token));
   if (response.status / 100 != 2) {
     std::string body = co_await http::GetBody(std::move(response.body));
@@ -78,8 +78,8 @@ Task<nlohmann::json> FetchJson(const coro::http::Http& http,
     request.headers.emplace_back("Content-Type", "application/json");
   }
   request.headers.emplace_back("Accept", "application/json");
-  http::ResponseLike auto response = co_await Fetch(
-      http, std::move(access_token), std::move(request), std::move(stop_token));
+  auto response = co_await Fetch(http, std::move(access_token),
+                                 std::move(request), std::move(stop_token));
   std::string body = co_await http::GetBody(std::move(response.body));
   co_return nlohmann::json::parse(std::move(body));
 }

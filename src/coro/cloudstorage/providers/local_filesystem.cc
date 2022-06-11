@@ -3,7 +3,12 @@
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
 
 #ifdef WIN32
+
 #include <windows.h>
+
+#undef CreateDirectory
+#undef CreateFile
+
 #else
 #include <sys/stat.h>
 #endif

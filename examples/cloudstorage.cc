@@ -1,4 +1,9 @@
+#include <event2/event.h>
 #include <event2/thread.h>
+
+#ifdef WIN32
+#include <winsock2.h>
+#endif
 
 #include <csignal>
 #include <iostream>

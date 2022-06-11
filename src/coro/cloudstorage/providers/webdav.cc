@@ -149,8 +149,8 @@ auto FetchXml(const coro::http::Http& http,
     request.headers.emplace_back("Content-Type", "application/xml");
   }
   request.headers.emplace_back("Accept", "application/xml");
-  http::ResponseLike auto response = co_await Fetch(
-      http, credential, std::move(request), std::move(stop_token));
+  auto response = co_await Fetch(http, credential, std::move(request),
+                                 std::move(stop_token));
   co_return XmlDocument(co_await http::GetBody(std::move(response.body)));
 }
 

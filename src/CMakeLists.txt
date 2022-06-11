@@ -137,13 +137,6 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/on_auth_token_updated.h 
     coro/cloudstorage/util/thumbnail_quality.h)
 target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR} ../contrib/)
-if(WIN32)
-    target_precompile_headers(coro-cloudstorage
-        PUBLIC
-            <winsock2.h>
-            <windows.h>
-    )
-endif()
 target_link_libraries(coro-cloudstorage PUBLIC
     coro-http
     nlohmann_json::nlohmann_json

@@ -431,8 +431,7 @@ Task<pugi::xml_document> AmazonS3::FetchXml(RequestT request,
     request.headers.emplace_back("Content-Type", "application/xml");
   }
   request.headers.emplace_back("Accept", "application/xml");
-  http::ResponseLike auto response =
-      co_await Fetch(std::move(request), std::move(stop_token));
+  auto response = co_await Fetch(std::move(request), std::move(stop_token));
   co_return GetXmlDocument(co_await http::GetBody(std::move(response.body)));
 }
 

@@ -9,13 +9,12 @@
 namespace coro::cloudstorage::util {
 
 template <typename RequestType>
-Task<nlohmann::json> FetchJson(const http::HttpClient auto& http,
-                               RequestType request,
+Task<nlohmann::json> FetchJson(const http::Http& http, RequestType request,
                                stdx::stop_token stop_token) {
   if (!http::HasHeader(request.headers, "Accept", "application/json")) {
     request.headers.emplace_back("Accept", "application/json");
   }
-  http::ResponseLike auto response =
+  auto response =
       co_await http.Fetch(std::move(request), std::move(stop_token));
   std::string body = co_await http::GetBody(std::move(response.body));
   if (response.status / 100 != 2) {

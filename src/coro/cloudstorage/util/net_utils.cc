@@ -6,7 +6,11 @@
 #endif
 
 #ifdef WIN32
+// clang-format off
+#include <winsock2.h>
+#include <windows.h>
 #include <iphlpapi.h>
+// clang-format on
 #endif
 
 #include <event2/event.h>
