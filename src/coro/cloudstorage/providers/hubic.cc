@@ -131,90 +131,73 @@ HubiC::HubiC(const coro::http::Http* http, Auth::AuthToken auth_token,
              util::OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
              util::AuthorizeRequest<Auth> authorize_request)
     : http_(http),
-      auth_manager_(
+      auth_manager_(std::make_unique<util::AuthManager<Auth>>(
           http, std::move(auth_token), std::move(on_auth_token_updated),
           util::RefreshToken<Auth>(RefreshAccessToken{
               .http = http,
               .current_openstack_token = current_openstack_token_.get(),
               .auth_data = std::move(auth_data)}),
-          std::move(authorize_request)),
+          std::move(authorize_request))),
       provider_(CreateOpenStackProvider()) {
-  *current_openstack_token_ = &provider_.auth_token();
-}
-
-HubiC::HubiC(HubiC&& other) noexcept
-    : http_(other.http_),
-      current_openstack_token_(std::move(other.current_openstack_token_)),
-      auth_manager_(std::move(other.auth_manager_)),
-      provider_(CreateOpenStackProvider()) {
-  *current_openstack_token_ = &provider_.auth_token();
-}
-
-HubiC& HubiC::operator=(HubiC&& other) noexcept {
-  http_ = other.http_;
-  current_openstack_token_ = std::move(other.current_openstack_token_);
-  auth_manager_ = std::move(other.auth_manager_);
-  provider_ = CreateOpenStackProvider();
-  *current_openstack_token_ = &provider_.auth_token();
-  return *this;
+  *current_openstack_token_ = &provider_->auth_token();
 }
 
 auto HubiC::GetRoot(stdx::stop_token stop_token) const -> Task<Directory> {
-  return provider_.GetRoot(std::move(stop_token));
+  return provider_->GetRoot(std::move(stop_token));
 }
 
 auto HubiC::ListDirectoryPage(Directory directory,
                               std::optional<std::string> page_token,
                               stdx::stop_token stop_token) -> Task<PageData> {
-  return provider_.ListDirectoryPage(
+  return provider_->ListDirectoryPage(
       std::move(directory), std::move(page_token), std::move(stop_token));
 }
 
 auto HubiC::GetFileContent(File file, http::Range range,
                            stdx::stop_token stop_token)
     -> Generator<std::string> {
-  return provider_.GetFileContent(std::move(file), range,
-                                  std::move(stop_token));
+  return provider_->GetFileContent(std::move(file), range,
+                                   std::move(stop_token));
 }
 
 auto HubiC::CreateDirectory(Directory parent, std::string_view name,
                             stdx::stop_token stop_token) -> Task<Directory> {
-  return provider_.CreateDirectory(std::move(parent), name,
-                                   std::move(stop_token));
+  return provider_->CreateDirectory(std::move(parent), name,
+                                    std::move(stop_token));
 }
 
 template <typename ItemT>
 Task<> HubiC::RemoveItem(ItemT item, stdx::stop_token stop_token) {
-  return provider_.RemoveItem(std::move(item), std::move(stop_token));
+  return provider_->RemoveItem(std::move(item), std::move(stop_token));
 }
 
 template <typename ItemT>
 Task<ItemT> HubiC::MoveItem(ItemT source, Directory destination,
                             stdx::stop_token stop_token) {
-  return provider_.MoveItem(std::move(source), std::move(destination),
-                            std::move(stop_token));
+  return provider_->MoveItem(std::move(source), std::move(destination),
+                             std::move(stop_token));
 }
 
 template <typename ItemT>
 Task<ItemT> HubiC::RenameItem(ItemT item, std::string new_name,
                               stdx::stop_token stop_token) {
-  return provider_.RenameItem(std::move(item), std::move(new_name),
-                              std::move(stop_token));
+  return provider_->RenameItem(std::move(item), std::move(new_name),
+                               std::move(stop_token));
 }
 
 auto HubiC::CreateFile(Directory parent, std::string_view name,
                        FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
-  return provider_.CreateFile(std::move(parent), name, std::move(content),
-                              std::move(stop_token));
+  return provider_->CreateFile(std::move(parent), name, std::move(content),
+                               std::move(stop_token));
 }
 
 auto HubiC::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
   auto [json1, json2] = co_await WhenAll(
-      auth_manager_.FetchJson(
+      auth_manager_->FetchJson(
           http::Request<std::string>{.url = GetEndpoint("/account")},
           stop_token),
-      auth_manager_.FetchJson(
+      auth_manager_->FetchJson(
           http::Request<std::string>{.url = GetEndpoint("/account/usage")},
           stop_token));
   co_return GeneralData{.username = json1["email"],
@@ -222,16 +205,17 @@ auto HubiC::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
                         .space_total = json2["quota"]};
 }
 
-OpenStack HubiC::CreateOpenStackProvider() {
-  return OpenStack(util::AuthManager<OpenStack::Auth>(
-                       http_, auth_manager_.GetAuthToken().openstack_auth_token,
-                       util::OnAuthTokenUpdated<OpenStack::Auth::AuthToken>(
-                           OnOpenStackTokenUpdated{&auth_manager_}),
-                       util::RefreshToken<OpenStack::Auth>(
-                           RefreshOpenStackToken{&auth_manager_, http_}),
-                       util::AuthorizeRequest<OpenStack::Auth>(
-                           OpenStack::AuthorizeRequest{})),
-                   http_);
+std::unique_ptr<OpenStack> HubiC::CreateOpenStackProvider() {
+  return std::make_unique<OpenStack>(
+      util::AuthManager<OpenStack::Auth>(
+          http_, auth_manager_->GetAuthToken().openstack_auth_token,
+          util::OnAuthTokenUpdated<OpenStack::Auth::AuthToken>(
+              OnOpenStackTokenUpdated{auth_manager_.get()}),
+          util::RefreshToken<OpenStack::Auth>(
+              RefreshOpenStackToken{auth_manager_.get(), http_}),
+          util::AuthorizeRequest<OpenStack::Auth>(
+              OpenStack::AuthorizeRequest{})),
+      http_);
 }
 
 namespace util {

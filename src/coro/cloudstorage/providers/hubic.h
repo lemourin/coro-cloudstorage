@@ -57,12 +57,6 @@ class HubiC {
         util::OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated,
         util::AuthorizeRequest<Auth> authorizer_request);
 
-  HubiC(HubiC&& other) noexcept;
-  HubiC(const HubiC&) = delete;
-
-  HubiC& operator=(HubiC&& other) noexcept;
-  HubiC& operator=(const HubiC&) = delete;
-
   Task<Directory> GetRoot(stdx::stop_token stop_token) const;
 
   Task<PageData> ListDirectoryPage(Directory directory,
@@ -92,13 +86,13 @@ class HubiC {
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token);
 
  private:
-  OpenStack CreateOpenStackProvider();
+  std::unique_ptr<OpenStack> CreateOpenStackProvider();
 
   const coro::http::Http* http_;
   std::unique_ptr<const OpenStack::Auth::AuthToken*> current_openstack_token_ =
       std::make_unique<const OpenStack::Auth::AuthToken*>(nullptr);
-  util::AuthManager<Auth> auth_manager_;
-  OpenStack provider_;
+  std::unique_ptr<util::AuthManager<Auth>> auth_manager_;
+  std::unique_ptr<OpenStack> provider_;
 };
 
 namespace util {

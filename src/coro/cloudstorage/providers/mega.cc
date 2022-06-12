@@ -535,32 +535,6 @@ CloudException ToException(int status) {
 
 }  // namespace
 
-Mega::Mega(Mega&& other) noexcept
-    : http_(other.http_),
-      event_loop_(other.event_loop_),
-      random_number_generator_(other.random_number_generator_),
-      thumbnail_generator_(other.thumbnail_generator_),
-      auth_token_(std::move(other.auth_token_)),
-      id_(other.id_),
-      skmap_(std::move(other.skmap_)),
-      items_(std::move(other.items_)),
-      file_tree_(std::move(other.file_tree_)),
-      stop_source_(std::move(other.stop_source_)) {}
-
-Mega& Mega::operator=(Mega&& other) noexcept {
-  http_ = other.http_;
-  event_loop_ = other.event_loop_;
-  random_number_generator_ = other.random_number_generator_;
-  thumbnail_generator_ = other.thumbnail_generator_;
-  auth_token_ = std::move(other.auth_token_);
-  id_ = other.id_;
-  skmap_ = std::move(other.skmap_);
-  items_ = std::move(other.items_);
-  file_tree_ = std::move(other.file_tree_);
-  stop_source_ = std::move(other.stop_source_);
-  return *this;
-}
-
 auto Mega::GetRoot(stdx::stop_token stop_token) -> Task<Root> {
   co_await LazyInit(std::move(stop_token));
   for (const auto& [key, value] : items_) {

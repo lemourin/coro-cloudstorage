@@ -115,10 +115,10 @@ class Mega {
         thumbnail_generator_(thumbnail_generator),
         auth_token_(std::move(auth_token)) {}
 
-  Mega(Mega&& other) noexcept;
+  Mega(Mega&& other) noexcept = default;
   Mega(const Mega&) = delete;
 
-  Mega& operator=(Mega&& other) noexcept;
+  Mega& operator=(Mega&& other) noexcept = default;
   Mega& operator=(const Mega&) = delete;
 
   ~Mega() { stop_source_.request_stop(); }
