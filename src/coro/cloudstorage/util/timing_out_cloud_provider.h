@@ -12,8 +12,8 @@ namespace coro::cloudstorage::util {
 
 class TimingOutCloudProvider : public AbstractCloudProvider {
  public:
-  TimingOutCloudProvider(coro::util::EventLoop* event_loop, int timeout_ms,
-                         AbstractCloudProvider* provider)
+  TimingOutCloudProvider(const coro::util::EventLoop* event_loop,
+                         int timeout_ms, AbstractCloudProvider* provider)
       : event_loop_(event_loop), timeout_ms_(timeout_ms), provider_(provider) {}
 
   bool IsFileContentSizeRequired(
@@ -106,8 +106,9 @@ class TimingOutCloudProvider : public AbstractCloudProvider {
 
   class ContextStopToken {
    public:
-    ContextStopToken(coro::util::EventLoop* event_loop, std::string action,
-                     int timeout_ms, stdx::stop_token stop_token)
+    ContextStopToken(const coro::util::EventLoop* event_loop,
+                     std::string action, int timeout_ms,
+                     stdx::stop_token stop_token)
         : timing_out_stop_token_(*event_loop, std::move(action), timeout_ms),
           token_or_(timing_out_stop_token_.GetToken(), std::move(stop_token)) {}
 
@@ -121,7 +122,7 @@ class TimingOutCloudProvider : public AbstractCloudProvider {
   ContextStopToken CreateStopToken(std::string action,
                                    stdx::stop_token stop_token) const;
 
-  coro::util::EventLoop* event_loop_;
+  const coro::util::EventLoop* event_loop_;
   int timeout_ms_;
   AbstractCloudProvider* provider_;
 };

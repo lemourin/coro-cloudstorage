@@ -15,28 +15,28 @@ namespace coro::cloudstorage::util {
 
 class CloudFactoryContext {
  public:
-  explicit CloudFactoryContext(event_base* event_base)
-      : event_loop_(event_base),
-        thread_pool_(&event_loop_),
-        curl_http_(event_base, GetDirectoryPath(GetConfigFilePath())),
+  explicit CloudFactoryContext(const coro::util::EventLoop* event_loop)
+      : event_loop_(event_loop),
+        thread_pool_(event_loop_),
+        curl_http_(event_loop_, GetDirectoryPath(GetConfigFilePath())),
         http_(coro::http::CacheHttpConfig{}, &curl_http_),
-        thumbnail_generator_(&thread_pool_, &event_loop_),
-        muxer_(&event_loop_, &thread_pool_),
+        thumbnail_generator_(&thread_pool_, event_loop_),
+        muxer_(event_loop_, &thread_pool_),
         random_engine_(std::random_device()()),
         random_number_generator_(&random_engine_),
-        factory_(&event_loop_, &thread_pool_, &http_, &thumbnail_generator_,
+        factory_(event_loop_, &thread_pool_, &http_, &thumbnail_generator_,
                  &muxer_, &random_number_generator_) {}
 
   CloudFactoryContext(CloudFactoryContext&&) = delete;
   CloudFactoryContext& operator=(CloudFactoryContext&&) = delete;
 
   auto* factory() { return &factory_; }
-  auto* event_loop() { return &event_loop_; }
+  auto* event_loop() { return event_loop_; }
   auto* thread_pool() { return &thread_pool_; }
   auto* thumbnail_generator() { return &thumbnail_generator_; }
 
  private:
-  coro::util::EventLoop event_loop_;
+  const coro::util::EventLoop* event_loop_;
   coro::util::ThreadPool thread_pool_;
   http::HttpImpl<http::CurlHttp> curl_http_;
   http::HttpImpl<http::CacheHttp> http_;

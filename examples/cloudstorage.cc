@@ -1,10 +1,3 @@
-#include <event2/event.h>
-#include <event2/thread.h>
-
-#ifdef WIN32
-#include <winsock2.h>
-#endif
-
 #include <csignal>
 #include <iostream>
 
@@ -74,14 +67,14 @@ class HttpHandler {
   Promise<void>* quit_;
 };
 
-Task<> CoMain(event_base* event_base) noexcept {
+Task<> CoMain(const coro::util::EventLoop* event_loop) noexcept {
   try {
-    CloudFactoryContext factory_context(event_base);
+    CloudFactoryContext factory_context(event_loop);
     SettingsManager settings_manager(
         AuthTokenManager{factory_context.factory()});
     Promise<void> quit;
     HttpServer<HttpHandler> http_server(
-        event_base, settings_manager.GetHttpServerConfig(),
+        event_loop, settings_manager.GetHttpServerConfig(),
         factory_context.factory(), factory_context.thumbnail_generator(),
         std::move(settings_manager), &quit);
     co_await quit;
@@ -92,22 +85,12 @@ Task<> CoMain(event_base* event_base) noexcept {
 }
 
 int main() {
-#ifdef _WIN32
-  WORD version_requested = MAKEWORD(2, 2);
-  WSADATA wsa_data;
-
-  (void)WSAStartup(version_requested, &wsa_data);
-  evthread_use_windows_threads();
-#else
-  evthread_use_pthreads();
-#endif
-
 #ifdef SIGPIPE
   signal(SIGPIPE, SIG_IGN);  // NOLINT
 #endif
 
-  std::unique_ptr<event_base, coro::util::EventBaseDeleter> base(
-      event_base_new());
-  coro::RunTask(CoMain(base.get()));
-  return event_base_dispatch(base.get());
+  coro::util::EventLoop event_loop;
+  coro::RunTask(CoMain(&event_loop));
+  event_loop.EnterLoop();
+  return 0;
 }
