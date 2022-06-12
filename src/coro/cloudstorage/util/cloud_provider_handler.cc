@@ -1,5 +1,10 @@
 #include "coro/cloudstorage/util/cloud_provider_handler.h"
 
+#include <fmt/format.h>
+
+#include <iomanip>
+#include <sstream>
+
 #include "coro/cloudstorage/util/cloud_provider_utils.h"
 #include "coro/cloudstorage/util/net_utils.h"
 #include "coro/cloudstorage/util/thumbnail_quality.h"

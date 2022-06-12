@@ -136,11 +136,16 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/recursive_visit.h 
     coro/cloudstorage/util/on_auth_token_updated.h 
     coro/cloudstorage/util/thumbnail_quality.h)
-target_include_directories(coro-cloudstorage PUBLIC . ${CMAKE_CURRENT_BINARY_DIR} ../contrib/)
+
+target_include_directories(coro-cloudstorage PUBLIC .)
+target_include_directories(coro-cloudstorage PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ../contrib/)
+
 target_link_libraries(coro-cloudstorage PUBLIC
     coro-http
     nlohmann_json::nlohmann_json
-    pugixml::pugixml
+)
+
+target_link_libraries(coro-cloudstorage PRIVATE
     FFMPEG::avcodec
     FFMPEG::avutil
     FFMPEG::avformat
@@ -148,6 +153,7 @@ target_link_libraries(coro-cloudstorage PUBLIC
     FFMPEG::avfilter
     cryptopp::cryptopp
     fmt::fmt
+    pugixml::pugixml
 )
 
 embed_resource(

@@ -1,9 +1,10 @@
 #include "coro/cloudstorage/util/account_manager_handler.h"
 
+#include <fmt/core.h>
+
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/cloud_provider_handler.h"
 #include "coro/cloudstorage/util/get_size_handler.h"
-#include "coro/cloudstorage/util/serialize_utils.h"
 #include "coro/cloudstorage/util/settings_handler.h"
 #include "coro/cloudstorage/util/static_file_handler.h"
 #include "coro/cloudstorage/util/theme_handler.h"

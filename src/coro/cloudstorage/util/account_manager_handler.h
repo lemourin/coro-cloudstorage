@@ -1,9 +1,6 @@
 #ifndef CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
 #define CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
 
-#include <fmt/core.h>
-#include <fmt/format.h>
-
 #include <list>
 
 #include "coro/cloudstorage/util/cloud_provider_account.h"
