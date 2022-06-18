@@ -269,7 +269,7 @@ auto GoogleDrive::UpdateFile(std::string_view id, FileContent content,
                   {"Content-Type",
                    "multipart/related; boundary=" + std::string(kSeparator)},
                   {"Authorization",
-                   "Bearer " /* + auth_manager_.GetAuthToken().access_token*/}},
+                   "Bearer " + auth_manager_.GetAuthToken().access_token}},
       .body = GetUploadForm(json(), std::move(content))};
   auto response = co_await util::FetchJson(*http_, std::move(request),
                                            std::move(stop_token));
@@ -291,7 +291,7 @@ auto GoogleDrive::CreateFileImpl(Directory parent, std::string_view name,
                   {"Content-Type",
                    "multipart/related; boundary=" + std::string(kSeparator)},
                   {"Authorization",
-                   "Bearer " /* + auth_manager_.GetAuthToken().access_token*/}},
+                   "Bearer " + auth_manager_.GetAuthToken().access_token}},
       .body = GetUploadForm(std::move(metadata), std::move(content))};
   auto response = co_await util::FetchJson(*http_, std::move(request),
                                            std::move(stop_token));
