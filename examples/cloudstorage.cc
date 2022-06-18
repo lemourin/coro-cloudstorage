@@ -66,7 +66,7 @@ class HttpHandler {
   Promise<void>* quit_;
 };
 
-Task<> CoMain(const coro::util::EventLoop* event_loop) noexcept {
+Task<> CoMain(const coro::util::EventLoop* event_loop) {
   try {
     CloudFactoryContext factory_context(event_loop);
     SettingsManager settings_manager(

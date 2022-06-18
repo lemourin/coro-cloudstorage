@@ -116,9 +116,9 @@ Task<ItemT> OpenStack::RenameItem(ItemT item, std::string new_name,
   co_return co_await GetItem<ItemT>(destination_path, std::move(stop_token));
 }
 
-template <typename Item>
-Task<Item> OpenStack::GetItem(std::string_view id,
-                              stdx::stop_token stop_token) {
+template <typename ItemT>
+Task<ItemT> OpenStack::GetItem(std::string_view id,
+                               stdx::stop_token stop_token) {
   auto json = co_await auth_manager_.FetchJson(
       Request{.url = util::StrCat(GetEndpoint("/"), "?",
                                   http::FormDataToString({{"format", "json"},
@@ -126,7 +126,7 @@ Task<Item> OpenStack::GetItem(std::string_view id,
                                                           {"delimiter", "/"},
                                                           {"limit", "1"}}))},
       std::move(stop_token));
-  co_return ToItemImpl<Item>(json[0]);
+  co_return ToItemImpl<ItemT>(json[0]);
 }
 
 auto OpenStack::CreateFile(Directory parent, std::string_view name,

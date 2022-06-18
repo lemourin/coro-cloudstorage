@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/providers/dropbox.h"
 
+#include <nlohmann/json.hpp>
+
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
 #include "coro/cloudstorage/util/generator_utils.h"
 

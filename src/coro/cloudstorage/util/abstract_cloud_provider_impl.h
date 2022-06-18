@@ -1,6 +1,8 @@
 #ifndef CORO_CLOUDSTORAGE_ABSTRACT_CLOUD_PROVIDER_IMPL_H
 #define CORO_CLOUDSTORAGE_ABSTRACT_CLOUD_PROVIDER_IMPL_H
 
+#include <sstream>
+
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
 
 namespace coro::cloudstorage::util {

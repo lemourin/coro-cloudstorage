@@ -10,7 +10,6 @@
 #include "coro/cloudstorage/util/webdav_handler.h"
 #include "coro/http/http_parse.h"
 #include "coro/util/lru_cache.h"
-#include "coro/util/regex.h"
 
 namespace coro::cloudstorage::util {
 
