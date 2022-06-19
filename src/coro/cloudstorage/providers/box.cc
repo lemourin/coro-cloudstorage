@@ -3,6 +3,7 @@
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
 #include "coro/cloudstorage/util/auth_manager.h"
 #include "coro/cloudstorage/util/cloud_provider_utils.h"
+#include "coro/cloudstorage/util/generator_utils.h"
 
 namespace coro::cloudstorage {
 
@@ -16,6 +17,8 @@ using AuthManager = ::coro::cloudstorage::util::AuthManager<Box::Auth>;
 
 using ::coro::cloudstorage::util::CreateAbstractCloudProviderImpl;
 using ::coro::cloudstorage::util::ListDirectory;
+using ::coro::cloudstorage::util::StrCat;
+using ::coro::cloudstorage::util::Take;
 
 std::string GetEndpoint(std::string_view path) {
   return std::string(kEndpoint) + std::string(path);
@@ -251,15 +254,40 @@ auto Box::CreateFile(Directory parent, std::string_view name,
       break;
     }
   }
+
+  http::Request<std::string> session_request{
+      .url =
+          GetEndpoint(StrCat("/files", id ? StrCat("/", *id) : "", "/content")),
+      .method = http::Method::kOptions,
+      .headers = {{"Accept", "application/json"},
+                  {"Content-Type", "application/json"}},
+      .body =
+          [&] {
+            json json;
+            if (!id) {
+              json["name"] = std::string(name);
+              json["parent"]["id"] = parent.id;
+            }
+            if (content.size) {
+              json["size"] = *content.size;
+            }
+            return json.dump();
+          }(),
+  };
+  auto session_response =
+      co_await auth_manager_.FetchJson(std::move(session_request), stop_token);
+
   http::Request<> request{
-      .url = id ? "https://upload.box.com/api/2.0/files/" + *id + "/content"
-                : "https://upload.box.com/api/2.0/files/content",
+      .url = session_response.at("upload_url"),
       .method = http::Method::kPost,
       .headers = {{"Accept", "application/json"},
                   {"Content-Type",
-                   "multipart/form-data; boundary=" + std::string(kSeparator)},
+                   StrCat("multipart/form-data; boundary=", kSeparator)},
                   {"Authorization",
-                   "Bearer " + auth_manager_.GetAuthToken().access_token}},
+                   StrCat("Bearer ",
+                          session_response.at("upload_token").is_string()
+                              ? std::string(session_response["upload_token"])
+                              : auth_manager_.GetAuthToken().access_token)}},
       .body = GetUploadStream(std::move(parent), name, std::move(content))};
   auto response = co_await util::FetchJson(*http_, std::move(request),
                                            std::move(stop_token));
