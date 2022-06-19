@@ -322,14 +322,14 @@ auto GoogleDrive::UploadFile(std::optional<std::string_view> id,
                              nlohmann::json metadata, FileContent content,
                              stdx::stop_token stop_token) -> Task<File> {
   if (content.size && *content.size <= 5 * 1024 * 1024) {
-    std::string body = co_await http::GetBody(
-        GetUploadForm(metadata.dump(), std::move(content)));
+    std::string body =
+        co_await http::GetBody(GetUploadForm(metadata, std::move(content)));
     http::Request<std::string> request{
         .url = StrCat("https://www.googleapis.com/upload/drive/v3/files",
                       id ? StrCat("/", *id) : "", "?",
                       http::FormDataToString({{"uploadType", "multipart"},
                                               {"fields", kFileProperties}})),
-        .method = id ? http::Method::kPut : http::Method::kPost,
+        .method = id ? http::Method::kPatch : http::Method::kPost,
         .headers = {{"Accept", "application/json"},
                     {"Content-Type",
                      StrCat("multipart/related; boundary=", kSeparator)}},
