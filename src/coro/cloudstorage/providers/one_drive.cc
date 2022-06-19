@@ -235,17 +235,16 @@ auto OneDrive::CreateFile(Directory parent, std::string_view name,
                           FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
   if (content.size <= 4 * 1024 * 1024) {
-    http::Request<> request{
+    std::string body = co_await http::GetBody(std::move(content.data));
+    http::Request<std::string> request{
         .url = GetEndpoint("/me/drive/items/") + parent.id + ":/" +
                http::EncodeUri(name) + ":/content",
         .method = http::Method::kPut,
         .headers = {{"Accept", "application/json"},
-                    {"Content-Type", "application/octet-stream"},
-                    {"Authorization",
-                     "Bearer " + auth_manager_.GetAuthToken().access_token}},
-        .body = std::move(content.data)};
-    auto response = co_await util::FetchJson(*http_, std::move(request),
-                                             std::move(stop_token));
+                    {"Content-Type", "application/octet-stream"}},
+        .body = std::move(body)};
+    auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                     std::move(stop_token));
     co_return ToItemImpl<File>(response);
   } else {
     auto session =
