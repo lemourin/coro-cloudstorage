@@ -119,9 +119,6 @@ class GoogleDrive {
                                 FileContent content,
                                 stdx::stop_token stop_token);
 
-  Task<File> UpdateFile(std::string_view id, FileContent content,
-                        stdx::stop_token stop_token);
-
   template <typename Item>
   Task<Thumbnail> GetItemThumbnail(Item item, http::Range range,
                                    stdx::stop_token stop_token);
@@ -135,8 +132,9 @@ class GoogleDrive {
                         stdx::stop_token stop_token);
 
  private:
-  Task<File> CreateFileImpl(Directory parent, std::string_view name,
-                            FileContent content, stdx::stop_token stop_token);
+  Task<File> UploadFile(std::optional<std::string_view> id,
+                        nlohmann::json metadata, FileContent content,
+                        stdx::stop_token stop_token);
 
   util::AuthManager<Auth> auth_manager_;
   const coro::http::Http* http_;

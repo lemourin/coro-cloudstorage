@@ -14,6 +14,9 @@ constexpr std::string_view kFileProperties =
     "modifiedTime";
 constexpr int kThumbnailSize = 256;
 
+using ::coro::cloudstorage::util::FetchJson;
+using ::coro::cloudstorage::util::StrCat;
+
 std::string GetEndpoint(std::string_view path) {
   return std::string(kEndpoint) + std::string(path);
 }
@@ -241,61 +244,24 @@ auto GoogleDrive::CreateOrUpdateFile(Directory parent, std::string_view name,
   auto request =
       Request{.url = GetEndpoint("/files") + "?" +
                      http::FormDataToString(
-                         {{"q", "'" + parent.id + "' in parents and name = '" +
-                                    std::string(name) + "'"},
+                         {{"q", StrCat("'", parent.id,
+                                       "' in parents and name = '", name, "'")},
                           {"fields", "files(id)"}})};
   auto response =
       co_await auth_manager_.FetchJson(std::move(request), stop_token);
-  if (response["files"].size() == 0) {
-    co_return co_await CreateFileImpl(
-        std::move(parent), name, std::move(content), std::move(stop_token));
-  } else if (response["files"].size() == 1) {
-    co_return co_await UpdateFile(std::string(response["files"][0]["id"]),
+  if (response["files"].empty()) {
+    json metadata;
+    metadata["name"] = name;
+    metadata["parents"].push_back(parent.id);
+    co_return co_await UploadFile(std::nullopt, std::move(metadata),
                                   std::move(content), std::move(stop_token));
+  } else if (response["files"].size() == 1) {
+    co_return co_await UploadFile(std::string(response["files"][0]["id"]),
+                                  json(), std::move(content),
+                                  std::move(stop_token));
   } else {
     throw CloudException("ambiguous file reference");
   }
-}
-
-auto GoogleDrive::UpdateFile(std::string_view id, FileContent content,
-                             stdx::stop_token stop_token) -> Task<File> {
-  http::Request<> request{
-      .url = "https://www.googleapis.com/upload/drive/v3/files/" +
-             std::string(id) + "?" +
-             http::FormDataToString(
-                 {{"uploadType", "multipart"}, {"fields", kFileProperties}}),
-      .method = http::Method::kPatch,
-      .headers = {{"Accept", "application/json"},
-                  {"Content-Type",
-                   "multipart/related; boundary=" + std::string(kSeparator)},
-                  {"Authorization",
-                   "Bearer " + auth_manager_.GetAuthToken().access_token}},
-      .body = GetUploadForm(json(), std::move(content))};
-  auto response = co_await util::FetchJson(*http_, std::move(request),
-                                           std::move(stop_token));
-  co_return ToItemImpl<File>(response);
-}
-
-auto GoogleDrive::CreateFileImpl(Directory parent, std::string_view name,
-                                 FileContent content,
-                                 stdx::stop_token stop_token) -> Task<File> {
-  json metadata;
-  metadata["name"] = name;
-  metadata["parents"].push_back(parent.id);
-  http::Request<> request{
-      .url = "https://www.googleapis.com/upload/drive/v3/files?" +
-             http::FormDataToString(
-                 {{"uploadType", "multipart"}, {"fields", kFileProperties}}),
-      .method = http::Method::kPost,
-      .headers = {{"Accept", "application/json"},
-                  {"Content-Type",
-                   "multipart/related; boundary=" + std::string(kSeparator)},
-                  {"Authorization",
-                   "Bearer " + auth_manager_.GetAuthToken().access_token}},
-      .body = GetUploadForm(std::move(metadata), std::move(content))};
-  auto response = co_await util::FetchJson(*http_, std::move(request),
-                                           std::move(stop_token));
-  co_return ToItemImpl<File>(response);
 }
 
 template <typename ItemT>
@@ -350,6 +316,59 @@ Task<ItemT> GoogleDrive::RenameItem(ItemT item, std::string new_name,
   auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                    std::move(stop_token));
   co_return ToItemImpl<ItemT>(response);
+}
+
+auto GoogleDrive::UploadFile(std::optional<std::string_view> id,
+                             nlohmann::json metadata, FileContent content,
+                             stdx::stop_token stop_token) -> Task<File> {
+  if (content.size && *content.size <= 5 * 1024 * 1024) {
+    std::string body = co_await http::GetBody(
+        GetUploadForm(metadata.dump(), std::move(content)));
+    http::Request<std::string> request{
+        .url = StrCat("https://www.googleapis.com/upload/drive/v3/files",
+                      id ? StrCat("/", *id) : "", "?",
+                      http::FormDataToString({{"uploadType", "multipart"},
+                                              {"fields", kFileProperties}})),
+        .method = id ? http::Method::kPut : http::Method::kPost,
+        .headers = {{"Accept", "application/json"},
+                    {"Content-Type",
+                     StrCat("multipart/related; boundary=", kSeparator)}},
+        .body = std::move(body)};
+    auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                     std::move(stop_token));
+    co_return ToItemImpl<File>(response);
+  } else {
+    http::Request<std::string> session_request{
+        .url = StrCat("https://www.googleapis.com/upload/drive/v3/files",
+                      id ? StrCat("/", *id) : "", "?",
+                      http::FormDataToString({{"uploadType", "resumable"},
+                                              {"fields", kFileProperties}})),
+        .method = id ? http::Method::kPatch : http::Method::kPost,
+        .headers = {{"Content-Type", "application/json;charset=UTF-8"}},
+        .body = metadata.dump()};
+    if (content.size) {
+      session_request.headers.emplace_back("X-Upload-Content-Length",
+                                           std::to_string(*content.size));
+    }
+    auto session_response =
+        co_await auth_manager_.Fetch(std::move(session_request), stop_token);
+    auto upload_url = http::GetHeader(session_response.headers, "Location");
+    if (!upload_url) {
+      throw CloudException("Upload url not available.");
+    }
+    http::Request<> request{
+        .url = std::move(*upload_url),
+        .method = http::Method::kPut,
+        .body = std::move(content.data),
+    };
+    if (content.size) {
+      request.headers.emplace_back("Content-Length",
+                                   std::to_string(*content.size));
+    }
+    auto response =
+        co_await FetchJson(*http_, std::move(request), std::move(stop_token));
+    co_return ToItemImpl<File>(response);
+  }
 }
 
 namespace util {
