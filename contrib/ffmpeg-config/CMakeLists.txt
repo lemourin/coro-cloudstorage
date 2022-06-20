@@ -27,7 +27,6 @@ if(WIN32)
     list(APPEND FFMPEG_DEPENDENCIES bcrypt)
     if(MSVC)
         function(patch_c_flags FLAGS)
-            string(REPLACE "/GL" "" ${FLAGS} "${${FLAGS}}")
             string(REPLACE "/RTC1" "" ${FLAGS} "${${FLAGS}}")
             string(REPLACE "/Od" "/O1" ${FLAGS} "${${FLAGS}}")
             set(${FLAGS} "${${FLAGS}}" PARENT_SCOPE)
@@ -37,7 +36,6 @@ if(WIN32)
             patch_c_flags(CMAKE_C_FLAGS_${CONFIG})
         endforeach()
         patch_c_flags(CMAKE_C_FLAGS)
-        set(FFMPEG_COMPILE_OPTIONS /Zc:inline-)
     endif()
 endif()
 
@@ -176,7 +174,6 @@ add_library(avutil
 add_library(FFMPEG::avutil ALIAS avutil)
 target_link_libraries(avutil PRIVATE ${FFMPEG_DEPENDENCIES})
 target_compile_definitions(avutil PRIVATE ${FFMPEG_DEFINITIONS})
-target_compile_options(avutil PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(avutil
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
@@ -201,7 +198,6 @@ add_library(swscale
 add_library(FFMPEG::swscale ALIAS swscale)
 target_link_libraries(swscale PRIVATE ${FFMPEG_DEPENDENCIES})
 target_compile_definitions(swscale PRIVATE ${FFMPEG_DEFINITIONS})
-target_compile_options(swscale PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(swscale
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
@@ -220,7 +216,6 @@ add_library(swresample
 add_library(FFMPEG::swresample ALIAS swresample)
 target_link_libraries(swresample PRIVATE ${FFMPEG_DEPENDENCIES})
 target_compile_definitions(swresample PRIVATE ${FFMPEG_DEFINITIONS})
-target_compile_options(swresample PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(swresample
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
@@ -469,7 +464,6 @@ add_library(avcodec
 add_library(FFMPEG::avcodec ALIAS avcodec)
 target_link_libraries(avcodec PRIVATE ${FFMPEG_DEPENDENCIES} swscale swresample)
 target_compile_definitions(avcodec PRIVATE ${FFMPEG_DEFINITIONS})
-target_compile_options(avcodec PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(avcodec
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
@@ -552,7 +546,6 @@ add_library(avformat
 add_library(FFMPEG::avformat ALIAS avformat)
 target_link_libraries(avformat PRIVATE ${FFMPEG_DEPENDENCIES} swscale avutil avcodec)
 target_compile_definitions(avformat PRIVATE ${FFMPEG_DEFINITIONS})
-target_compile_options(avformat PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(avformat
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
@@ -586,8 +579,16 @@ target_compile_definitions(avfilter PRIVATE
     M_PI_4=0.785398163397448309616
     M_2_PI=0.636619772367581343076
 )
-target_compile_options(avfilter PRIVATE ${FFMPEG_COMPILE_OPTIONS})
 target_include_directories(avfilter
     PRIVATE ${FFMPEG_PRIVATE_INCLUDES}
     PUBLIC ${FFMPEG_PUBLIC_INCLUDES}
 )
+
+if(MSVC)
+    set_property(
+        TARGET
+            avutil avcodec avformat avfilter swresample swscale
+        PROPERTY
+            INTERPROCEDURAL_OPTIMIZATION FALSE
+    )
+endif()
