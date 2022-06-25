@@ -3,35 +3,33 @@
 
 #include "coro/cloudstorage/util/account_manager_handler.h"
 #include "coro/cloudstorage/util/cloud_factory_context.h"
-#include "coro/cloudstorage/util/thumbnail_generator.h"
-#include "coro/http/cache_http.h"
-#include "coro/http/curl_http.h"
-#include "coro/http/http_server.h"
 #include "coro/util/event_loop.h"
 
 using ::coro::Promise;
 using ::coro::Task;
-using ::coro::cloudstorage::util::AbstractCloudFactory;
 using ::coro::cloudstorage::util::AccountManagerHandler;
-using ::coro::cloudstorage::util::AuthTokenManager;
 using ::coro::cloudstorage::util::CloudFactoryContext;
 using ::coro::cloudstorage::util::CloudProviderAccount;
-using ::coro::cloudstorage::util::SettingsManager;
-using ::coro::cloudstorage::util::ThumbnailGenerator;
 using ::coro::http::CurlHttp;
-using ::coro::http::HttpServer;
+
+struct AccountListener {
+  void OnCreate(CloudProviderAccount* d) {
+    std::cerr << "CREATED " << d->id() << "\n";
+  }
+  Task<> OnDestroy(CloudProviderAccount* d) {
+    std::cerr << "REMOVED " << d->id() << "\n";
+    co_return;
+  }
+};
 
 class HttpHandler {
  public:
   using Request = coro::http::Request<>;
   using Response = coro::http::Response<>;
 
-  HttpHandler(const AbstractCloudFactory* factory,
-              const ThumbnailGenerator* thumbnail_generator,
-              SettingsManager settings_manager, Promise<void>* quit)
-      : account_manager_handler_(factory, thumbnail_generator,
-                                 AccountListener{},
-                                 std::move(settings_manager)),
+  HttpHandler(AccountManagerHandler account_manager_handler,
+              Promise<void>* quit)
+      : account_manager_handler_(std::move(account_manager_handler)),
         quit_(quit) {}
 
   Task<Response> operator()(Request request,
@@ -52,16 +50,6 @@ class HttpHandler {
   }
 
  private:
-  struct AccountListener {
-    void OnCreate(CloudProviderAccount* d) {
-      std::cerr << "CREATED " << d->id() << "\n";
-    }
-    Task<> OnDestroy(CloudProviderAccount* d) {
-      std::cerr << "REMOVED " << d->id() << "\n";
-      co_return;
-    }
-  };
-
   AccountManagerHandler account_manager_handler_;
   Promise<void>* quit_;
 };
@@ -69,13 +57,9 @@ class HttpHandler {
 Task<> CoMain(const coro::util::EventLoop* event_loop) {
   try {
     CloudFactoryContext factory_context(event_loop);
-    SettingsManager settings_manager(
-        AuthTokenManager{factory_context.factory()});
     Promise<void> quit;
-    HttpServer<HttpHandler> http_server(
-        event_loop, settings_manager.GetHttpServerConfig(),
-        factory_context.factory(), factory_context.thumbnail_generator(),
-        std::move(settings_manager), &quit);
+    auto http_server = factory_context.CreateHttpServer(HttpHandler(
+        factory_context.CreateAccountManagerHandler(AccountListener{}), &quit));
     co_await quit;
     co_await http_server.Quit();
   } catch (const std::exception& exception) {

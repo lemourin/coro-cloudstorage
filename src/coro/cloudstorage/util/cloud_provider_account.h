@@ -34,7 +34,7 @@ class CloudProviderAccount {
   stdx::stop_token stop_token() const { return stop_source_.get_token(); }
 
  private:
-  friend class AccountManagerHandler;
+  friend class AccountManagerHandlerImpl;
 
   std::string username_;
   int64_t version_;

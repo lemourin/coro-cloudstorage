@@ -2,6 +2,8 @@
 
 #include <fmt/core.h>
 
+#include <list>
+
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/cloud_provider_handler.h"
 #include "coro/cloudstorage/util/get_size_handler.h"
@@ -48,11 +50,85 @@ void AppendAuthUrl(AbstractCloudProvider::Type type,
 
 }  // namespace
 
-AccountManagerHandler::AccountManagerHandler(
+class AccountManagerHandlerImpl {
+ public:
+  using Request = coro::http::Request<>;
+  using Response = coro::http::Response<>;
+
+  AccountManagerHandlerImpl(const AbstractCloudFactory* factory,
+                            const ThumbnailGenerator* thumbnail_generator,
+                            AccountListener account_listener,
+                            SettingsManager settings_manager);
+
+  AccountManagerHandlerImpl(AccountManagerHandlerImpl&&) = delete;
+  AccountManagerHandlerImpl& operator=(AccountManagerHandlerImpl&&) = delete;
+
+  Task<Response> operator()(Request request, coro::stdx::stop_token stop_token);
+
+  Task<> Quit();
+
+ private:
+  struct AuthHandler {
+    Task<Response> operator()(Request request,
+                              stdx::stop_token stop_token) const;
+
+    AbstractCloudProvider::Type type;
+    AccountManagerHandlerImpl* d;
+  };
+
+  struct OnRemoveHandler {
+    Task<Response> operator()(Request request,
+                              stdx::stop_token stop_token) const;
+    AccountManagerHandlerImpl* d;
+    std::string account_id;
+  };
+
+  struct Handler {
+    std::string id;
+    std::string prefix;
+    stdx::any_invocable<Task<http::Response<>>(http::Request<>,
+                                               stdx::stop_token)>
+        handler;
+  };
+
+  Task<Response> HandleRequest(Request request,
+                               coro::stdx::stop_token stop_token);
+
+  Response GetWebDAVRootResponse(
+      std::span<const std::pair<std::string, std::string>> headers) const;
+
+  void RemoveHandler(std::string_view account_id);
+
+  template <typename F>
+  Task<> RemoveCloudProvider(const F& predicate);
+
+  void OnCloudProviderCreated(CloudProviderAccount* account);
+
+  CloudProviderAccount CreateAccount(
+      AbstractCloudProvider::Auth::AuthToken auth_token,
+      std::shared_ptr<std::optional<std::string>> username);
+
+  Task<CloudProviderAccount*> Create(
+      AbstractCloudProvider::Auth::AuthToken auth_token,
+      stdx::stop_token stop_token);
+
+  Handler* ChooseHandler(std::string_view path);
+
+  Generator<std::string> GetHomePage() const;
+
+  const AbstractCloudFactory* factory_;
+  const ThumbnailGenerator* thumbnail_generator_;
+  std::vector<Handler> handlers_;
+  AccountListener account_listener_;
+  SettingsManager settings_manager_;
+  std::list<CloudProviderAccount> accounts_;
+  int64_t version_ = 0;
+};
+
+AccountManagerHandlerImpl::AccountManagerHandlerImpl(
     const AbstractCloudFactory* factory,
     const ThumbnailGenerator* thumbnail_generator,
-    std::unique_ptr<AccountListener> account_listener,
-    SettingsManager settings_manager)
+    AccountListener account_listener, SettingsManager settings_manager)
     : factory_(factory),
       thumbnail_generator_(thumbnail_generator),
       account_listener_(std::move(account_listener)),
@@ -82,20 +158,20 @@ AccountManagerHandler::AccountManagerHandler(
   }
 }
 
-Task<> AccountManagerHandler::Quit() {
+Task<> AccountManagerHandlerImpl::Quit() {
   std::vector<Task<>> tasks;
   for (auto& account : accounts_) {
     if (!account.stop_token().stop_requested()) {
       account.stop_source_.request_stop();
-      tasks.emplace_back(account_listener_->OnDestroy(&account));
+      tasks.emplace_back(account_listener_.OnDestroy(&account));
     }
   }
   co_await WhenAll(std::move(tasks));
   accounts_.clear();
 }
 
-auto AccountManagerHandler::operator()(Request request,
-                                       coro::stdx::stop_token stop_token)
+auto AccountManagerHandlerImpl::operator()(Request request,
+                                           coro::stdx::stop_token stop_token)
     -> Task<Response> {
   auto response =
       co_await HandleRequest(std::move(request), std::move(stop_token));
@@ -105,8 +181,8 @@ auto AccountManagerHandler::operator()(Request request,
   co_return response;
 }
 
-auto AccountManagerHandler::HandleRequest(Request request,
-                                          coro::stdx::stop_token stop_token)
+auto AccountManagerHandlerImpl::HandleRequest(Request request,
+                                              coro::stdx::stop_token stop_token)
     -> Task<Response> {
   if (request.method == coro::http::Method::kOptions) {
     co_return Response{
@@ -155,7 +231,7 @@ auto AccountManagerHandler::HandleRequest(Request request,
   }
 }
 
-auto AccountManagerHandler::GetWebDAVRootResponse(
+auto AccountManagerHandlerImpl::GetWebDAVRootResponse(
     std::span<const std::pair<std::string, std::string>> headers) const
     -> Response {
   std::vector<std::string> responses = {GetElement(
@@ -173,7 +249,7 @@ auto AccountManagerHandler::GetWebDAVRootResponse(
                   .body = http::CreateBody(GetMultiStatusResponse(responses))};
 }
 
-void AccountManagerHandler::RemoveHandler(std::string_view account_id) {
+void AccountManagerHandlerImpl::RemoveHandler(std::string_view account_id) {
   for (auto it = std::begin(handlers_); it != std::end(handlers_);) {
     if (it->id == account_id) {
       it = handlers_.erase(it);
@@ -183,7 +259,8 @@ void AccountManagerHandler::RemoveHandler(std::string_view account_id) {
   }
 }
 
-auto AccountManagerHandler::ChooseHandler(std::string_view path) -> Handler* {
+auto AccountManagerHandlerImpl::ChooseHandler(std::string_view path)
+    -> Handler* {
   Handler* best = nullptr;
   for (auto& handler : handlers_) {
     if (path.starts_with(handler.prefix) &&
@@ -194,7 +271,7 @@ auto AccountManagerHandler::ChooseHandler(std::string_view path) -> Handler* {
   return best;
 }
 
-Generator<std::string> AccountManagerHandler::GetHomePage() const {
+Generator<std::string> AccountManagerHandlerImpl::GetHomePage() const {
   std::stringstream supported_providers;
   for (auto type : factory_->GetSupportedCloudProviders()) {
     AppendAuthUrl(type, factory_, supported_providers);
@@ -221,7 +298,7 @@ Generator<std::string> AccountManagerHandler::GetHomePage() const {
   co_yield std::move(content);
 }
 
-void AccountManagerHandler::OnCloudProviderCreated(
+void AccountManagerHandlerImpl::OnCloudProviderCreated(
     CloudProviderAccount* account) {
   std::string account_id = std::string(account->id());
   try {
@@ -236,7 +313,7 @@ void AccountManagerHandler::OnCloudProviderCreated(
                 .prefix = StrCat("/", account_id),
                 .handler = CloudProviderHandler(&provider, thumbnail_generator_,
                                                 &settings_manager_)});
-    account_listener_->OnCreate(account);
+    account_listener_.OnCreate(account);
   } catch (...) {
     RemoveHandler(account_id);
     throw;
@@ -244,11 +321,11 @@ void AccountManagerHandler::OnCloudProviderCreated(
 }
 
 template <typename F>
-Task<> AccountManagerHandler::RemoveCloudProvider(const F& predicate) {
+Task<> AccountManagerHandlerImpl::RemoveCloudProvider(const F& predicate) {
   for (auto it = std::begin(accounts_); it != std::end(accounts_);) {
     if (predicate(*it) && !it->stop_token().stop_requested()) {
       it->stop_source_.request_stop();
-      co_await account_listener_->OnDestroy(&*it);
+      co_await account_listener_.OnDestroy(&*it);
       settings_manager_.RemoveToken(it->username(), it->type());
       RemoveHandler(it->id());
       it = accounts_.erase(it);
@@ -258,7 +335,7 @@ Task<> AccountManagerHandler::RemoveCloudProvider(const F& predicate) {
   }
 }
 
-CloudProviderAccount AccountManagerHandler::CreateAccount(
+CloudProviderAccount AccountManagerHandlerImpl::CreateAccount(
     AbstractCloudProvider::Auth::AuthToken auth_token,
     std::shared_ptr<std::optional<std::string>> username) {
   return CloudProviderAccount(
@@ -267,7 +344,7 @@ CloudProviderAccount AccountManagerHandler::CreateAccount(
                        OnAuthTokenChanged{&settings_manager_, username}));
 }
 
-Task<CloudProviderAccount*> AccountManagerHandler::Create(
+Task<CloudProviderAccount*> AccountManagerHandlerImpl::Create(
     AbstractCloudProvider::Auth::AuthToken auth_token,
     stdx::stop_token stop_token) {
   auto username = std::make_shared<std::optional<std::string>>(std::nullopt);
@@ -295,7 +372,7 @@ Task<CloudProviderAccount*> AccountManagerHandler::Create(
   std::rethrow_exception(exception);
 }
 
-auto AccountManagerHandler::AuthHandler::operator()(
+auto AccountManagerHandlerImpl::AuthHandler::operator()(
     Request request, stdx::stop_token stop_token) const -> Task<Response> {
   auto result =
       co_await d->factory_->GetAuth(type).CreateAuthHandler()->OnRequest(
@@ -312,11 +389,34 @@ auto AccountManagerHandler::AuthHandler::operator()(
           {"Location", util::StrCat("/", http::EncodeUri(account->id()))}}};
 }
 
-auto AccountManagerHandler::OnRemoveHandler::operator()(
+auto AccountManagerHandlerImpl::OnRemoveHandler::operator()(
     Request request, stdx::stop_token stop_token) const -> Task<Response> {
   co_await d->RemoveCloudProvider(
       [&](const auto& account) { return account.id() == account_id; });
   co_return Response{.status = 302, .headers = {{"Location", "/"}}};
 }
+
+AccountManagerHandler::AccountManagerHandler(
+    const AbstractCloudFactory* factory,
+    const ThumbnailGenerator* thumbnail_generator,
+    AccountListener account_listener, SettingsManager settings_manager)
+    : impl_(std::make_unique<AccountManagerHandlerImpl>(
+          factory, thumbnail_generator, std::move(account_listener),
+          std::move(settings_manager))) {}
+
+AccountManagerHandler::AccountManagerHandler(AccountManagerHandler&&) noexcept =
+    default;
+
+AccountManagerHandler::~AccountManagerHandler() = default;
+
+AccountManagerHandler& AccountManagerHandler::operator=(
+    AccountManagerHandler&&) noexcept = default;
+
+Task<http::Response<>> AccountManagerHandler::operator()(
+    http::Request<> request, coro::stdx::stop_token stop_token) {
+  return (*impl_)(std::move(request), std::move(stop_token));
+}
+
+Task<> AccountManagerHandler::Quit() { return impl_->Quit(); }
 
 }  // namespace coro::cloudstorage::util
