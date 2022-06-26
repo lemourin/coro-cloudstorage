@@ -14,10 +14,10 @@ using ::coro::http::CurlHttp;
 
 struct AccountListener {
   void OnCreate(CloudProviderAccount* d) {
-    std::cerr << "CREATED " << d->id() << "\n";
+    std::cerr << "CREATE [" << d->type() << "] " << d->username() << '\n';
   }
   Task<> OnDestroy(CloudProviderAccount* d) {
-    std::cerr << "REMOVED " << d->id() << "\n";
+    std::cerr << "REMOVED [" << d->type() << "] " << d->username() << '\n';
     co_return;
   }
 };
