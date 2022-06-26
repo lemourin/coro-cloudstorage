@@ -37,13 +37,12 @@ Generator<std::string> GetResponse(Generator<std::string> body,
   FOR_CO_AWAIT(std::string & chunk, body) { co_yield std::move(chunk); }
 }
 
-void AppendAuthUrl(AbstractCloudProvider::Type type,
-                   const AbstractCloudFactory* factory,
-                   std::stringstream& stream) {
+std::string GetAuthUrl(AbstractCloudProvider::Type type,
+                       const AbstractCloudFactory* factory) {
   std::string id(factory->GetAuth(type).GetId());
   std::string url = factory->GetAuth(type).GetAuthorizationUrl().value_or(
       util::StrCat("/auth/", id));
-  stream << fmt::format(
+  return fmt::format(
       fmt::runtime(kAssetsHtmlProviderEntryHtml), fmt::arg("provider_url", url),
       fmt::arg("image_url", util::StrCat("/static/", id, ".png")));
 }
@@ -296,7 +295,7 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
 Generator<std::string> AccountManagerHandler::Impl::GetHomePage() const {
   std::stringstream supported_providers;
   for (auto type : factory_->GetSupportedCloudProviders()) {
-    AppendAuthUrl(type, factory_, supported_providers);
+    supported_providers << GetAuthUrl(type, factory_);
   }
   std::stringstream content_table;
   for (const auto& account : accounts_) {
