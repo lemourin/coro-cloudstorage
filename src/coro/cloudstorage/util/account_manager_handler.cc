@@ -78,11 +78,11 @@ class AccountManagerHandler::Impl {
     Task<Response> operator()(Request request,
                               stdx::stop_token stop_token) const;
     Impl* d;
-    std::string account_id;
+    CloudProviderAccount::Id account_id;
   };
 
   struct Handler {
-    std::string id;
+    CloudProviderAccount::Id id;
     std::string prefix;
     stdx::any_invocable<Task<http::Response<>>(http::Request<>,
                                                stdx::stop_token)>
@@ -96,7 +96,7 @@ class AccountManagerHandler::Impl {
       std::string_view path,
       std::span<const std::pair<std::string, std::string>> headers) const;
 
-  void RemoveHandler(std::string_view account_id);
+  void RemoveHandler(const CloudProviderAccount::Id& account_id);
 
   template <typename F>
   Task<> RemoveCloudProvider(const F& predicate);
@@ -270,7 +270,8 @@ auto AccountManagerHandler::Impl::GetWebDAVResponse(
                   .body = http::CreateBody(GetMultiStatusResponse(responses))};
 }
 
-void AccountManagerHandler::Impl::RemoveHandler(std::string_view account_id) {
+void AccountManagerHandler::Impl::RemoveHandler(
+    const CloudProviderAccount::Id& account_id) {
   for (auto it = std::begin(handlers_); it != std::end(handlers_);) {
     if (it->id == account_id) {
       it = handlers_.erase(it);
@@ -312,7 +313,7 @@ Generator<std::string> AccountManagerHandler::Impl::GetHomePage() const {
         fmt::arg("provider_remove_url",
                  util::StrCat("/remove/", account.type(), "/",
                               http::EncodeUri(account.username()))),
-        fmt::arg("provider_id", http::EncodeUri(account.id())));
+        fmt::arg("provider_type", account.type()));
   }
   std::string content = fmt::format(
       fmt::runtime(kAssetsHtmlHomePageHtml),
@@ -323,24 +324,23 @@ Generator<std::string> AccountManagerHandler::Impl::GetHomePage() const {
 
 void AccountManagerHandler::Impl::OnCloudProviderCreated(
     CloudProviderAccount* account) {
-  std::string account_id = std::string(account->id());
   try {
     handlers_.emplace_back(Handler{
-        .id = account_id,
+        .id = account->id(),
         .prefix = StrCat("/remove/", account->type(), '/',
                          http::EncodeUri(account->username())),
-        .handler = OnRemoveHandler{.d = this, .account_id = account_id}});
+        .handler = OnRemoveHandler{.d = this, .account_id = account->id()}});
 
     auto& provider = account->provider();
     handlers_.emplace_back(
-        Handler{.id = account_id,
+        Handler{.id = account->id(),
                 .prefix = StrCat("/list/", account->type(), '/',
                                  http::EncodeUri(account->username())),
                 .handler = CloudProviderHandler(&provider, thumbnail_generator_,
                                                 &settings_manager_)});
     account_listener_.OnCreate(account);
   } catch (...) {
-    RemoveHandler(account_id);
+    RemoveHandler(account->id());
     throw;
   }
 }
@@ -381,7 +381,6 @@ Task<CloudProviderAccount*> AccountManagerHandler::Impl::Create(
     auto general_data = co_await provider.GetGeneralData(std::move(stop_token));
     *username = std::move(general_data.username);
     account.username_ = **username;
-    account.id_ = GetAccountId(account.type(), account.username());
     co_await RemoveCloudProvider([&](const auto& entry) {
       return entry.version_ < version && entry.id() == account.id();
     });

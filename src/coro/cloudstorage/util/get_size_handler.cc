@@ -8,12 +8,15 @@ auto GetSizeHandler::operator()(Request request,
                                 stdx::stop_token stop_token) const
     -> Task<Response> {
   auto query = http::ParseQuery(http::ParseUri(request.url).query.value());
-  auto account_id = query.find("account_id");
-  if (account_id == query.end()) {
+  auto account_type = query.find("account_type");
+  auto account_username = query.find("account_username");
+  if (account_type == query.end() || account_username == query.end()) {
     co_return Response{.status = 400};
   }
   for (CloudProviderAccount& account : *accounts) {
-    if (account.id() == account_id->second) {
+    if (account.id() ==
+        CloudProviderAccount::Id{.type = account_type->second,
+                                 .username = account_username->second}) {
       coro::util::StopTokenOr stop_token_or(std::move(stop_token),
                                             account.stop_token());
       auto volume_data =

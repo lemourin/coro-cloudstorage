@@ -13,9 +13,10 @@ function sizeToString(d) {
 }
 
 function initialize() {
-    document.querySelectorAll("[id^=size-]").forEach((e) => {
-        let account_id = e.id.substr("size-".length);
-        fetch("/size?account_id=" + account_id).then(response => response.json()).then(json => {
+    document.querySelectorAll("[id^=size]").forEach((e) => {
+        let providerType = e.getAttribute("provider-type");
+        let providerName = e.getAttribute("provider-name");
+        fetch(`/size?account_type=${providerType}&account_username=${providerName}`).then(response => response.json()).then(json => {
             if (json && json.hasOwnProperty("space_used")) {
                 let size = "";
                 size += sizeToString(json.space_used);

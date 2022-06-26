@@ -18,16 +18,24 @@ inline std::string GetAccountId(std::string_view id,
 
 class CloudProviderAccount {
  public:
+  struct Id {
+    std::string type;
+    std::string username;
+
+    friend bool operator==(const Id& a, const Id& b) {
+      return std::tie(a.type, a.username) == std::tie(b.type, b.username);
+    }
+  };
+
   CloudProviderAccount(std::string username, int64_t version,
                        std::unique_ptr<AbstractCloudProvider> account)
       : username_(std::move(username)),
         version_(version),
         type_(account->GetId()),
-        id_(GetAccountId(type_, username_)),
         provider_(std::move(account)) {}
 
   std::string_view type() const { return type_; }
-  std::string_view id() const { return id_; }
+  Id id() const { return {type_, username_}; }
   std::string_view username() const { return username_; }
   auto& provider() { return *provider_; }
   const auto& provider() const { return *provider_; }
@@ -39,7 +47,6 @@ class CloudProviderAccount {
   std::string username_;
   int64_t version_;
   std::string type_;
-  std::string id_;
   std::unique_ptr<AbstractCloudProvider> provider_;
   stdx::stop_source stop_source_;
 };
