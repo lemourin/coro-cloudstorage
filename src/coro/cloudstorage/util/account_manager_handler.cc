@@ -93,7 +93,8 @@ class AccountManagerHandler::Impl {
   Task<Response> HandleRequest(Request request,
                                coro::stdx::stop_token stop_token);
 
-  Response GetWebDAVRootResponse(
+  Response GetWebDAVResponse(
+      std::string_view path,
       std::span<const std::pair<std::string, std::string>> headers) const;
 
   void RemoveHandler(std::string_view account_id);
@@ -197,13 +198,6 @@ auto AccountManagerHandler::Impl::HandleRequest(
   if (!path) {
     co_return Response{.status = 400};
   }
-  if ((*path == "/list/" || *path == "/list") &&
-      request.method == http::Method::kPropfind) {
-    co_return GetWebDAVRootResponse(request.headers);
-  }
-  if (*path == "/" || *path == "") {
-    co_return Response{.status = 200, .body = GetHomePage()};
-  }
   if (auto* handler = ChooseHandler(*path)) {
     if (auto account_it = std::find_if(
             accounts_.begin(), accounts_.end(),
@@ -224,21 +218,52 @@ auto AccountManagerHandler::Impl::HandleRequest(
       co_return co_await handler->handler(std::move(request),
                                           std::move(stop_token));
     }
+  } else if (*path == "/" || *path == "") {
+    co_return Response{.status = 200, .body = GetHomePage()};
+  }
+  if (path->starts_with("/list") && request.method == http::Method::kPropfind) {
+    co_return GetWebDAVResponse(*path, request.headers);
   }
   co_return Response{.status = 302, .headers = {{"Location", "/"}}};
 }
 
-auto AccountManagerHandler::Impl::GetWebDAVRootResponse(
+auto AccountManagerHandler::Impl::GetWebDAVResponse(
+    std::string_view path,
     std::span<const std::pair<std::string, std::string>> headers) const
     -> Response {
-  std::vector<std::string> responses = {GetElement(
-      ElementData{.path = "/", .name = "root", .is_directory = true})};
+  auto decomposed = SplitString(std::string(path), '/');
+  if (decomposed.empty()) {
+    return Response{.status = 404};
+  }
+  std::vector<std::string> responses = {
+      GetElement(ElementData{.path = std::string(path),
+                             .name = GetFileName(std::string(path)),
+                             .is_directory = true})};
   if (coro::http::GetHeader(headers, "Depth") == "1") {
-    for (const auto& account : accounts_) {
-      responses.push_back(
-          GetElement(ElementData{.path = StrCat("/", account.id(), "/"),
-                                 .name = std::string(account.id()),
-                                 .is_directory = true}));
+    if (decomposed.size() == 1) {
+      std::set<std::string_view> account_type;
+      for (const auto& account : accounts_) {
+        account_type.insert(account.type());
+      }
+      for (std::string_view type : account_type) {
+        responses.push_back(
+            GetElement(ElementData{.path = StrCat("/list/", type, '/'),
+                                   .name = std::string(type),
+                                   .is_directory = true}));
+      }
+    } else if (decomposed.size() == 2) {
+      std::string type = http::DecodeUri(decomposed[1]);
+      for (const auto& account : accounts_) {
+        if (account.type() == type) {
+          responses.push_back(GetElement(
+              ElementData{.path = StrCat("/list/", type, '/',
+                                         http::EncodeUri(account.username())),
+                          .name = std::string(type),
+                          .is_directory = true}));
+        }
+      }
+    } else {
+      return Response{.status = 404};
     }
   }
   return Response{.status = 207,
