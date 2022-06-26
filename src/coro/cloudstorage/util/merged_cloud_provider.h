@@ -15,8 +15,17 @@ class MergedCloudProvider {
     std::optional<int64_t> space_total;
   };
 
+  struct AccountId {
+    std::string type;
+    std::string id;
+
+    friend bool operator==(const AccountId& a, const AccountId& b) {
+      return std::tie(a.type, a.id) == std::tie(b.type, b.id);
+    }
+  };
+
   struct ItemData {
-    std::string account_id;
+    AccountId account_id;
     std::string id;
     std::string name;
     std::optional<int64_t> timestamp;
@@ -36,7 +45,12 @@ class MergedCloudProvider {
     std::string name;
   };
 
-  using Item = std::variant<File, Directory, Root>;
+  struct ProviderTypeRoot {
+    std::string id;
+    std::string name;
+  };
+
+  using Item = std::variant<File, Directory, Root, ProviderTypeRoot>;
 
   struct PageData {
     std::vector<Item> items;
@@ -51,7 +65,6 @@ class MergedCloudProvider {
   static inline constexpr std::string_view kId = "merged";
 
   bool IsFileContentSizeRequired(const Directory &d) const;
-  bool IsFileContentSizeRequired(const Root &d) const;
 
   void AddAccount(std::string id, AbstractCloudProvider *p);
 
@@ -60,6 +73,10 @@ class MergedCloudProvider {
   Task<Root> GetRoot(stdx::stop_token) const;
 
   Task<PageData> ListDirectoryPage(Root directory,
+                                   std::optional<std::string> page_token,
+                                   stdx::stop_token stop_token);
+
+  Task<PageData> ListDirectoryPage(ProviderTypeRoot directory,
                                    std::optional<std::string> page_token,
                                    stdx::stop_token stop_token);
 
@@ -72,17 +89,23 @@ class MergedCloudProvider {
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         stdx::stop_token stop_token);
 
-  template <typename ItemT>
+  template <typename ItemT, typename = std::enable_if_t<
+                                !std::is_same_v<ItemT, ProviderTypeRoot> &&
+                                !std::is_same_v<ItemT, Root>>>
   Task<ItemT> RenameItem(ItemT item, std::string new_name,
                          stdx::stop_token stop_token);
 
   Task<Directory> CreateDirectory(Directory parent, std::string name,
                                   stdx::stop_token stop_token);
 
-  template <typename ItemT>
+  template <typename ItemT, typename = std::enable_if_t<
+                                !std::is_same_v<ItemT, ProviderTypeRoot> &&
+                                !std::is_same_v<ItemT, Root>>>
   Task<> RemoveItem(ItemT item, stdx::stop_token stop_token);
 
-  template <typename ItemT>
+  template <typename ItemT, typename = std::enable_if_t<
+                                !std::is_same_v<ItemT, ProviderTypeRoot> &&
+                                !std::is_same_v<ItemT, Root>>>
   Task<ItemT> MoveItem(ItemT source, Directory destination,
                        stdx::stop_token stop_token);
 
@@ -96,8 +119,8 @@ class MergedCloudProvider {
     stdx::stop_source stop_source;
   };
 
-  Account *GetAccount(std::string_view id);
-  const Account *GetAccount(std::string_view id) const;
+  Account *GetAccount(const AccountId &);
+  const Account *GetAccount(const AccountId &) const;
 
   std::vector<Account> accounts_;
 };
