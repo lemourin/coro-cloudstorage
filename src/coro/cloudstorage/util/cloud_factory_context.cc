@@ -7,11 +7,14 @@ namespace coro::cloudstorage::util {
 CloudFactoryContext::CloudFactoryContext(
     const coro::util::EventLoop* event_loop, std::string config_path)
     : event_loop_(event_loop),
-      thread_pool_(event_loop_),
+      thread_pool_(event_loop_, (std::thread::hardware_concurrency() + 1) / 2,
+                   "coro-tpool"),
       curl_http_(event_loop_, GetDirectoryPath(GetConfigFilePath())),
       http_(coro::http::CacheHttpConfig{}, &curl_http_),
-      thumbnail_generator_(&thread_pool_, event_loop_),
-      muxer_(event_loop_, &thread_pool_),
+      thumbnail_thread_pool_(
+          event_loop_, std::thread::hardware_concurrency() / 2, "coro-thumb"),
+      thumbnail_generator_(&thumbnail_thread_pool_, event_loop_),
+      muxer_(event_loop_, &thumbnail_thread_pool_),
       random_engine_(std::random_device()()),
       random_number_generator_(&random_engine_),
       factory_(event_loop_, &thread_pool_, &http_, &thumbnail_generator_,
