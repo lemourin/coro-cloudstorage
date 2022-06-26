@@ -26,11 +26,10 @@ std::vector<std::string> GetEffectivePath(std::string_view uri_path) {
   for (auto& d : components) {
     d = http::DecodeUri(d);
   }
-  if (components.size() < 2) {
+  if (components.size() < 3) {
     throw CloudException("invalid path");
   }
-  components.erase(components.begin());
-  components.erase(components.begin());
+  components.erase(components.begin(), components.begin() + 3);
   return components;
 }
 

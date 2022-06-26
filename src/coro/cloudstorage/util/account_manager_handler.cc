@@ -282,10 +282,12 @@ Generator<std::string> AccountManagerHandler::Impl::GetHomePage() const {
         fmt::arg("provider_icon",
                  util::StrCat("/static/", provider_id, ".png")),
         fmt::arg("provider_url",
-                 util::StrCat("/list/", http::EncodeUri(account.id()), "/")),
+                 util::StrCat("/list/", account.type(), "/",
+                              http::EncodeUri(account.username()), "/")),
         fmt::arg("provider_name", account.username()),
         fmt::arg("provider_remove_url",
-                 util::StrCat("/remove/", http::EncodeUri(account.id()))),
+                 util::StrCat("/remove/", account.type(), "/",
+                              http::EncodeUri(account.username()))),
         fmt::arg("provider_id", http::EncodeUri(account.id())));
   }
   std::string content = fmt::format(
@@ -300,14 +302,16 @@ void AccountManagerHandler::Impl::OnCloudProviderCreated(
   std::string account_id = std::string(account->id());
   try {
     handlers_.emplace_back(Handler{
-        .id = std::string(account_id),
-        .prefix = StrCat("/remove/", http::EncodeUri(account_id)),
+        .id = account_id,
+        .prefix = StrCat("/remove/", account->type(), '/',
+                         http::EncodeUri(account->username())),
         .handler = OnRemoveHandler{.d = this, .account_id = account_id}});
 
     auto& provider = account->provider();
     handlers_.emplace_back(
-        Handler{.id = std::string(account_id),
-                .prefix = StrCat("/list/", http::EncodeUri(account_id)),
+        Handler{.id = account_id,
+                .prefix = StrCat("/list/", account->type(), '/',
+                                 http::EncodeUri(account->username())),
                 .handler = CloudProviderHandler(&provider, thumbnail_generator_,
                                                 &settings_manager_)});
     account_listener_.OnCreate(account);
@@ -382,8 +386,9 @@ auto AccountManagerHandler::Impl::AuthHandler::operator()(
       std::move(stop_token));
   co_return Response{
       .status = 302,
-      .headers = {{"Location",
-                   util::StrCat("/list/", http::EncodeUri(account->id()))}}};
+      .headers = {
+          {"Location", util::StrCat("/list/", account->type(), '/',
+                                    http::EncodeUri(account->username()))}}};
 }
 
 auto AccountManagerHandler::Impl::OnRemoveHandler::operator()(
