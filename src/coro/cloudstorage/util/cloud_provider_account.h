@@ -11,11 +11,6 @@
 
 namespace coro::cloudstorage::util {
 
-inline std::string GetAccountId(std::string_view id,
-                                std::string_view username) {
-  return StrCat("[", id, "] ", username);
-}
-
 class CloudProviderAccount {
  public:
   struct Id {
