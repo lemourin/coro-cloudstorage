@@ -52,8 +52,6 @@ class AccountListener {
   std::unique_ptr<Interface> d_;
 };
 
-class AccountManagerHandlerImpl;
-
 class AccountManagerHandler {
  public:
   AccountManagerHandler(const AbstractCloudFactory* factory,
@@ -72,7 +70,9 @@ class AccountManagerHandler {
   Task<> Quit();
 
  private:
-  std::unique_ptr<AccountManagerHandlerImpl> impl_;
+  class Impl;
+
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace coro::cloudstorage::util
