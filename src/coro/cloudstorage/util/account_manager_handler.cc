@@ -143,9 +143,10 @@ AccountManagerHandler::Impl::Impl(const AbstractCloudFactory* factory,
 
   for (AbstractCloudProvider::Type type :
        factory->GetSupportedCloudProviders()) {
-    handlers_.emplace_back(Handler{
-        .prefix = util::StrCat("/auth/", factory->GetAuth(type).GetId()),
-        .handler = AuthHandler{type, this}});
+    handlers_.emplace_back(
+        Handler{.prefix = util::StrCat(
+                    "/auth/", http::EncodeUri(factory->GetAuth(type).GetId())),
+                .handler = AuthHandler{type, this}});
   }
 
   for (auto auth_token : settings_manager_.LoadTokenData()) {
@@ -192,12 +193,18 @@ auto AccountManagerHandler::Impl::HandleRequest(
                     {"Access-Control-Allow-Origin", "*"},
                     {"Access-Control-Allow-Headers", "*"}}};
   }
-  auto path_opt = http::ParseUri(request.url).path;
-  if (!path_opt) {
+  auto path = http::ParseUri(request.url).path;
+  if (!path) {
     co_return Response{.status = 400};
   }
-  auto path = http::DecodeUri(std::move(*path_opt));
-  if (auto* handler = ChooseHandler(path)) {
+  if (path->empty() || *path == "/") {
+    if (request.method == coro::http::Method::kPropfind) {
+      co_return GetWebDAVRootResponse(request.headers);
+    } else {
+      co_return Response{.status = 200, .body = GetHomePage()};
+    }
+  }
+  if (auto* handler = ChooseHandler(*path)) {
     if (auto account_it = std::find_if(
             accounts_.begin(), accounts_.end(),
             [&](const auto& account) { return account.id() == handler->id; });
@@ -218,15 +225,7 @@ auto AccountManagerHandler::Impl::HandleRequest(
                                           std::move(stop_token));
     }
   }
-  if (path.empty() || path == "/") {
-    if (request.method == coro::http::Method::kPropfind) {
-      co_return GetWebDAVRootResponse(request.headers);
-    } else {
-      co_return Response{.status = 200, .body = GetHomePage()};
-    }
-  } else {
-    co_return Response{.status = 302, .headers = {{"Location", "/"}}};
-  }
+  co_return Response{.status = 302, .headers = {{"Location", "/"}}};
 }
 
 auto AccountManagerHandler::Impl::GetWebDAVRootResponse(
@@ -283,7 +282,7 @@ Generator<std::string> AccountManagerHandler::Impl::GetHomePage() const {
         fmt::arg("provider_icon",
                  util::StrCat("/static/", provider_id, ".png")),
         fmt::arg("provider_url",
-                 util::StrCat("/", http::EncodeUri(account.id()), "/")),
+                 util::StrCat("/list/", http::EncodeUri(account.id()), "/")),
         fmt::arg("provider_name", account.username()),
         fmt::arg("provider_remove_url",
                  util::StrCat("/remove/", http::EncodeUri(account.id()))),
@@ -302,13 +301,13 @@ void AccountManagerHandler::Impl::OnCloudProviderCreated(
   try {
     handlers_.emplace_back(Handler{
         .id = std::string(account_id),
-        .prefix = StrCat("/remove/", account_id),
+        .prefix = StrCat("/remove/", http::EncodeUri(account_id)),
         .handler = OnRemoveHandler{.d = this, .account_id = account_id}});
 
     auto& provider = account->provider();
     handlers_.emplace_back(
         Handler{.id = std::string(account_id),
-                .prefix = StrCat("/", account_id),
+                .prefix = StrCat("/list/", http::EncodeUri(account_id)),
                 .handler = CloudProviderHandler(&provider, thumbnail_generator_,
                                                 &settings_manager_)});
     account_listener_.OnCreate(account);
@@ -383,8 +382,8 @@ auto AccountManagerHandler::Impl::AuthHandler::operator()(
       std::move(stop_token));
   co_return Response{
       .status = 302,
-      .headers = {
-          {"Location", util::StrCat("/", http::EncodeUri(account->id()))}}};
+      .headers = {{"Location",
+                   util::StrCat("/list/", http::EncodeUri(account->id()))}}};
 }
 
 auto AccountManagerHandler::Impl::OnRemoveHandler::operator()(
