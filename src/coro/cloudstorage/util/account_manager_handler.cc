@@ -197,12 +197,12 @@ auto AccountManagerHandler::Impl::HandleRequest(
   if (!path) {
     co_return Response{.status = 400};
   }
-  if (path->empty() || *path == "/") {
-    if (request.method == coro::http::Method::kPropfind) {
-      co_return GetWebDAVRootResponse(request.headers);
-    } else {
-      co_return Response{.status = 200, .body = GetHomePage()};
-    }
+  if ((*path == "/list/" || *path == "/list") &&
+      request.method == http::Method::kPropfind) {
+    co_return GetWebDAVRootResponse(request.headers);
+  }
+  if (*path == "/" || *path == "") {
+    co_return Response{.status = 200, .body = GetHomePage()};
   }
   if (auto* handler = ChooseHandler(*path)) {
     if (auto account_it = std::find_if(
