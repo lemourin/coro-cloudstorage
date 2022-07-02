@@ -67,13 +67,26 @@ std::string GetItemPathPrefix(
 
 bool IsRoot(std::string_view path) { return GetEffectivePath(path).empty(); }
 
-Generator<std::string> GetDashPlayer(std::string path) {
+std::string RewriteThumbnailUrl(std::string_view host, std::string url) {
+  auto host_uri = http::ParseUri(StrCat("//", host));
+  if (host_uri.host.value() != "localhost") {
+    return url;
+  }
+  auto uri = http::ParseUri(url);
+  uri.host = StrCat("img.localhost");
+  uri.port = host_uri.port;
+  std::string rewritten = http::ToString(uri);
+  return rewritten;
+}
+
+Generator<std::string> GetDashPlayer(std::string host, std::string path) {
   std::stringstream stream;
   stream << "<source src='" << path << "'>";
-  std::string content =
-      fmt::format(fmt::runtime(kAssetsHtmlDashPlayerHtml),
-                  fmt::arg("poster", StrCat(path, "?hq_thumbnail=true")),
-                  fmt::arg("source", std::move(stream).str()));
+  std::string content = fmt::format(
+      fmt::runtime(kAssetsHtmlDashPlayerHtml),
+      fmt::arg("poster",
+               RewriteThumbnailUrl(host, StrCat(path, "?hq_thumbnail=true"))),
+      fmt::arg("source", std::move(stream).str()));
   co_yield std::move(content);
 }
 
@@ -138,6 +151,7 @@ auto CloudProviderHandler::operator()(Request request,
             .status = 200,
             .headers = {{"Content-Type", "text/html; charset=UTF-8"}},
             .body = GetDashPlayer(
+                http::GetHeader(request.headers, "Host").value(),
                 StrCat(GetItemPathPrefix(request.headers), uri.path.value()))};
       }
     }
@@ -258,12 +272,14 @@ auto CloudProviderHandler::HandleExistingItem(
       .status = 200,
       .headers = {{"Content-Type", "text/html"}},
       .body = GetDirectoryContent(
+          http::GetHeader(request.headers, "Host").value(),
           GetItemPathPrefix(request.headers),
           ListDirectory(provider_, d, std::move(stop_token)), directory_path)};
 }
 
 template <typename Item>
-std::string CloudProviderHandler::GetItemEntry(const Item& item,
+std::string CloudProviderHandler::GetItemEntry(std::string_view host,
+                                               const Item& item,
                                                std::string_view path,
                                                bool use_dash_player) const {
   std::string file_link = StrCat(path, http::EncodeUri(item.name));
@@ -273,11 +289,13 @@ std::string CloudProviderHandler::GetItemEntry(const Item& item,
       fmt::arg("timestamp", TimeStampToString(item.timestamp)),
       fmt::arg("url",
                StrCat(file_link, use_dash_player ? "?dash_player=true" : "")),
-      fmt::arg("thumbnail_url", StrCat(file_link, "?thumbnail=true")));
+      fmt::arg(
+          "thumbnail_url",
+          RewriteThumbnailUrl(host, StrCat(file_link, "?thumbnail=true"))));
 }
 
 Generator<std::string> CloudProviderHandler::GetDirectoryContent(
-    std::string path_prefix,
+    std::string host, std::string path_prefix,
     Generator<AbstractCloudProvider::PageData> page_data,
     std::string path) const {
   co_yield "<!DOCTYPE html>"
@@ -297,8 +315,9 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
       fmt::arg("size", ""), fmt::arg("timestamp", ""),
       fmt::arg("url", GetDirectoryPath(path)),
       fmt::arg("thumbnail_url",
-               StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
-                      "?thumbnail=true")));
+               RewriteThumbnailUrl(
+                   host, StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
+                                "?thumbnail=true"))));
   co_yield std::move(parent_entry);
   FOR_CO_AWAIT(const auto& page, page_data) {
     for (const auto& item : page.items) {
@@ -313,7 +332,7 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
                 return false;
               }
             }();
-            return GetItemEntry(item, path, use_dash_player);
+            return GetItemEntry(host, item, path, use_dash_player);
           },
           item);
     }

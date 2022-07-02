@@ -54,11 +54,11 @@ class CloudProviderHandler {
                                     stdx::stop_token stop_token);
 
   template <typename Item>
-  std::string GetItemEntry(const Item& item, std::string_view path,
-                           bool use_dash_player) const;
+  std::string GetItemEntry(std::string_view host, const Item& item,
+                           std::string_view path, bool use_dash_player) const;
 
   Generator<std::string> GetDirectoryContent(
-      std::string path_prefix,
+      std::string host, std::string path_prefix,
       Generator<AbstractCloudProvider::PageData> page_data,
       std::string path) const;
 
