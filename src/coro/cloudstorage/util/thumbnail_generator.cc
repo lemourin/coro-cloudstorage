@@ -100,89 +100,6 @@ ImageSize GetThumbnailSize(ImageSize i, int target) {
   }
 }
 
-auto ConvertFrame(AVFrame* frame, AVPixelFormat format) {
-  std::unique_ptr<SwsContext, SwsContextDeleter> sws_context(sws_getContext(
-      frame->width, frame->height, AVPixelFormat(frame->format), frame->width,
-      frame->height, format, SWS_BICUBIC, nullptr, nullptr, nullptr));
-  if (!sws_context) {
-    throw std::runtime_error("sws_getContext returned null");
-  }
-  std::unique_ptr<AVFrame, AVFrameConvertedDeleter> rgb_frame(av_frame_alloc());
-  if (!rgb_frame) {
-    throw std::runtime_error("av_frame_alloc");
-  }
-  CheckAVError(av_frame_copy_props(rgb_frame.get(), frame),
-               "av_frame_copy_props");
-  rgb_frame->format = format;
-  rgb_frame->width = frame->width;
-  rgb_frame->height = frame->height;
-  CheckAVError(av_image_alloc(rgb_frame->data, rgb_frame->linesize,
-                              frame->width, frame->height, format, 32),
-               "av_image_alloc");
-  CheckAVError(sws_scale(sws_context.get(), frame->data, frame->linesize, 0,
-                         frame->height, rgb_frame->data, rgb_frame->linesize),
-               "sws_scale");
-  return rgb_frame;
-}
-
-std::string EncodeFrame(AVFrame* input_frame, ThumbnailOptions options) {
-  auto* codec = avcodec_find_encoder(
-      options.codec == ThumbnailOptions::Codec::JPEG ? AV_CODEC_ID_MJPEG
-                                                     : AV_CODEC_ID_PNG);
-  if (!codec) {
-    throw std::logic_error("codec not found");
-  }
-  std::vector<AVPixelFormat> supported;
-  for (const auto* p = codec->pix_fmts; p && *p != -1; p++) {
-    if (sws_isSupportedOutput(*p)) {
-      supported.emplace_back(*p);
-    }
-  }
-  supported.emplace_back(AV_PIX_FMT_NONE);
-  auto frame = ConvertFrame(
-      input_frame, avcodec_find_best_pix_fmt_of_list(
-                       supported.data(), AVPixelFormat(input_frame->format),
-                       false, /*loss_ptr=*/nullptr));
-  std::unique_ptr<AVCodecContext, AVCodecContextDeleter> context(
-      avcodec_alloc_context3(codec));
-  if (!context) {
-    throw std::runtime_error("avcodec_alloc_context3");
-  }
-  context->time_base = {1, 24};
-  context->pix_fmt = AVPixelFormat(frame->format);
-  context->width = frame->width;
-  context->height = frame->height;
-  context->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
-  CheckAVError(avcodec_open2(context.get(), codec, nullptr), "avcodec_open2");
-  auto packet = CreatePacket();
-  bool frame_sent = false;
-  bool flush_sent = false;
-  std::string result;
-  while (true) {
-    if (!frame_sent) {
-      CheckAVError(avcodec_send_frame(context.get(), frame.get()),
-                   "avcodec_send_frame");
-      frame_sent = true;
-    } else if (!flush_sent) {
-      CheckAVError(avcodec_send_frame(context.get(), nullptr),
-                   "avcodec_send_frame");
-      flush_sent = true;
-    }
-    auto err = avcodec_receive_packet(context.get(), packet.get());
-    if (err != 0) {
-      if (err == AVERROR_EOF) {
-        break;
-      } else {
-        CheckAVError(err, "avcodec_receive_packet");
-      }
-    } else {
-      result +=
-          std::string(reinterpret_cast<char*>(packet->data), packet->size);
-    }
-  }
-  return result;
-}
-
 auto CreateSourceFilter(AVFilterGraph* graph, int width, int height, int format,
                         AVRational time_base) {
   std::unique_ptr<AVFilterContext, AVFilterContextDeleter> filter(
@@ -327,6 +244,107 @@ auto RotateFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
   return received_frame;
 }
 
+auto ConvertFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
+                  const AVCodec* codec) {
+  int orientation = [&] {
+    if (AVDictionaryEntry* entry =
+            av_dict_get(frame->metadata, "Orientation", nullptr, 0)) {
+      int value = std::stoi(entry->value);
+      if (value > 1 && value <= 8) {
+        return value;
+      }
+    }
+    return 1;
+  }();
+  frame = RotateFrame(std::move(frame), orientation);
+
+  std::vector<AVPixelFormat> supported;
+  for (const auto* p = codec->pix_fmts; p && *p != -1; p++) {
+    if (sws_isSupportedOutput(*p)) {
+      supported.emplace_back(*p);
+    }
+  }
+  supported.emplace_back(AV_PIX_FMT_NONE);
+  AVPixelFormat format = avcodec_find_best_pix_fmt_of_list(
+      supported.data(), AVPixelFormat(frame->format), false,
+      /*loss_ptr=*/nullptr);
+  std::unique_ptr<SwsContext, SwsContextDeleter> sws_context(sws_getContext(
+      frame->width, frame->height, AVPixelFormat(frame->format), frame->width,
+      frame->height, format, SWS_BICUBIC, nullptr, nullptr, nullptr));
+  if (!sws_context) {
+    throw std::runtime_error("sws_getContext returned null");
+  }
+  std::unique_ptr<AVFrame, AVFrameConvertedDeleter> rgb_frame(av_frame_alloc());
+  if (!rgb_frame) {
+    throw std::runtime_error("av_frame_alloc");
+  }
+  CheckAVError(av_frame_copy_props(rgb_frame.get(), frame.get()),
+               "av_frame_copy_props");
+  if (orientation != 1) {
+    CheckAVError(av_dict_set_int(&rgb_frame->metadata, "Orientation", 1, 0),
+                 "av_dict_set_int");
+  }
+  rgb_frame->format = format;
+  rgb_frame->width = frame->width;
+  rgb_frame->height = frame->height;
+  CheckAVError(av_image_alloc(rgb_frame->data, rgb_frame->linesize,
+                              frame->width, frame->height, format, 32),
+               "av_image_alloc");
+  CheckAVError(sws_scale(sws_context.get(), frame->data, frame->linesize, 0,
+                         frame->height, rgb_frame->data, rgb_frame->linesize),
+               "sws_scale");
+  return rgb_frame;
+}
+
+std::string EncodeFrame(std::unique_ptr<AVFrame, AVFrameDeleter> input_frame,
+                        ThumbnailOptions options) {
+  auto* codec = avcodec_find_encoder(
+      options.codec == ThumbnailOptions::Codec::JPEG ? AV_CODEC_ID_MJPEG
+                                                     : AV_CODEC_ID_PNG);
+  if (!codec) {
+    throw std::logic_error("codec not found");
+  }
+  auto frame = ConvertFrame(std::move(input_frame), codec);
+  std::unique_ptr<AVCodecContext, AVCodecContextDeleter> context(
+      avcodec_alloc_context3(codec));
+  if (!context) {
+    throw std::runtime_error("avcodec_alloc_context3");
+  }
+  context->time_base = {1, 24};
+  context->pix_fmt = AVPixelFormat(frame->format);
+  context->width = frame->width;
+  context->height = frame->height;
+  context->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
+  CheckAVError(avcodec_open2(context.get(), codec, nullptr), "avcodec_open2");
+  auto packet = CreatePacket();
+  bool frame_sent = false;
+  bool flush_sent = false;
+  std::string result;
+  while (true) {
+    if (!frame_sent) {
+      CheckAVError(avcodec_send_frame(context.get(), frame.get()),
+                   "avcodec_send_frame");
+      frame_sent = true;
+    } else if (!flush_sent) {
+      CheckAVError(avcodec_send_frame(context.get(), nullptr),
+                   "avcodec_send_frame");
+      flush_sent = true;
+    }
+    auto err = avcodec_receive_packet(context.get(), packet.get());
+    if (err != 0) {
+      if (err == AVERROR_EOF) {
+        break;
+      } else {
+        CheckAVError(err, "avcodec_receive_packet");
+      }
+    } else {
+      result +=
+          std::string(reinterpret_cast<char*>(packet->data), packet->size);
+    }
+  }
+  return result;
+}
+
 auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options) {
   auto context = CreateFormatContext(io_context);
   auto stream = av_find_best_stream(context.get(), AVMEDIA_TYPE_VIDEO, -1, -1,
@@ -360,34 +378,24 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options) {
                "avfilter_link");
   CheckAVError(avfilter_graph_config(filter_graph.get(), nullptr),
                "avfilter_graph_config");
-  int orientation = 1;
   while (true) {
     std::unique_ptr<AVFrame, AVFrameDeleter> received_frame(av_frame_alloc());
     int err = av_buffersink_get_frame(sink_filter.get(), received_frame.get());
     if (err == AVERROR(EAGAIN)) {
       auto frame = DecodeFrame(context.get(), codec_context.get(), stream);
-      if (frame) {
-        if (AVDictionaryEntry* entry =
-                av_dict_get(frame->metadata, "Orientation", nullptr, 0)) {
-          int value = std::stoi(entry->value);
-          if (orientation == 1 && value > 1 && value <= 8) {
-            orientation = value;
-          }
-        }
-      }
       CheckAVError(av_buffersrc_write_frame(source_filter.get(), frame.get()),
                    "av_buffersrc_write_frame");
     } else if (err != 0) {
       CheckAVError(err, "av_buffersink_get_frame");
     } else {
-      return RotateFrame(std::move(received_frame), orientation);
+      return std::move(received_frame);
     }
   }
 }
 
 std::string GenerateThumbnail(AVIOContext* io_context,
                               ThumbnailOptions options) {
-  return EncodeFrame(GetThumbnailFrame(io_context, options).get(), options);
+  return EncodeFrame(GetThumbnailFrame(io_context, options), options);
 }
 
 }  // namespace
