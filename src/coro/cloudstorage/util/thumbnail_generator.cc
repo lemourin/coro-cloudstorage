@@ -16,8 +16,9 @@ extern "C" {
 #include <utility>
 #include <vector>
 
-#include "avio_context.h"
+#include "coro/cloudstorage/util/avio_context.h"
 #include "coro/cloudstorage/util/ffmpeg_utils.h"
+#include "coro/cloudstorage/util/string_utils.h"
 #include "coro/util/raii_utils.h"
 
 namespace coro::cloudstorage::util {
@@ -195,12 +196,10 @@ auto CreateSourceFilter(AVFilterGraph* graph, int width, int height, int format,
   CheckAVError(av_dict_set_int(&d, "width", width, 0), "av_dict_set_int");
   CheckAVError(av_dict_set_int(&d, "height", height, 0), "av_dict_set_int");
   CheckAVError(av_dict_set_int(&d, "pix_fmt", format, 0), "av_dict_set_int");
-  CheckAVError(av_dict_set(&d, "time_base",
-                           (std::to_string(time_base.num) + "/" +
-                            std::to_string(time_base.den))
-                               .c_str(),
-                           0),
-               "av_dict_set");
+  CheckAVError(
+      av_dict_set(&d, "time_base",
+                  StrCat(time_base.num, '/', time_base.den).c_str(), 0),
+      "av_dict_set");
   CheckAVError(avfilter_init_dict(filter.get(), &d),
                "avfilter_init_dict source");
   return filter;
@@ -222,7 +221,7 @@ auto CreateFilter(AVFilterGraph* graph, const char* name) {
   std::unique_ptr<AVFilterContext, AVFilterContextDeleter> filter(
       avfilter_graph_alloc_filter(graph, avfilter_get_by_name(name), nullptr));
   if (!filter) {
-    throw std::logic_error("filter unavailable");
+    throw std::logic_error(StrCat("filter ", name, " unavailable"));
   }
   CheckAVError(avfilter_init_dict(filter.get(), nullptr), "avfilter_init_dict");
   return filter;
@@ -233,14 +232,7 @@ auto CreateSinkFilter(AVFilterGraph* graph) {
 }
 
 auto CreateThumbnailFilter(AVFilterGraph* graph) {
-  std::unique_ptr<AVFilterContext, AVFilterContextDeleter> filter(
-      avfilter_graph_alloc_filter(graph, avfilter_get_by_name("thumbnail"),
-                                  nullptr));
-  if (!filter) {
-    throw std::logic_error("filter thumbnail unavailable");
-  }
-  CheckAVError(avfilter_init_dict(filter.get(), nullptr), "avfilter_init_dict");
-  return filter;
+  return CreateFilter(graph, "thumbnail");
 }
 
 auto CreateScaleFilter(AVFilterGraph* graph, ImageSize size) {
