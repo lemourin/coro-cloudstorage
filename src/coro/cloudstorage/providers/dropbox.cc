@@ -329,7 +329,7 @@ auto Dropbox::GetItemThumbnail(File file, http::Range range,
         return true;
       }
     }
-    return true;
+    return false;
   };
   if (!is_supported(http::GetExtension(file.name))) {
     throw CloudException(CloudException::Type::kNotFound);
