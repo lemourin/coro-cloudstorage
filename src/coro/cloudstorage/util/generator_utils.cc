@@ -12,23 +12,24 @@ Generator<std::string> Take(Generator<std::string>& generator,
   }
   while (at_most > 0) {
     if ((*iterator).empty()) {
-      try {
-        co_await ++iterator;
-      } catch (...) {
-        throw;
-      }
+      co_await ++iterator;
     }
     if (iterator == generator.end()) {
       break;
     }
     auto size = std::min<size_t>((*iterator).size(), at_most);
-    co_yield std::string(
-        (*iterator).begin(),
-        (*iterator).begin() + static_cast<std::string::difference_type>(size));
     at_most -= size;
-    (*iterator).erase(
-        (*iterator).begin(),
-        (*iterator).begin() + static_cast<std::string::difference_type>(size));
+    if ((*iterator).size() == size) {
+      co_yield std::move(*iterator);
+      (*iterator).clear();
+    } else {
+      co_yield std::string((*iterator).begin(),
+                           (*iterator).begin() +
+                               static_cast<std::string::difference_type>(size));
+      (*iterator).erase((*iterator).begin(),
+                        (*iterator).begin() +
+                            static_cast<std::string::difference_type>(size));
+    }
   }
 }
 
