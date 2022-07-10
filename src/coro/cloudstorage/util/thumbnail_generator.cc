@@ -11,6 +11,7 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <utility>
@@ -56,9 +57,12 @@ struct AVFilterGraphDeleter {
 };
 
 auto DecodeFrame(AVFormatContext* context, AVCodecContext* codec_context,
-                 int stream_index) {
+                 int stream_index, std::atomic_bool* interrupted) {
   std::unique_ptr<AVFrame, AVFrameDeleter> result_frame;
   while (!result_frame) {
+    if (*interrupted) {
+      throw InterruptedException();
+    }
     auto packet = CreatePacket();
     auto read_packet = av_read_frame(context, packet.get());
     if (read_packet != 0 && read_packet != AVERROR_EOF) {
@@ -297,7 +301,8 @@ auto ConvertFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
 }
 
 std::string EncodeFrame(std::unique_ptr<AVFrame, AVFrameDeleter> input_frame,
-                        ThumbnailOptions options) {
+                        ThumbnailOptions options,
+                        std::atomic_bool* interrupted) {
   auto* codec = avcodec_find_encoder(
       options.codec == ThumbnailOptions::Codec::JPEG ? AV_CODEC_ID_MJPEG
                                                      : AV_CODEC_ID_PNG);
@@ -321,6 +326,9 @@ std::string EncodeFrame(std::unique_ptr<AVFrame, AVFrameDeleter> input_frame,
   bool flush_sent = false;
   std::string result;
   while (true) {
+    if (*interrupted) {
+      throw InterruptedException();
+    }
     if (!frame_sent) {
       CheckAVError(avcodec_send_frame(context.get(), frame.get()),
                    "avcodec_send_frame");
@@ -345,7 +353,8 @@ std::string EncodeFrame(std::unique_ptr<AVFrame, AVFrameDeleter> input_frame,
   return result;
 }
 
-auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options) {
+auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
+                       std::atomic_bool* interrupted) {
   auto context = CreateFormatContext(io_context);
   auto stream = av_find_best_stream(context.get(), AVMEDIA_TYPE_VIDEO, -1, -1,
                                     nullptr, 0);
@@ -382,7 +391,8 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options) {
     std::unique_ptr<AVFrame, AVFrameDeleter> received_frame(av_frame_alloc());
     int err = av_buffersink_get_frame(sink_filter.get(), received_frame.get());
     if (err == AVERROR(EAGAIN)) {
-      auto frame = DecodeFrame(context.get(), codec_context.get(), stream);
+      auto frame =
+          DecodeFrame(context.get(), codec_context.get(), stream, interrupted);
       CheckAVError(av_buffersrc_write_frame(source_filter.get(), frame.get()),
                    "av_buffersrc_write_frame");
     } else if (err != 0) {
@@ -393,9 +403,10 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options) {
   }
 }
 
-std::string GenerateThumbnail(AVIOContext* io_context,
-                              ThumbnailOptions options) {
-  return EncodeFrame(GetThumbnailFrame(io_context, options), options);
+std::string GenerateThumbnail(AVIOContext* io_context, ThumbnailOptions options,
+                              std::atomic_bool* interrupted) {
+  return EncodeFrame(GetThumbnailFrame(io_context, options, interrupted),
+                     options, interrupted);
 }
 
 }  // namespace
@@ -404,11 +415,13 @@ Task<std::string> ThumbnailGenerator::operator()(
     AbstractCloudProvider* provider, AbstractCloudProvider::File file,
     ThumbnailOptions options, stdx::stop_token stop_token) const {
   std::unique_ptr<AVIOContext, AVIOContextDeleter> io_context;
+  std::atomic_bool interrupted = false;
+  stdx::stop_callback cb(stop_token, [&] { interrupted = true; });
   co_return co_await thread_pool_->Do([&] {
     try {
-      io_context = CreateIOContext(event_loop_, provider, std::move(file),
-                                   std::move(stop_token));
-      return GenerateThumbnail(io_context.get(), options);
+      io_context =
+          CreateIOContext(event_loop_, provider, std::move(file), stop_token);
+      return GenerateThumbnail(io_context.get(), options, &interrupted);
     } catch (const std::exception& e) {
       std::cerr << "ERROR " << e.what() << '\n';
       throw;

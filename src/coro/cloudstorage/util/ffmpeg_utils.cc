@@ -13,7 +13,7 @@ std::string GetAvError(int err) {
   if (av_strerror(err, buffer.data(), AV_ERROR_MAX_STRING_SIZE) < 0) {
     return "invalid error";
   } else {
-    return buffer;
+    return std::string(buffer.c_str(), strlen(buffer.c_str()));
   }
 }
 
