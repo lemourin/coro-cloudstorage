@@ -159,7 +159,7 @@ auto Dropbox::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
           .method = http::Method::kPost,
           .headers = {{"Content-Type", ""},
                       {"Authorization", "Bearer " + auth_token_.access_token}},
-          .flags = Request::kRead},
+          .invalidates_cache = false},
       stop_token);
   Task<json> task2 = util::FetchJson(
       *http_,
@@ -168,7 +168,7 @@ auto Dropbox::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
           .method = http::Method::kPost,
           .headers = {{"Content-Type", ""},
                       {"Authorization", "Bearer " + auth_token_.access_token}},
-          .flags = Request::kRead},
+          .invalidates_cache = false},
       stop_token);
   auto [json1, json2] = co_await WhenAll(std::move(task1), std::move(task2));
   co_return GeneralData{.username = json1["email"],
@@ -185,13 +185,13 @@ auto Dropbox::ListDirectoryPage(Directory directory,
     body["cursor"] = *page_token;
     request = {.url = GetEndpoint("/files/list_folder/continue"),
                .body = body.dump(),
-               .flags = Request::kRead};
+               .invalidates_cache = false};
   } else {
     json body;
     body["path"] = std::move(directory.id);
     request = {.url = GetEndpoint("/files/list_folder"),
                .body = body.dump(),
-               .flags = Request::kRead};
+               .invalidates_cache = false};
   }
   auto response = co_await FetchJson(*http_, auth_token_.access_token,
                                      std::move(request), std::move(stop_token));
@@ -217,7 +217,7 @@ Generator<std::string> Dropbox::GetFileContent(File file, http::Range range,
                   {"Content-Type", ""},
                   {"Dropbox-API-arg", json.dump()},
                   {"Authorization", "Bearer " + auth_token_.access_token}},
-      .flags = Request::kRead};
+      .invalidates_cache = false};
   auto response =
       co_await http_->Fetch(std::move(request), std::move(stop_token));
   FOR_CO_AWAIT(std::string & body, response.body) { co_yield std::move(body); }

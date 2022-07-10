@@ -5,12 +5,13 @@
 namespace coro::cloudstorage::util {
 
 CloudFactoryContext::CloudFactoryContext(
-    const coro::util::EventLoop* event_loop, std::string config_path)
+    const coro::util::EventLoop* event_loop,
+    coro::http::CacheHttpConfig http_cache_config, std::string config_path)
     : event_loop_(event_loop),
       thread_pool_(event_loop_, (std::thread::hardware_concurrency() + 1) / 2,
                    "coro-tpool"),
       curl_http_(event_loop_, GetDirectoryPath(GetConfigFilePath())),
-      http_(coro::http::CacheHttpConfig{}, &curl_http_),
+      http_(http_cache_config, &curl_http_),
       thumbnail_thread_pool_(
           event_loop_, std::thread::hardware_concurrency() / 2, "coro-thumb"),
       thumbnail_generator_(&thumbnail_thread_pool_, event_loop_),

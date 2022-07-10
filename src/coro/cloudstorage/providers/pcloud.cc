@@ -165,7 +165,7 @@ auto PCloud::RenameItem(Directory item, std::string new_name,
              http::FormDataToString({{"folderid", std::to_string(item.id)},
                                      {"toname", std::move(new_name)},
                                      {"timeformat", "timestamp"}}),
-      .flags = Request::kWrite};
+      .invalidates_cache = true};
   auto response = co_await FetchJson(*http_, auth_token_.access_token,
                                      std::move(request), std::move(stop_token));
   co_return ToItemImpl<Directory>(response["metadata"]);
@@ -178,7 +178,7 @@ auto PCloud::RenameItem(File item, std::string new_name,
              http::FormDataToString({{"fileid", std::to_string(item.id)},
                                      {"toname", std::move(new_name)},
                                      {"timeformat", "timestamp"}}),
-      .flags = Request::kWrite};
+      .invalidates_cache = true};
   auto response = co_await FetchJson(*http_, auth_token_.access_token,
                                      std::move(request), std::move(stop_token));
   co_return ToItemImpl<File>(response["metadata"]);
@@ -191,7 +191,7 @@ auto PCloud::CreateDirectory(Directory parent, std::string name,
              http::FormDataToString({{"folderid", std::to_string(parent.id)},
                                      {"name", std::move(name)},
                                      {"timeformat", "timestamp"}}),
-      .flags = Request::kWrite};
+      .invalidates_cache = true};
   auto response = co_await FetchJson(*http_, auth_token_.access_token,
                                      std::move(request), std::move(stop_token));
   co_return ToItemImpl<Directory>(response["metadata"]);
@@ -201,7 +201,7 @@ Task<> PCloud::RemoveItem(File item, stdx::stop_token stop_token) {
   Request request{
       .url = GetEndpoint("/deletefile") + "?" +
              http::FormDataToString({{"fileid", std::to_string(item.id)}}),
-      .flags = Request::kWrite};
+      .invalidates_cache = true};
   co_await Fetch(*http_, auth_token_.access_token, std::move(request),
                  std::move(stop_token));
 }
@@ -210,7 +210,7 @@ Task<> PCloud::RemoveItem(Directory item, stdx::stop_token stop_token) {
   Request request{
       .url = GetEndpoint("/deletefolderrecursive") + "?" +
              http::FormDataToString({{"folderid", std::to_string(item.id)}}),
-      .flags = Request::kWrite};
+      .invalidates_cache = true};
   co_await Fetch(*http_, auth_token_.access_token, std::move(request),
                  std::move(stop_token));
 }
@@ -222,7 +222,7 @@ auto PCloud::MoveItem(Directory source, Directory destination,
                              {{"folderid", std::to_string(source.id)},
                               {"tofolderid", std::to_string(destination.id)},
                               {"timeformat", "timestamp"}}),
-                  .flags = Request::kWrite};
+                  .invalidates_cache = true};
   auto response = co_await FetchJson(*http_, auth_token_.access_token,
                                      std::move(request), std::move(stop_token));
   co_return ToItemImpl<Directory>(response["metadata"]);
@@ -235,7 +235,7 @@ auto PCloud::MoveItem(File source, Directory destination,
                              {{"fileid", std::to_string(source.id)},
                               {"tofolderid", std::to_string(destination.id)},
                               {"timeformat", "timestamp"}}),
-                  .flags = Request::Flag::kWrite};
+                  .invalidates_cache = true};
   auto response = co_await FetchJson(*http_, auth_token_.access_token,
                                      std::move(request), std::move(stop_token));
   co_return ToItemImpl<File>(response["metadata"]);
@@ -257,7 +257,7 @@ auto PCloud::CreateFile(Directory parent, std::string_view name,
                                   content.size +
                                   GetUploadStreamSuffix().length())}},
       .body = GetUploadStream(name, std::move(content)),
-      .flags = http::Request<>::kWrite};
+      .invalidates_cache = true};
   auto response = co_await FetchJson(*http_, auth_token_.access_token,
                                      std::move(request), std::move(stop_token));
   co_return ToItemImpl<File>(response["metadata"][0]);
