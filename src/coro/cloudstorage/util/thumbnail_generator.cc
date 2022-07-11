@@ -7,6 +7,7 @@ extern "C" {
 #include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
+#include <libavutil/display.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 }
@@ -353,6 +354,20 @@ std::string EncodeFrame(std::unique_ptr<AVFrame, AVFrameDeleter> input_frame,
   return result;
 }
 
+int GetExifOrientation(const int32_t* matrix) {
+  double theta = -round(av_display_rotation_get(matrix));
+  theta -= 360 * floor(theta / 360 + 0.9 / 360);
+  if (fabs(theta - 90.0) < 1.0) {
+    return matrix[3] > 0 ? 6 : 7;
+  } else if (fabs(theta - 180.0) < 1.0) {
+    return matrix[0] < 0 ? 2 : 4;
+  } else if (fabs(theta - 270.0) < 1.0) {
+    return matrix[3] < 0 ? 8 : 5;
+  } else {
+    return matrix[4] < 0 ? 3 : 1;
+  }
+}
+
 auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
                        std::atomic_bool* interrupted) {
   auto context = CreateFormatContext(io_context);
@@ -387,12 +402,35 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
                "avfilter_link");
   CheckAVError(avfilter_graph_config(filter_graph.get(), nullptr),
                "avfilter_graph_config");
+  int stream_orientation = [&] {
+    auto* stream_matrix = reinterpret_cast<int32_t*>(av_stream_get_side_data(
+        context->streams[stream], AV_PKT_DATA_DISPLAYMATRIX, nullptr));
+    if (stream_matrix != nullptr) {
+      return GetExifOrientation(stream_matrix);
+    } else {
+      return 0;
+    }
+  }();
+
   while (true) {
     std::unique_ptr<AVFrame, AVFrameDeleter> received_frame(av_frame_alloc());
     int err = av_buffersink_get_frame(sink_filter.get(), received_frame.get());
     if (err == AVERROR(EAGAIN)) {
       auto frame =
           DecodeFrame(context.get(), codec_context.get(), stream, interrupted);
+      if (frame) {
+        AVFrameSideData* frame_matrix =
+            av_frame_get_side_data(frame.get(), AV_FRAME_DATA_DISPLAYMATRIX);
+        int orientation =
+            frame_matrix ? GetExifOrientation(
+                               reinterpret_cast<int32_t*>(frame_matrix->data))
+                         : stream_orientation;
+        if (orientation != 0) {
+          CheckAVError(
+              av_dict_set_int(&frame->metadata, "Orientation", orientation, 0),
+              "av_dict_set_int");
+        }
+      }
       CheckAVError(av_buffersrc_write_frame(source_filter.get(), frame.get()),
                    "av_buffersrc_write_frame");
     } else if (err != 0) {
