@@ -1,6 +1,5 @@
 #include "coro/cloudstorage/util/merged_cloud_provider.h"
 
-#include <iostream>
 #include <set>
 
 #include "coro/cloudstorage/util/string_utils.h"
@@ -30,7 +29,6 @@ bool MergedCloudProvider::IsFileContentSizeRequired(const Directory &d) const {
 }
 
 void MergedCloudProvider::AddAccount(std::string id, AbstractCloudProvider *p) {
-  std::cerr << "CREATE [" << p->GetId() << "] " << id << '\n';
   accounts_.push_back(Account{.id = std::move(id), .provider = p});
 }
 
@@ -38,7 +36,6 @@ void MergedCloudProvider::RemoveAccount(AbstractCloudProvider *p) {
   accounts_.erase(
       std::find_if(accounts_.begin(), accounts_.end(), [&](Account &account) {
         if (account.provider == p) {
-          std::cerr << "REMOVE [" << p->GetId() << "] " << account.id << "\n";
           return true;
         } else {
           return false;

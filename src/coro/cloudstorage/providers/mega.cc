@@ -6,6 +6,7 @@
 #include <cryptopp/pwdbased.h>
 #include <cryptopp/sha.h>
 
+#include <iostream>
 #include <span>
 #include <string>
 #include <tuple>
@@ -753,7 +754,8 @@ auto Mega::TrySetThumbnail(File file, stdx::stop_token stop_token)
             stop_token);
         co_return co_await SetThumbnail(std::move(file), std::move(thumbnail),
                                         std::move(stop_token));
-      } catch (...) {
+      } catch (const std::exception& e) {
+        std::cerr << "FAILED TO SET THUMBNAIL: " << e.what() << '\n';
       }
       break;
     }

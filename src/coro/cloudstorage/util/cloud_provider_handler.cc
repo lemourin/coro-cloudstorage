@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 
 #include <iomanip>
+#include <iostream>
 #include <sstream>
 
 #include "coro/cloudstorage/util/cloud_provider_utils.h"
@@ -187,10 +188,15 @@ Task<std::string> CloudProviderHandler::GenerateThumbnail(
   switch (GetFileType(item.mime_type)) {
     case FileType::kImage:
     case FileType::kVideo:
-      co_return co_await (*thumbnail_generator_)(
-          provider_, item,
-          ThumbnailOptions{.codec = ThumbnailOptions::Codec::PNG},
-          std::move(stop_token));
+      try {
+        co_return co_await (*thumbnail_generator_)(
+            provider_, item,
+            ThumbnailOptions{.codec = ThumbnailOptions::Codec::PNG},
+            std::move(stop_token));
+      } catch (const std::exception& e) {
+        std::cerr << "FAILED TO GENERATE THUMBNAIL: " << e.what() << '\n';
+        throw;
+      }
     default:
       throw CloudException(CloudException::Type::kNotFound);
   }
