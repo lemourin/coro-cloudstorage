@@ -7,6 +7,7 @@
 
 #include "coro/cloudstorage/util/settings_manager.h"
 #include "coro/cloudstorage/util/string_utils.h"
+#include "coro/mutex.h"
 #include "coro/util/type_list.h"
 
 namespace coro::cloudstorage::util {
@@ -27,7 +28,8 @@ class CloudProviderAccount {
       : username_(std::move(username)),
         version_(version),
         type_(account->GetId()),
-        provider_(std::move(account)) {}
+        provider_(std::move(account)),
+        mutex_(std::make_unique<ReadWriteMutex>()) {}
 
   std::string_view type() const { return type_; }
   Id id() const { return {type_, username_}; }
@@ -35,6 +37,7 @@ class CloudProviderAccount {
   auto& provider() { return *provider_; }
   const auto& provider() const { return *provider_; }
   stdx::stop_token stop_token() const { return stop_source_.get_token(); }
+  ReadWriteMutex* mutex() { return mutex_.get(); }
 
  private:
   friend class AccountManagerHandler;
@@ -44,6 +47,7 @@ class CloudProviderAccount {
   std::string type_;
   std::unique_ptr<AbstractCloudProvider> provider_;
   stdx::stop_source stop_source_;
+  std::unique_ptr<ReadWriteMutex> mutex_;
 };
 
 }  // namespace coro::cloudstorage::util

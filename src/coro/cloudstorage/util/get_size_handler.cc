@@ -19,6 +19,7 @@ auto GetSizeHandler::operator()(Request request,
                                  .username = account_username->second}) {
       coro::util::StopTokenOr stop_token_or(std::move(stop_token),
                                             account.stop_token());
+      auto lock = co_await ReadLock::Create(account.mutex());
       auto volume_data =
           co_await account.provider().GetGeneralData(stop_token_or.GetToken());
       nlohmann::json json;
