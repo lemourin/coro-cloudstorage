@@ -269,9 +269,11 @@ auto AccountManagerHandler::Impl::GetWebDAVResponse(
 }
 
 void AccountManagerHandler::Impl::RemoveHandler(CloudProviderAccount* account) {
-  for (auto it = std::begin(handlers_); it != std::end(handlers_); it++) {
+  for (auto it = std::begin(handlers_); it != std::end(handlers_);) {
     if (it->account == account) {
-      handlers_.erase(it);
+      it = handlers_.erase(it);
+    } else {
+      it++;
     }
   }
 }
