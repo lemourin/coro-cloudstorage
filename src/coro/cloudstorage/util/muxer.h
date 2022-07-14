@@ -23,7 +23,7 @@ class Muxer {
 
  private:
   template <typename F1, typename F2>
-  auto InParallel(F1&& f1, F2&& f2) const
+  auto InParallel(F1&& f1, F2&& f2, stdx::stop_token) const
       -> std::tuple<decltype(f1()), decltype(f2())>;
 
   const coro::util::EventLoop* event_loop_;

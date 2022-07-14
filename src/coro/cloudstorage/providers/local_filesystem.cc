@@ -135,9 +135,9 @@ auto LocalFileSystem::GetRoot(stdx::stop_token) const -> Task<Directory> {
 
 auto LocalFileSystem::ListDirectoryPage(Directory directory,
                                         std::optional<std::string>,
-                                        stdx::stop_token) const
+                                        stdx::stop_token stop_token) const
     -> Task<PageData> {
-  co_return co_await thread_pool_->Do([&] {
+  co_return co_await thread_pool_->Do(std::move(stop_token), [&] {
     PageData page_data;
     for (const auto& e : std::filesystem::directory_iterator(
              std::filesystem::path(directory.id))) {
@@ -154,9 +154,9 @@ auto LocalFileSystem::ListDirectoryPage(Directory directory,
   });
 }
 
-auto LocalFileSystem::GetGeneralData(stdx::stop_token) const
+auto LocalFileSystem::GetGeneralData(stdx::stop_token stop_token) const
     -> Task<GeneralData> {
-  co_return co_await thread_pool_->Do([&] {
+  co_return co_await thread_pool_->Do(std::move(stop_token), [&] {
     auto space = std::filesystem::space(auth_token_.root);
     return GeneralData{
         .username = auth_token_.root,
@@ -167,20 +167,21 @@ auto LocalFileSystem::GetGeneralData(stdx::stop_token) const
 
 Generator<std::string> LocalFileSystem::GetFileContent(
     File file, http::Range range, stdx::stop_token stop_token) const {
-  std::ifstream stream = co_await thread_pool_->Do(
-      [&] { return std::ifstream(file.id, std::ifstream::binary); });
+  std::ifstream stream = co_await thread_pool_->Do(stop_token, [&] {
+    return std::ifstream(file.id, std::ifstream::binary);
+  });
   if (!range.end) {
     range.end = file.size - 1;
   }
   std::string buffer(kBufferSize, 0);
-  co_await thread_pool_->Do([&] { stream.seekg(range.start); });
+  co_await thread_pool_->Do(stop_token, [&] { stream.seekg(range.start); });
   int64_t bytes_read = 0;
   int64_t size = *range.end - range.start + 1;
   while (bytes_read < size) {
     if (stop_token.stop_requested()) {
       throw InterruptedException();
     }
-    bool read_status = co_await thread_pool_->Do([&] {
+    bool read_status = co_await thread_pool_->Do(stop_token, [&] {
       return bool(stream.read(
           buffer.data(), std::min<int64_t>(size - bytes_read, kBufferSize)));
     });

@@ -455,9 +455,9 @@ Task<std::string> ThumbnailGenerator::operator()(
   std::unique_ptr<AVIOContext, AVIOContextDeleter> io_context;
   std::atomic_bool interrupted = false;
   stdx::stop_callback cb(stop_token, [&] { interrupted = true; });
-  co_return co_await thread_pool_->Do([&] {
-    io_context =
-        CreateIOContext(event_loop_, provider, std::move(file), stop_token);
+  co_return co_await thread_pool_->Do(stop_token, [&] {
+    io_context = CreateIOContext(event_loop_, provider, std::move(file),
+                                 std::move(stop_token));
     return GenerateThumbnail(io_context.get(), options, &interrupted);
   });
 }

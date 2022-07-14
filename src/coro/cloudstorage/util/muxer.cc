@@ -39,7 +39,8 @@ auto CreateMuxerIOContext(std::FILE* file) {
 class MuxerContext {
  public:
   MuxerContext(coro::util::ThreadPool* thread_pool, AVIOContext* video,
-               AVIOContext* audio, MediaContainer container);
+               AVIOContext* audio, MediaContainer container,
+               stdx::stop_token stop_token);
 
   Generator<std::string> GetContent();
 
@@ -72,11 +73,13 @@ class MuxerContext {
   std::unique_ptr<AVIOContext, AVIOContextDeleter> io_context_;
   std::unique_ptr<AVFormatContext, AVFormatWriteContextDeleter> format_context_;
   std::vector<Stream> streams_;
+  stdx::stop_token stop_token_;
 };
 
 MuxerContext::MuxerContext(coro::util::ThreadPool* thread_pool,
                            AVIOContext* video, AVIOContext* audio,
-                           MediaContainer container)
+                           MediaContainer container,
+                           stdx::stop_token stop_token)
     : thread_pool_(thread_pool),
       file_(CreateTmpFile()),
       io_context_(CreateMuxerIOContext(file_.get())),
@@ -99,7 +102,8 @@ MuxerContext::MuxerContext(coro::util::ThreadPool* thread_pool,
                      "avformat_alloc_output_context");
         format_context->pb = io_context_.get();
         return format_context;
-      }()) {
+      }()),
+      stop_token_(std::move(stop_token)) {
   streams_.emplace_back(CreateStream(video, AVMEDIA_TYPE_VIDEO));
   streams_.emplace_back(CreateStream(audio, AVMEDIA_TYPE_AUDIO));
   CheckAVError(
@@ -138,7 +142,8 @@ Generator<std::string> MuxerContext::GetContent() {
         stream.packet = CreatePacket();
         while (true) {
           auto read_packet = co_await thread_pool_->Do(
-              av_read_frame, stream.format_context.get(), stream.packet.get());
+              stop_token_, av_read_frame, stream.format_context.get(),
+              stream.packet.get());
           if (read_packet != 0 && read_packet != AVERROR_EOF) {
             CheckAVError(read_packet, "av_read_frame");
           } else {
@@ -203,14 +208,14 @@ Generator<std::string> MuxerContext::GetContent() {
 }  // namespace
 
 template <typename F1, typename F2>
-auto Muxer::InParallel(F1&& f1, F2&& f2) const
+auto Muxer::InParallel(F1&& f1, F2&& f2, stdx::stop_token stop_token) const
     -> std::tuple<decltype(f1()), decltype(f2())> {
   std::promise<std::tuple<decltype(f1()), decltype(f2())>> promise;
   coro::RunTask([&]() -> Task<> {
     try {
       promise.set_value(
-          co_await WhenAll(thread_pool_->Do(std::forward<F1>(f1)),
-                           thread_pool_->Do(std::forward<F2>(f2))));
+          co_await WhenAll(thread_pool_->Do(stop_token, std::forward<F1>(f1)),
+                           thread_pool_->Do(stop_token, std::forward<F2>(f2))));
     } catch (...) {
       promise.set_exception(std::current_exception());
     }
@@ -226,7 +231,7 @@ Generator<std::string> Muxer::operator()(
     stdx::stop_token stop_token) const {
   std::unique_ptr<AVIOContext, AVIOContextDeleter> video_io_context;
   std::unique_ptr<AVIOContext, AVIOContextDeleter> audio_io_context;
-  auto muxer_context = co_await thread_pool_->Do([&] {
+  auto muxer_context = co_await thread_pool_->Do(stop_token, [&] {
     std::tie(video_io_context, audio_io_context) = InParallel(
         [&] {
           return CreateIOContext(event_loop_, video_cloud_provider,
@@ -235,9 +240,10 @@ Generator<std::string> Muxer::operator()(
         [&] {
           return CreateIOContext(event_loop_, audio_cloud_provider,
                                  std::move(audio_track), stop_token);
-        });
+        },
+        stop_token);
     return MuxerContext(thread_pool_, video_io_context.get(),
-                        audio_io_context.get(), container);
+                        audio_io_context.get(), container, stop_token);
   });
   FOR_CO_AWAIT(std::string & chunk, muxer_context.GetContent()) {
     if (!chunk.empty()) {

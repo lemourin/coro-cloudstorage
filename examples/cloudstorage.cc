@@ -49,6 +49,8 @@ class HttpHandler {
                                                 std::move(stop_token));
   }
 
+  auto Quit() { return account_manager_handler_.Quit(); }
+
  private:
   AccountManagerHandler account_manager_handler_;
   Promise<void>* quit_;
