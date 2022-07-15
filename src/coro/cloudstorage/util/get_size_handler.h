@@ -16,7 +16,7 @@ struct GetSizeHandler {
 
   Task<Response> operator()(Request request, stdx::stop_token stop_token) const;
 
-  std::list<CloudProviderAccount>* accounts;
+  std::span<std::shared_ptr<CloudProviderAccount>> accounts;
 };
 
 }  // namespace coro::cloudstorage::util

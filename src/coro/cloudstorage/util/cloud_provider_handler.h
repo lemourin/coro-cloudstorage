@@ -20,19 +20,16 @@ class CloudProviderHandler {
   using Request = http::Request<>;
   using Response = http::Response<>;
 
-  CloudProviderHandler(CloudProvider* provider, ReadWriteMutex* mutex,
+  CloudProviderHandler(CloudProvider* provider,
                        const ThumbnailGenerator* thumbnail_generator,
                        const SettingsManager* settings_manager)
       : provider_(provider),
-        mutex_(mutex),
         thumbnail_generator_(thumbnail_generator),
         settings_manager_(settings_manager) {}
 
   Task<Response> operator()(Request request, stdx::stop_token stop_token);
 
  private:
-  Task<Response> HandleRequest(Request request, stdx::stop_token stop_token);
-
   std::string GetItemPathPrefix(
       std::span<const std::pair<std::string, std::string>> headers) const;
 
@@ -67,7 +64,6 @@ class CloudProviderHandler {
       std::string path) const;
 
   CloudProvider* provider_;
-  ReadWriteMutex* mutex_;
   const ThumbnailGenerator* thumbnail_generator_;
   const SettingsManager* settings_manager_;
 };

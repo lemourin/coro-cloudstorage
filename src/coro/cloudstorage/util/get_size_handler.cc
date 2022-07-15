@@ -13,15 +13,14 @@ auto GetSizeHandler::operator()(Request request,
   if (account_type == query.end() || account_username == query.end()) {
     co_return Response{.status = 400};
   }
-  for (CloudProviderAccount& account : *accounts) {
-    if (account.id() ==
+  for (std::shared_ptr<CloudProviderAccount>& account : accounts) {
+    if (account->id() ==
         CloudProviderAccount::Id{.type = account_type->second,
                                  .username = account_username->second}) {
       coro::util::StopTokenOr stop_token_or(std::move(stop_token),
-                                            account.stop_token());
-      auto lock = co_await ReadLock::Create(account.mutex());
+                                            account->stop_token());
       auto volume_data =
-          co_await account.provider().GetGeneralData(stop_token_or.GetToken());
+          co_await account->provider().GetGeneralData(stop_token_or.GetToken());
       nlohmann::json json;
       if (volume_data.space_total) {
         json["space_total"] = *volume_data.space_total;

@@ -2,8 +2,6 @@
 
 #include <fmt/core.h>
 
-#include <list>
-
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/cloud_provider_handler.h"
 #include "coro/cloudstorage/util/get_size_handler.h"
@@ -120,7 +118,7 @@ class AccountManagerHandler::Impl {
   std::vector<Handler> handlers_;
   AccountListener account_listener_;
   SettingsManager settings_manager_;
-  std::list<CloudProviderAccount> accounts_;
+  std::vector<std::shared_ptr<CloudProviderAccount>> accounts_;
   int64_t version_ = 0;
 };
 
@@ -135,7 +133,7 @@ AccountManagerHandler::Impl::Impl(const AbstractCloudFactory* factory,
   handlers_.emplace_back(
       Handler{.prefix = "/static/", .handler = StaticFileHandler{factory_}});
   handlers_.emplace_back(
-      Handler{.prefix = "/size", .handler = GetSizeHandler{&accounts_}});
+      Handler{.prefix = "/size", .handler = GetSizeHandler{accounts_}});
   handlers_.emplace_back(Handler{
       .prefix = "/settings", .handler = SettingsHandler(&settings_manager_)});
   handlers_.emplace_back(
@@ -151,22 +149,20 @@ AccountManagerHandler::Impl::Impl(const AbstractCloudFactory* factory,
 
   for (auto auth_token : settings_manager_.LoadTokenData()) {
     auto id = std::move(auth_token.id);
-    auto& account = accounts_.emplace_back(
-        CreateAccount(std::move(auth_token),
-                      std::make_shared<std::optional<std::string>>(id)));
-    OnCloudProviderCreated(&account);
+    auto& account =
+        accounts_.emplace_back(std::make_shared<CloudProviderAccount>(
+            CreateAccount(std::move(auth_token),
+                          std::make_shared<std::optional<std::string>>(id))));
+    OnCloudProviderCreated(&*account);
   }
 }
 
 Task<> AccountManagerHandler::Impl::Quit() {
   while (!accounts_.empty()) {
     auto it = accounts_.begin();
-    it->stop_source_.request_stop();
-    {
-      auto lock = co_await WriteLock::Create(it->mutex());
-      RemoveHandler(&*it);
-      co_await account_listener_.OnDestroy(&*it);
-    }
+    (*it)->stop_source_.request_stop();
+    RemoveHandler(&**it);
+    co_await account_listener_.OnDestroy(&**it);
     accounts_.erase(it);
   }
 }
@@ -240,7 +236,7 @@ auto AccountManagerHandler::Impl::GetWebDAVResponse(
     if (decomposed.size() == 1) {
       std::set<std::string_view> account_type;
       for (const auto& account : accounts_) {
-        account_type.insert(account.type());
+        account_type.insert(account->type());
       }
       for (std::string_view type : account_type) {
         responses.push_back(
@@ -251,10 +247,10 @@ auto AccountManagerHandler::Impl::GetWebDAVResponse(
     } else if (decomposed.size() == 2) {
       std::string type = http::DecodeUri(decomposed[1]);
       for (const auto& account : accounts_) {
-        if (account.type() == type) {
+        if (account->type() == type) {
           responses.push_back(GetElement(
               ElementData{.path = StrCat("/list/", type, '/',
-                                         http::EncodeUri(account.username())),
+                                         http::EncodeUri(account->username())),
                           .name = std::string(type),
                           .is_directory = true}));
         }
@@ -297,20 +293,20 @@ Generator<std::string> AccountManagerHandler::Impl::GetHomePage() const {
   }
   std::stringstream content_table;
   for (const auto& account : accounts_) {
-    auto provider_id = account.type();
+    auto provider_id = account->type();
     std::string provider_size;
     content_table << fmt::format(
         fmt::runtime(kAssetsHtmlAccountEntryHtml),
         fmt::arg("provider_icon",
                  util::StrCat("/static/", provider_id, ".png")),
         fmt::arg("provider_url",
-                 util::StrCat("/list/", account.type(), "/",
-                              http::EncodeUri(account.username()), "/")),
-        fmt::arg("provider_name", account.username()),
+                 util::StrCat("/list/", account->type(), "/",
+                              http::EncodeUri(account->username()), "/")),
+        fmt::arg("provider_name", account->username()),
         fmt::arg("provider_remove_url",
-                 util::StrCat("/remove/", account.type(), "/",
-                              http::EncodeUri(account.username()))),
-        fmt::arg("provider_type", account.type()));
+                 util::StrCat("/remove/", account->type(), "/",
+                              http::EncodeUri(account->username()))),
+        fmt::arg("provider_type", account->type()));
   }
   std::string content = fmt::format(
       fmt::runtime(kAssetsHtmlHomePageHtml),
@@ -329,13 +325,12 @@ void AccountManagerHandler::Impl::OnCloudProviderCreated(
                 .handler = OnRemoveHandler{.d = this, .account = account}});
 
     auto& provider = account->provider();
-    handlers_.emplace_back(Handler{
-        .account = account,
-        .prefix = StrCat("/list/", account->type(), '/',
-                         http::EncodeUri(account->username())),
-        .handler =
-            CloudProviderHandler(&provider, account->mutex(),
-                                 thumbnail_generator_, &settings_manager_)});
+    handlers_.emplace_back(
+        Handler{.account = account,
+                .prefix = StrCat("/list/", account->type(), '/',
+                                 http::EncodeUri(account->username())),
+                .handler = CloudProviderHandler(&provider, thumbnail_generator_,
+                                                &settings_manager_)});
     account_listener_.OnCreate(account);
   } catch (...) {
     RemoveHandler(account);
@@ -346,14 +341,11 @@ void AccountManagerHandler::Impl::OnCloudProviderCreated(
 template <typename F>
 Task<> AccountManagerHandler::Impl::RemoveCloudProvider(const F& predicate) {
   for (auto it = std::begin(accounts_); it != std::end(accounts_);) {
-    if (predicate(*it) && !it->stop_token().stop_requested()) {
-      it->stop_source_.request_stop();
-      {
-        auto lock = co_await WriteLock::Create(it->mutex());
-        RemoveHandler(&*it);
-        co_await account_listener_.OnDestroy(&*it);
-        settings_manager_.RemoveToken(it->username(), it->type());
-      }
+    if (predicate(*it) && !(*it)->stop_token().stop_requested()) {
+      (*it)->stop_source_.request_stop();
+      RemoveHandler(&**it);
+      co_await account_listener_.OnDestroy(&**it);
+      settings_manager_.RemoveToken((*it)->username(), (*it)->type());
       it = accounts_.erase(it);
     } else {
       it++;
@@ -386,17 +378,18 @@ Task<CloudProviderAccount*> AccountManagerHandler::Impl::Create(
     account.username_ = **username;
     co_await RemoveCloudProvider(
         [version, account_id = account.id()](const auto& entry) {
-          return entry.version_ < version && entry.id() == account_id;
+          return entry->version_ < version && entry->id() == account_id;
         });
-    auto& d = accounts_.emplace_back(std::move(account));
-    OnCloudProviderCreated(&d);
+    auto& d = accounts_.emplace_back(
+        std::make_shared<CloudProviderAccount>(std::move(account)));
+    OnCloudProviderCreated(&*d);
     settings_manager_.SaveToken(std::move(auth_token), **username);
-    co_return &d;
+    co_return &*d;
   } catch (...) {
     exception = std::current_exception();
   }
   co_await RemoveCloudProvider(
-      [version](const auto& entry) { return entry.version_ == version; });
+      [version](const auto& entry) { return entry->version_ == version; });
   std::rethrow_exception(exception);
 }
 
@@ -422,7 +415,7 @@ auto AccountManagerHandler::Impl::OnRemoveHandler::operator()(
     Request request, stdx::stop_token stop_token) const -> Task<Response> {
   co_await d->RemoveCloudProvider(
       [account_id = account->id()](const auto& account) {
-        return account.id() == account_id;
+        return account->id() == account_id;
       });
   co_return Response{.status = 302, .headers = {{"Location", "/"}}};
 }

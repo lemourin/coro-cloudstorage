@@ -109,24 +109,10 @@ std::string_view GetIconName(AbstractCloudProvider::File file) {
   throw std::runtime_error("invalid file type");
 }
 
-Generator<std::string> TraceGenerator(Generator<std::string> data, ReadLock) {
-  FOR_CO_AWAIT(std::string & chunk, data) { co_yield std::move(chunk); }
-}
-
 }  // namespace
 
 auto CloudProviderHandler::operator()(Request request,
                                       stdx::stop_token stop_token)
-    -> Task<Response> {
-  auto lock = co_await ReadLock::Create(mutex_);
-  auto response =
-      co_await HandleRequest(std::move(request), std::move(stop_token));
-  response.body = TraceGenerator(std::move(response.body), std::move(lock));
-  co_return response;
-}
-
-auto CloudProviderHandler::HandleRequest(Request request,
-                                         stdx::stop_token stop_token)
     -> Task<Response> {
   try {
     if (request.method == http::Method::kPropfind ||
