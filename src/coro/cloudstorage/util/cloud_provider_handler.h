@@ -63,7 +63,7 @@ class CloudProviderHandler {
       Generator<AbstractCloudProvider::PageData> page_data,
       std::string path) const;
 
-  CloudProvider* provider_;
+  AbstractCloudProvider* provider_;
   const ThumbnailGenerator* thumbnail_generator_;
   const SettingsManager* settings_manager_;
 };

@@ -13,10 +13,10 @@ using ::coro::cloudstorage::util::CloudProviderAccount;
 using ::coro::http::CurlHttp;
 
 struct AccountListener {
-  void OnCreate(CloudProviderAccount* d) {
+  void OnCreate(std::shared_ptr<CloudProviderAccount> d) {
     std::cerr << "CREATE [" << d->type() << "] " << d->username() << '\n';
   }
-  Task<> OnDestroy(CloudProviderAccount* d) {
+  Task<> OnDestroy(std::shared_ptr<CloudProviderAccount> d) {
     std::cerr << "REMOVED [" << d->type() << "] " << d->username() << '\n';
     co_return;
   }
