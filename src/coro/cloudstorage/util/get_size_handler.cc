@@ -19,8 +19,8 @@ auto GetSizeHandler::operator()(Request request,
                                  .username = account_username->second}) {
       coro::util::StopTokenOr stop_token_or(std::move(stop_token),
                                             account->stop_token());
-      auto volume_data =
-          co_await account->provider().GetGeneralData(stop_token_or.GetToken());
+      auto volume_data = co_await account->provider()->GetGeneralData(
+          stop_token_or.GetToken());
       nlohmann::json json;
       if (volume_data.space_total) {
         json["space_total"] = *volume_data.space_total;

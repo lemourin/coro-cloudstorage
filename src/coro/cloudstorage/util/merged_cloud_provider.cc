@@ -28,19 +28,16 @@ bool MergedCloudProvider::IsFileContentSizeRequired(const Directory &d) const {
   return account->provider->IsFileContentSizeRequired(d.item);
 }
 
-void MergedCloudProvider::AddAccount(std::string id, AbstractCloudProvider *p) {
-  accounts_.push_back(Account{.id = std::move(id), .provider = p});
+void MergedCloudProvider::AddAccount(std::string id,
+                                     std::shared_ptr<AbstractCloudProvider> p) {
+  accounts_.push_back(Account{.id = std::move(id), .provider = std::move(p)});
 }
 
-void MergedCloudProvider::RemoveAccount(AbstractCloudProvider *p) {
+void MergedCloudProvider::RemoveAccount(
+    std::shared_ptr<AbstractCloudProvider> p) {
   accounts_.erase(
-      std::find_if(accounts_.begin(), accounts_.end(), [&](Account &account) {
-        if (account.provider == p) {
-          return true;
-        } else {
-          return false;
-        }
-      }));
+      std::find_if(accounts_.begin(), accounts_.end(),
+                   [&](Account &account) { return account.provider == p; }));
 }
 
 auto MergedCloudProvider::GetRoot(stdx::stop_token) const -> Task<Root> {
@@ -95,7 +92,7 @@ auto MergedCloudProvider::ListDirectoryPage(
     Directory directory, std::optional<std::string> page_token,
     stdx::stop_token stop_token) -> Task<PageData> {
   auto *account = GetAccount(directory.account_id);
-  auto *p = account->provider;
+  auto p = account->provider;
   coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
                                         std::move(stop_token));
   auto page_data = co_await p->ListDirectoryPage(
@@ -161,7 +158,7 @@ template <typename ItemT, typename>
 Task<ItemT> MergedCloudProvider::RenameItem(ItemT item, std::string new_name,
                                             stdx::stop_token stop_token) {
   auto *account = GetAccount(item.account_id);
-  auto *p = account->provider;
+  auto p = account->provider;
   coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
                                         std::move(stop_token));
   co_return ToItem<ItemT>(
@@ -174,7 +171,7 @@ auto MergedCloudProvider::CreateDirectory(Directory parent, std::string name,
                                           stdx::stop_token stop_token)
     -> Task<Directory> {
   auto *account = GetAccount(parent.account_id);
-  auto *p = account->provider;
+  auto p = account->provider;
   coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
                                         std::move(stop_token));
   co_return ToItem<Directory>(
@@ -187,7 +184,7 @@ template <typename ItemT, typename>
 Task<> MergedCloudProvider::RemoveItem(ItemT item,
                                        stdx::stop_token stop_token) {
   auto *account = GetAccount(item.account_id);
-  auto *p = account->provider;
+  auto p = account->provider;
   coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
                                         std::move(stop_token));
   co_await p->RemoveItem(std::move(item.item), stop_token_or.GetToken());
@@ -200,7 +197,7 @@ Task<ItemT> MergedCloudProvider::MoveItem(ItemT source, Directory destination,
     throw CloudException("can't move between accounts");
   } else {
     auto *account = GetAccount(source.account_id);
-    auto *p = account->provider;
+    auto p = account->provider;
     coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
                                           std::move(stop_token));
     co_return ToItem<ItemT>(source.account_id,
@@ -215,7 +212,7 @@ auto MergedCloudProvider::CreateFile(Directory parent, std::string_view name,
                                      stdx::stop_token stop_token)
     -> Task<File> {
   auto *account = GetAccount(parent.account_id);
-  auto *p = account->provider;
+  auto p = account->provider;
   coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
                                         std::move(stop_token));
   AbstractCloudProvider::FileContent ncontent{.data = std::move(content.data),

@@ -19,7 +19,7 @@ class MergedCloudProvider {
     std::string type;
     std::string id;
 
-    friend bool operator==(const AccountId& a, const AccountId& b) {
+    friend bool operator==(const AccountId &a, const AccountId &b) {
       return std::tie(a.type, a.id) == std::tie(b.type, b.id);
     }
   };
@@ -66,9 +66,9 @@ class MergedCloudProvider {
 
   bool IsFileContentSizeRequired(const Directory &d) const;
 
-  void AddAccount(std::string id, AbstractCloudProvider *p);
+  void AddAccount(std::string id, std::shared_ptr<AbstractCloudProvider> p);
 
-  void RemoveAccount(AbstractCloudProvider *p);
+  void RemoveAccount(std::shared_ptr<AbstractCloudProvider> p);
 
   Task<Root> GetRoot(stdx::stop_token) const;
 
@@ -115,7 +115,7 @@ class MergedCloudProvider {
  private:
   struct Account {
     std::string id;
-    AbstractCloudProvider *provider;
+    std::shared_ptr<AbstractCloudProvider> provider;
     stdx::stop_source stop_source;
   };
 

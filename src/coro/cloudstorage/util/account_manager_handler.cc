@@ -264,7 +264,7 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
         .prefix = StrCat("/list/", account->type(), '/',
                          http::EncodeUri(account->username())),
         .handler = CloudProviderHandler(
-            &account->provider(), thumbnail_generator_, &settings_manager_)});
+            &*account->provider(), thumbnail_generator_, &settings_manager_)});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/remove/", account->type(), '/',
@@ -349,7 +349,8 @@ Task<std::shared_ptr<CloudProviderAccount>> AccountManagerHandler::Impl::Create(
   auto& provider = account.provider();
   std::exception_ptr exception;
   try {
-    auto general_data = co_await provider.GetGeneralData(std::move(stop_token));
+    auto general_data =
+        co_await provider->GetGeneralData(std::move(stop_token));
     *username = std::move(general_data.username);
     co_await RemoveCloudProvider(
         [version, account_id = account.id()](const auto& entry) {
