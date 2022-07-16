@@ -19,11 +19,11 @@ class AccountListener {
       : d_(std::make_unique<AccountListenerImpl<T>>(std::move(impl))) {}
 
   void OnCreate(std::shared_ptr<CloudProviderAccount> account) {
-    return d_->OnCreate(std::move(account));
+    d_->OnCreate(std::move(account));
   }
 
-  Task<> OnDestroy(std::shared_ptr<CloudProviderAccount> account) {
-    return d_->OnDestroy(std::move(account));
+  void OnDestroy(std::shared_ptr<CloudProviderAccount> account) {
+    d_->OnDestroy(std::move(account));
   }
 
  private:
@@ -31,7 +31,7 @@ class AccountListener {
    public:
     virtual ~Interface() = default;
     virtual void OnCreate(std::shared_ptr<CloudProviderAccount>) = 0;
-    virtual Task<> OnDestroy(std::shared_ptr<CloudProviderAccount>) = 0;
+    virtual void OnDestroy(std::shared_ptr<CloudProviderAccount>) = 0;
   };
 
   template <typename T>
@@ -43,8 +43,8 @@ class AccountListener {
       impl_.OnCreate(std::move(account));
     }
 
-    Task<> OnDestroy(std::shared_ptr<CloudProviderAccount> account) override {
-      return impl_.OnDestroy(std::move(account));
+    void OnDestroy(std::shared_ptr<CloudProviderAccount> account) override {
+      impl_.OnDestroy(std::move(account));
     }
 
    private:

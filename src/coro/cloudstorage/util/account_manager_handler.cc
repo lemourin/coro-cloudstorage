@@ -92,7 +92,7 @@ class AccountManagerHandler::Impl {
       std::span<const std::pair<std::string, std::string>> headers) const;
 
   template <typename F>
-  Task<> RemoveCloudProvider(const F& predicate);
+  void RemoveCloudProvider(const F& predicate);
 
   void OnCloudProviderCreated(std::shared_ptr<CloudProviderAccount> account);
 
@@ -138,9 +138,10 @@ Task<> AccountManagerHandler::Impl::Quit() {
   while (!accounts_.empty()) {
     auto it = accounts_.begin();
     (*it)->stop_source_.request_stop();
-    co_await account_listener_.OnDestroy(*it);
+    account_listener_.OnDestroy(*it);
     accounts_.erase(it);
   }
+  co_return;
 }
 
 auto AccountManagerHandler::Impl::operator()(Request request,
@@ -319,11 +320,11 @@ void AccountManagerHandler::Impl::OnCloudProviderCreated(
 }
 
 template <typename F>
-Task<> AccountManagerHandler::Impl::RemoveCloudProvider(const F& predicate) {
+void AccountManagerHandler::Impl::RemoveCloudProvider(const F& predicate) {
   for (auto it = std::begin(accounts_); it != std::end(accounts_);) {
     if (predicate(*it) && !(*it)->stop_token().stop_requested()) {
       (*it)->stop_source_.request_stop();
-      co_await account_listener_.OnDestroy(*it);
+      account_listener_.OnDestroy(*it);
       settings_manager_.RemoveToken((*it)->username(), (*it)->type());
       *(*it)->username_ = std::nullopt;
       it = accounts_.erase(it);
@@ -354,7 +355,7 @@ Task<std::shared_ptr<CloudProviderAccount>> AccountManagerHandler::Impl::Create(
     auto general_data =
         co_await provider->GetGeneralData(std::move(stop_token));
     *username = std::move(general_data.username);
-    co_await RemoveCloudProvider(
+    RemoveCloudProvider(
         [version, account_id = account.id()](const auto& entry) {
           return entry->version_ < version && entry->id() == account_id;
         });
@@ -366,7 +367,7 @@ Task<std::shared_ptr<CloudProviderAccount>> AccountManagerHandler::Impl::Create(
   } catch (...) {
     exception = std::current_exception();
   }
-  co_await RemoveCloudProvider(
+  RemoveCloudProvider(
       [version](const auto& entry) { return entry->version_ == version; });
   std::rethrow_exception(exception);
 }
@@ -391,10 +392,9 @@ auto AccountManagerHandler::Impl::AuthHandler::operator()(
 
 auto AccountManagerHandler::Impl::OnRemoveHandler::operator()(
     Request request, stdx::stop_token stop_token) const -> Task<Response> {
-  co_await d->RemoveCloudProvider(
-      [account_id = account->id()](const auto& account) {
-        return account->id() == account_id;
-      });
+  d->RemoveCloudProvider([account_id = account->id()](const auto& account) {
+    return account->id() == account_id;
+  });
   co_return Response{.status = 302, .headers = {{"Location", "/"}}};
 }
 

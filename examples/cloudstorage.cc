@@ -16,9 +16,8 @@ struct AccountListener {
   void OnCreate(std::shared_ptr<CloudProviderAccount> d) {
     std::cerr << "CREATE [" << d->type() << "] " << d->username() << '\n';
   }
-  Task<> OnDestroy(std::shared_ptr<CloudProviderAccount> d) {
+  void OnDestroy(std::shared_ptr<CloudProviderAccount> d) {
     std::cerr << "REMOVED [" << d->type() << "] " << d->username() << '\n';
-    co_return;
   }
 };
 
@@ -56,12 +55,12 @@ class HttpHandler {
   Promise<void>* quit_;
 };
 
-Task<> CoMain(const coro::util::EventLoop* event_loop) {
+Task<> CoMain(CloudFactoryContext* factory_context) {
   try {
-    CloudFactoryContext factory_context(event_loop);
     Promise<void> quit;
-    auto http_server = factory_context.CreateHttpServer(HttpHandler(
-        factory_context.CreateAccountManagerHandler(AccountListener{}), &quit));
+    auto http_server = factory_context->CreateHttpServer(HttpHandler(
+        factory_context->CreateAccountManagerHandler(AccountListener{}),
+        &quit));
     co_await quit;
     co_await http_server.Quit();
   } catch (const std::exception& exception) {
@@ -75,7 +74,8 @@ int main() {
 #endif
 
   coro::util::EventLoop event_loop;
-  coro::RunTask(CoMain(&event_loop));
+  CloudFactoryContext factory_context(&event_loop);
+  coro::RunTask(CoMain(&factory_context));
   event_loop.EnterLoop();
   return 0;
 }
