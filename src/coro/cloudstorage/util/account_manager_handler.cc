@@ -243,8 +243,10 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
   std::vector<Handler> handlers;
   handlers.emplace_back(
       Handler{.prefix = "/static/", .handler = StaticFileHandler{factory_}});
-  handlers.emplace_back(
-      Handler{.prefix = "/size", .handler = GetSizeHandler{accounts_}});
+  handlers.emplace_back(Handler{
+      .prefix = "/size",
+      .handler = GetSizeHandler{
+          std::span<std::shared_ptr<CloudProviderAccount>>(accounts_)}});
   handlers.emplace_back(Handler{
       .prefix = "/settings", .handler = SettingsHandler(&settings_manager_)});
   handlers.emplace_back(
