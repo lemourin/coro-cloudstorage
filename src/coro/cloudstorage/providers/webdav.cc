@@ -8,6 +8,11 @@
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
 #include "coro/util/regex.h"
 
+#ifdef WIN32
+#undef CreateDirectory
+#undef CreateFile
+#endif
+
 namespace coro::cloudstorage {
 
 namespace {
