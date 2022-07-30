@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include <string>
 
+#include "coro/exception.h"
+
 namespace coro::cloudstorage::util {
 
 namespace {
@@ -21,7 +23,7 @@ std::string GetAvError(int err) {
 
 void CheckAVError(int code, std::string_view call) {
   if (code < 0) {
-    throw std::runtime_error(std::string(call) + " (" + GetAvError(code) + ")");
+    throw RuntimeError(std::string(call) + " (" + GetAvError(code) + ")");
   }
 }
 
@@ -29,7 +31,7 @@ std::unique_ptr<AVFormatContext, AVFormatContextDeleter> CreateFormatContext(
     AVIOContext* io_context) {
   auto* context = avformat_alloc_context();
   if (!context) {
-    throw std::runtime_error("avformat_alloc_context");
+    throw RuntimeError("avformat_alloc_context");
   }
   context->interrupt_callback.opaque = nullptr;
   context->interrupt_callback.callback = [](void*) -> int { return 0; };
@@ -50,12 +52,12 @@ std::unique_ptr<AVCodecContext, AVCodecContextDeleter> CreateCodecContext(
   auto* codec =
       avcodec_find_decoder(context->streams[stream_index]->codecpar->codec_id);
   if (!codec) {
-    throw std::logic_error("decoder not found");
+    throw LogicError("decoder not found");
   }
   std::unique_ptr<AVCodecContext, AVCodecContextDeleter> codec_context(
       avcodec_alloc_context3(codec));
   if (!codec_context) {
-    throw std::runtime_error("avcodec_alloc_context3");
+    throw RuntimeError("avcodec_alloc_context3");
   }
   CheckAVError(
       avcodec_parameters_to_context(codec_context.get(),
@@ -69,7 +71,7 @@ std::unique_ptr<AVCodecContext, AVCodecContextDeleter> CreateCodecContext(
 std::unique_ptr<AVPacket, AVPacketDeleter> CreatePacket() {
   std::unique_ptr<AVPacket, AVPacketDeleter> packet(av_packet_alloc());
   if (!packet) {
-    throw std::runtime_error("av_packet_alloc");
+    throw RuntimeError("av_packet_alloc");
   }
   return packet;
 }

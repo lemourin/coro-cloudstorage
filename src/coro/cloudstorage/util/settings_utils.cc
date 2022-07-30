@@ -3,6 +3,7 @@
 #include <stdexcept>
 
 #include "coro/cloudstorage/util/string_utils.h"
+#include "coro/exception.h"
 
 #ifdef WIN32
 #include <direct.h>
@@ -40,7 +41,7 @@ std::string GetConfigFilePath(std::string_view app_name,
 #ifdef WIN32
   PWSTR path;
   if (SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &path) != S_OK) {
-    throw std::runtime_error("cannot fetch configuration path");
+    throw RuntimeError("cannot fetch configuration path");
   }
   int size =
       WideCharToMultiByte(CP_UTF8, 0, path, -1, nullptr, 0, nullptr, nullptr);
@@ -69,7 +70,7 @@ std::string GetConfigFilePath(std::string_view app_name,
 std::string GetDirectoryPath(std::string_view path) {
   auto it = path.find_last_of(kDelimiter);
   if (it == std::string::npos) {
-    throw std::invalid_argument("not a directory");
+    throw InvalidArgument("not a directory");
   }
   return std::string(path.begin(), path.begin() + it);
 }
@@ -83,8 +84,8 @@ void CreateDirectory(std::string_view path) {
                                             : path.begin() + it)
                   .c_str()) != 0) {
       if (errno != EEXIST) {
-        throw std::runtime_error(StrCat("cannot create directory ", path, ": ",
-                                        ErrorToString(errno)));
+        throw RuntimeError(StrCat("cannot create directory ", path, ": ",
+                                  ErrorToString(errno)));
       }
     }
   }
@@ -92,7 +93,7 @@ void CreateDirectory(std::string_view path) {
 
 void RemoveDirectory(std::string_view path) {
   if (int status = rmdir(std::string(path).c_str())) {
-    throw std::runtime_error(
+    throw RuntimeError(
         StrCat("can't remove directory ", path, ": ", ErrorToString(status)));
   }
 }

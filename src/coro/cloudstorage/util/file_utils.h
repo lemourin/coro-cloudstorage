@@ -30,7 +30,7 @@ template <typename ThreadPool>
 Task<int64_t> GetFileSize(ThreadPool* thread_pool, std::FILE* file) {
   co_return co_await thread_pool->Do([=] {
     if (Fseek(file, 0, SEEK_END) != 0) {
-      throw std::runtime_error("fseek failed");
+      throw RuntimeError("fseek failed");
     }
     return Ftell(file);
   });
@@ -41,11 +41,11 @@ Task<> WriteFile(ThreadPool* thread_pool, std::FILE* file, int64_t offset,
                  std::string_view data) {
   co_return co_await thread_pool->Do([=] {
     if (Fseek(file, offset, SEEK_SET) != 0) {
-      throw std::runtime_error("fseek failed " + std::to_string(offset) + " " +
-                               std::to_string(errno));
+      throw RuntimeError("fseek failed " + std::to_string(offset) + " " +
+                         std::to_string(errno));
     }
     if (fwrite(data.data(), 1, data.size(), file) != data.size()) {
-      throw std::runtime_error("fwrite failed");
+      throw RuntimeError("fwrite failed");
     }
   });
 }

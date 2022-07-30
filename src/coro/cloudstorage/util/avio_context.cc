@@ -110,7 +110,7 @@ std::unique_ptr<AVIOContext, AVIOContextDeleter> CreateIOContext(
         });
       }));
   if (!context) {
-    throw std::runtime_error("avio_alloc_context");
+    throw RuntimeError("avio_alloc_context");
   }
   return context;
 }

@@ -80,7 +80,7 @@ auto DecodeFrame(AVFormatContext* context, AVCodecContext* codec_context,
     }
     std::unique_ptr<AVFrame, AVFrameDeleter> frame(av_frame_alloc());
     if (!frame) {
-      throw std::runtime_error("av_frame_alloc");
+      throw RuntimeError("av_frame_alloc");
     }
     auto code = avcodec_receive_frame(codec_context, frame.get());
     if (code == 0) {
@@ -111,7 +111,7 @@ auto CreateSourceFilter(AVFilterGraph* graph, int width, int height, int format,
       avfilter_graph_alloc_filter(graph, avfilter_get_by_name("buffer"),
                                   nullptr));
   if (!filter) {
-    throw std::logic_error("filter buffer unavailable");
+    throw LogicError("filter buffer unavailable");
   }
   AVDictionary* d = nullptr;
   auto scope_guard = AtScopeExit([&] { av_dict_free(&d); });
@@ -143,7 +143,7 @@ auto CreateFilter(AVFilterGraph* graph, const char* name) {
   std::unique_ptr<AVFilterContext, AVFilterContextDeleter> filter(
       avfilter_graph_alloc_filter(graph, avfilter_get_by_name(name), nullptr));
   if (!filter) {
-    throw std::logic_error(StrCat("filter ", name, " unavailable"));
+    throw LogicError(StrCat("filter ", name, " unavailable"));
   }
   CheckAVError(avfilter_init_dict(filter.get(), nullptr), "avfilter_init_dict");
   return filter;
@@ -162,7 +162,7 @@ auto CreateScaleFilter(AVFilterGraph* graph, ImageSize size) {
       avfilter_graph_alloc_filter(graph, avfilter_get_by_name("scale"),
                                   nullptr));
   if (!filter) {
-    throw std::logic_error("filter scale unavailable");
+    throw LogicError("filter scale unavailable");
   }
   AVDictionary* d = nullptr;
   auto scope_guard = AtScopeExit([&] { av_dict_free(&d); });
@@ -178,7 +178,7 @@ auto CreateTransposeFilter(AVFilterGraph* graph, const char* dir) {
       avfilter_graph_alloc_filter(graph, avfilter_get_by_name("transpose"),
                                   nullptr));
   if (!filter) {
-    throw std::logic_error("filter transpose unavailable");
+    throw LogicError("filter transpose unavailable");
   }
   AVDictionary* d = nullptr;
   auto scope_guard = AtScopeExit([&] { av_dict_free(&d); });
@@ -196,7 +196,7 @@ auto RotateFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
   std::unique_ptr<AVFilterGraph, AVFilterGraphDeleter> graph(
       avfilter_graph_alloc());
   if (!graph) {
-    throw std::runtime_error("avfilter_graph_alloc error");
+    throw RuntimeError("avfilter_graph_alloc error");
   }
 
   auto source_filter = CreateSourceFilter(graph.get(), frame.get());
@@ -214,7 +214,7 @@ auto RotateFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
         case 8:
           return "clock_flip";
         default:
-          throw std::runtime_error("unexpected");
+          throw RuntimeError("unexpected");
       }
     }());
     CheckAVError(avfilter_link(last_filter, 0, transpose_filter.get(), 0),
@@ -277,11 +277,11 @@ auto ConvertFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
       frame->width, frame->height, AVPixelFormat(frame->format), frame->width,
       frame->height, format, SWS_BICUBIC, nullptr, nullptr, nullptr));
   if (!sws_context) {
-    throw std::runtime_error("sws_getContext returned null");
+    throw RuntimeError("sws_getContext returned null");
   }
   std::unique_ptr<AVFrame, AVFrameConvertedDeleter> rgb_frame(av_frame_alloc());
   if (!rgb_frame) {
-    throw std::runtime_error("av_frame_alloc");
+    throw RuntimeError("av_frame_alloc");
   }
   CheckAVError(av_frame_copy_props(rgb_frame.get(), frame.get()),
                "av_frame_copy_props");
@@ -308,13 +308,13 @@ std::string EncodeFrame(std::unique_ptr<AVFrame, AVFrameDeleter> input_frame,
       options.codec == ThumbnailOptions::Codec::JPEG ? AV_CODEC_ID_MJPEG
                                                      : AV_CODEC_ID_PNG);
   if (!codec) {
-    throw std::logic_error("codec not found");
+    throw LogicError("codec not found");
   }
   auto frame = ConvertFrame(std::move(input_frame), codec);
   std::unique_ptr<AVCodecContext, AVCodecContextDeleter> context(
       avcodec_alloc_context3(codec));
   if (!context) {
-    throw std::runtime_error("avcodec_alloc_context3");
+    throw RuntimeError("avcodec_alloc_context3");
   }
   context->time_base = {1, 24};
   context->pix_fmt = AVPixelFormat(frame->format);
@@ -387,7 +387,7 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
   std::unique_ptr<AVFilterGraph, AVFilterGraphDeleter> filter_graph(
       avfilter_graph_alloc());
   if (!filter_graph) {
-    throw std::runtime_error("avfilter_graph_alloc error");
+    throw RuntimeError("avfilter_graph_alloc error");
   }
   auto source_filter = CreateSourceFilter(filter_graph.get(), context.get(),
                                           stream, codec_context.get());

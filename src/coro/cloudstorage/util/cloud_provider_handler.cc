@@ -106,7 +106,7 @@ std::string_view GetIconName(AbstractCloudProvider::File file) {
     case FileType::kVideo:
       return "video-x-generic";
   }
-  throw std::runtime_error("invalid file type");
+  throw RuntimeError("invalid file type");
 }
 
 }  // namespace

@@ -196,7 +196,7 @@ Task<Response> HandleExistingItem(CloudProvider* provider, Request request,
                          .body = GetWebDavItemResponse(GetPath(request), d)};
     }
   } else {
-    throw std::runtime_error("unsupported method");
+    throw RuntimeError("unsupported method");
   }
 }
 

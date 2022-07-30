@@ -44,20 +44,20 @@ std::unique_ptr<std::FILE, FileDeleter> CreateTmpFile() {
     std::string name = gAndroidTempDirectory + "/tmp.XXXXXX";
     int fno = mkstemp(name.data());
     if (name.empty()) {
-      throw std::runtime_error("couldn't create tmpfile");
+      throw RuntimeError("couldn't create tmpfile");
     }
     std::remove(name.c_str());
     return fdopen(fno, "w+");
 #elif defined(_MSC_VER)
     std::FILE* file;
     if (tmpfile_s(&file) != 0) {
-      throw std::runtime_error("couldn't create tmpfile");
+      throw RuntimeError("couldn't create tmpfile");
     }
     return file;
 #else
     std::FILE* file = std::tmpfile();
     if (!file) {
-      throw std::runtime_error("couldn't create tmpfile");
+      throw RuntimeError("couldn't create tmpfile");
     }
     return file;
 #endif
@@ -89,7 +89,7 @@ std::string GetDirectoryPath(std::string path) {
         return it;
       }
     }
-    throw std::runtime_error("root has no parent");
+    throw RuntimeError("root has no parent");
   }();
   return path.substr(0, it + 1);
 }
@@ -97,7 +97,7 @@ std::string GetDirectoryPath(std::string path) {
 std::span<const std::string> GetDirectoryPath(
     std::span<const std::string> path) {
   if (path.empty()) {
-    throw std::runtime_error("root has no parent");
+    throw RuntimeError("root has no parent");
   }
   return path.subspan(0, path.size() - 1);
 }

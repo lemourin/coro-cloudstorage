@@ -52,19 +52,19 @@ int64_t GetTimestamp(const std::filesystem::directory_entry& e) {
 #if defined(WIN32)
   struct _stat64 file_info;
   if (_wstati64(e.path().wstring().c_str(), &file_info) != 0) {
-    throw std::runtime_error("failed to get last write time");
+    throw RuntimeError("failed to get last write time");
   }
   return file_info.st_mtime;
 #elif defined(__APPLE__)
   struct stat file_info;
   if (stat(e.path().c_str(), &file_info) != 0) {
-    throw std::runtime_error("failed to get last write time");
+    throw RuntimeError("failed to get last write time");
   }
   return file_info.st_mtimespec.tv_sec;
 #else
   struct stat64 file_info;
   if (stat64(e.path().c_str(), &file_info) != 0) {
-    throw std::runtime_error("failed to get last write time");
+    throw RuntimeError("failed to get last write time");
   }
   return file_info.st_mtim.tv_sec;
 #endif
@@ -186,7 +186,7 @@ Generator<std::string> LocalFileSystem::GetFileContent(
           buffer.data(), std::min<int64_t>(size - bytes_read, kBufferSize)));
     });
     if (!read_status) {
-      throw std::runtime_error("couldn't read file");
+      throw RuntimeError("couldn't read file");
     }
     co_yield std::string(buffer.data(), stream.gcount());
     bytes_read += stream.gcount();
@@ -196,29 +196,29 @@ Generator<std::string> LocalFileSystem::GetFileContent(
 template <typename ItemT>
 Task<ItemT> LocalFileSystem::RenameItem(ItemT item, std::string new_name,
                                         stdx::stop_token stop_token) {
-  throw std::runtime_error("unimplemented");
+  throw RuntimeError("unimplemented");
 }
 
 auto LocalFileSystem::CreateDirectory(Directory parent, std::string name,
                                       stdx::stop_token stop_token)
     -> Task<Directory> {
-  throw std::runtime_error("unimplemented");
+  throw RuntimeError("unimplemented");
 }
 
 Task<> LocalFileSystem::RemoveItem(Item item, stdx::stop_token stop_token) {
-  throw std::runtime_error("unimplemented");
+  throw RuntimeError("unimplemented");
 }
 
 template <typename ItemT>
 Task<ItemT> LocalFileSystem::MoveItem(ItemT source, Directory destination,
                                       stdx::stop_token stop_token) {
-  throw std::runtime_error("unimplemented");
+  throw RuntimeError("unimplemented");
 }
 
 auto LocalFileSystem::CreateFile(Directory parent, std::string_view name,
                                  FileContent content,
                                  stdx::stop_token stop_token) -> Task<File> {
-  throw std::runtime_error("unimplemented");
+  throw RuntimeError("unimplemented");
 }
 
 namespace util {

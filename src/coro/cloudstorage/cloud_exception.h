@@ -3,9 +3,11 @@
 
 #include <string>
 
+#include "coro/exception.h"
+
 namespace coro::cloudstorage {
 
-class CloudException : public std::exception {
+class CloudException : public Exception {
  public:
   enum class Type { kNotFound, kUnauthorized, kRetry, kUnknown };
 

@@ -9,7 +9,7 @@ std::string_view ToString(Theme theme) {
     case Theme::kLight:
       return "light";
   }
-  throw std::runtime_error("invalid theme");
+  throw RuntimeError("invalid theme");
 }
 
 Theme GetTheme(std::span<const std::pair<std::string, std::string>> headers) {
