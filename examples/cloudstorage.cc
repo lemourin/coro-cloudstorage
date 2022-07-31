@@ -5,12 +5,18 @@
 #include "coro/cloudstorage/util/cloud_factory_context.h"
 #include "coro/util/event_loop.h"
 
+using ::coro::Generator;
 using ::coro::Promise;
 using ::coro::Task;
 using ::coro::cloudstorage::util::AccountManagerHandler;
 using ::coro::cloudstorage::util::CloudFactoryContext;
 using ::coro::cloudstorage::util::CloudProviderAccount;
 using ::coro::http::CurlHttp;
+using ::coro::util::AtScopeExit;
+using ::coro::util::EventLoop;
+
+EventLoop gEventLoop;
+Promise<void> gQuit;
 
 struct AccountListener {
   void OnCreate(std::shared_ptr<CloudProviderAccount> d) {
@@ -41,8 +47,10 @@ class HttpHandler {
     }
     std::cerr << "\n";
     if (request.url == "/quit") {
-      quit_->SetValue();
-      co_return Response{.status = 200};
+      co_return Response{
+          .status = 200,
+          .body = GetQuitResponse(
+              std::unique_ptr<Promise<void>, QuitDeleter>(quit_))};
     }
     co_return co_await account_manager_handler_(std::move(request),
                                                 std::move(stop_token));
@@ -51,21 +59,32 @@ class HttpHandler {
   auto Quit() { return account_manager_handler_.Quit(); }
 
  private:
+  struct QuitDeleter {
+    void operator()(Promise<void>* quit) { quit->SetValue(); }
+  };
+
+  Generator<std::string> GetQuitResponse(
+      std::unique_ptr<Promise<void>, QuitDeleter>) const {
+    co_yield "QUITTING...\n";
+  }
+
   AccountManagerHandler account_manager_handler_;
   Promise<void>* quit_;
 };
 
-Task<> CoMain(CloudFactoryContext* factory_context) {
+Task<> CoMain(CloudFactoryContext* factory_context, Promise<void>* quit) {
   try {
-    Promise<void> quit;
     auto http_server = factory_context->CreateHttpServer(HttpHandler(
-        factory_context->CreateAccountManagerHandler(AccountListener{}),
-        &quit));
-    co_await quit;
+        factory_context->CreateAccountManagerHandler(AccountListener{}), quit));
+    co_await *quit;
     co_await http_server.Quit();
   } catch (const std::exception& exception) {
     std::cerr << "EXCEPTION: " << exception.what() << "\n";
   }
+}
+
+void SignalHandler(int signal) {
+  gEventLoop.RunOnEventLoop([] { gQuit.SetValue(); });
 }
 
 int main() {
@@ -73,9 +92,10 @@ int main() {
   signal(SIGPIPE, SIG_IGN);  // NOLINT
 #endif
 
-  coro::util::EventLoop event_loop;
-  CloudFactoryContext factory_context(&event_loop);
-  coro::RunTask(CoMain(&factory_context));
-  event_loop.EnterLoop();
+  signal(SIGTERM, SignalHandler);
+
+  CloudFactoryContext factory_context(&gEventLoop);
+  coro::RunTask(CoMain(&factory_context, &gQuit));
+  gEventLoop.EnterLoop();
   return 0;
 }
