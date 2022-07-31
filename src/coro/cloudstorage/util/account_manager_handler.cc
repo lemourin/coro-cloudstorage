@@ -42,6 +42,34 @@ std::string GetAuthUrl(AbstractCloudProvider::Type type,
       fmt::arg("image_url", util::StrCat("/static/", id, ".png")));
 }
 
+Generator<std::string> ToGenerator(std::string chunk) {
+  co_yield std::move(chunk);
+}
+
+std::string GetHtmlStacktrace(std::string_view stacktrace) {
+  if (stacktrace.empty()) {
+    return "";
+  }
+
+  std::stringstream stream;
+  stream << "<tr><br><br>Stacktrace: <br>" << std::move(stacktrace) << "</tr>";
+  return std::move(stream).str();
+}
+
+http::Response<> GetErrorResponse(int status, std::string_view error_message,
+                                  std::string_view stacktrace) {
+  std::string content =
+      fmt::format(fmt::runtime(kAssetsHtmlErrorPageHtml),
+                  fmt::arg("error_message", error_message),
+                  fmt::arg("stacktrace", GetHtmlStacktrace(stacktrace)));
+  auto length = content.size();
+  return http::Response<>{
+      .status = status,
+      .headers = {{"Content-Type", "text/html; charset=UTF-8"},
+                  {"Content-Length", std::to_string(length)}},
+      .body = ToGenerator(std::move(content))};
+}
+
 }  // namespace
 
 class AccountManagerHandler::Impl {
@@ -147,8 +175,18 @@ Task<> AccountManagerHandler::Impl::Quit() {
 auto AccountManagerHandler::Impl::operator()(Request request,
                                              coro::stdx::stop_token stop_token)
     -> Task<Response> {
-  auto response =
-      co_await HandleRequest(std::move(request), std::move(stop_token));
+  auto response = co_await [&]() -> Task<Response> {
+    try {
+      co_return co_await HandleRequest(std::move(request),
+                                       std::move(stop_token));
+    } catch (const http::HttpException& e) {
+      co_return GetErrorResponse(e.status(), e.what(), e.html_stacktrace());
+    } catch (const Exception& e) {
+      co_return GetErrorResponse(500, e.what(), e.html_stacktrace());
+    } catch (const std::exception& e) {
+      co_return GetErrorResponse(500, e.what(), "");
+    }
+  }();
   response.headers.emplace_back("Accept-CH", "Sec-CH-Prefers-Color-Scheme");
   response.headers.emplace_back("Vary", "Sec-CH-Prefers-Color-Scheme");
   response.headers.emplace_back("Critical-CH", "Sec-CH-Prefers-Color-Scheme");

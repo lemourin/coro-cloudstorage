@@ -190,6 +190,7 @@ embed_resource(
         ../assets/html/account_entry.html
         ../assets/html/home_page.html
         ../assets/html/settings_page.html
+        ../assets/html/error_page.html
         ../assets/providers/box.png
         ../assets/providers/yandex.png
         ../assets/providers/dropbox.png
