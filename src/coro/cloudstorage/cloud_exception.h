@@ -13,14 +13,17 @@ class CloudException : public Exception {
 
   explicit CloudException(
       std::string message,
-      stdx::source_location location = stdx::source_location::current())
-      : Exception(std::move(location)),
+      stdx::source_location location = stdx::source_location::current(),
+      stdx::stacktrace stacktrace = stdx::stacktrace::current())
+      : Exception(std::move(location), std::move(stacktrace)),
         type_(Type::kUnknown),
         message_(std::move(message)) {}
 
-  explicit CloudException(Type type, stdx::source_location location =
-                                         stdx::source_location::current())
-      : Exception(std::move(location)),
+  explicit CloudException(
+      Type type,
+      stdx::source_location location = stdx::source_location::current(),
+      stdx::stacktrace stacktrace = stdx::stacktrace::current())
+      : Exception(std::move(location), std::move(stacktrace)),
         type_(type),
         message_(std::string("CloudException: ") + TypeToString(type)) {}
 

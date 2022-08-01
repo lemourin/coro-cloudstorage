@@ -4,6 +4,7 @@
 
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/cloud_provider_handler.h"
+#include "coro/cloudstorage/util/exception_utils.h"
 #include "coro/cloudstorage/util/get_size_handler.h"
 #include "coro/cloudstorage/util/settings_handler.h"
 #include "coro/cloudstorage/util/static_file_handler.h"
@@ -46,32 +47,28 @@ Generator<std::string> ToGenerator(std::string chunk) {
   co_yield std::move(chunk);
 }
 
-std::string GetHtmlStacktrace(std::string_view stacktrace) {
-  if (stacktrace.empty()) {
-    return "";
-  }
-
+std::string GetHtmlStacktrace(const stdx::stacktrace& stacktrace) {
   std::stringstream stream;
-  stream << "<tr><td><br><br>Stacktrace: <br>" << std::move(stacktrace)
-         << "</td></tr>";
+  stream << "<tr><td><br><br>Stacktrace: <br>"
+         << coro::GetHtmlStacktrace(stacktrace) << "</td></tr>";
   return std::move(stream).str();
 }
 
-http::Response<> GetErrorResponse(
-    int status, std::string_view error_message, std::string_view stacktrace,
-    const stdx::source_location* source_location) {
+http::Response<> GetErrorResponse(ErrorMetadata error) {
   std::string content = fmt::format(
       fmt::runtime(kAssetsHtmlErrorPageHtml),
-      fmt::arg("error_message", error_message),
-      fmt::arg("source_location",
-               source_location
-                   ? StrCat("<tr><td>Source location: ",
-                            coro::ToString(*source_location), "</td></tr>")
-                   : ""),
-      fmt::arg("stacktrace", GetHtmlStacktrace(stacktrace)));
+      fmt::arg("error_message", error.what),
+      fmt::arg(
+          "source_location",
+          error.source_location
+              ? StrCat("<tr><td>Source location: ",
+                       coro::ToString(*error.source_location), "</td></tr>")
+              : ""),
+      fmt::arg("stacktrace",
+               error.stacktrace ? GetHtmlStacktrace(*error.stacktrace) : ""));
   auto length = content.size();
   return http::Response<>{
-      .status = status,
+      .status = error.status.value_or(500),
       .headers = {{"Content-Type", "text/html; charset=UTF-8"},
                   {"Content-Length", std::to_string(length)}},
       .body = ToGenerator(std::move(content))};
@@ -186,15 +183,8 @@ auto AccountManagerHandler::Impl::operator()(Request request,
     try {
       co_return co_await HandleRequest(std::move(request),
                                        std::move(stop_token));
-    } catch (const http::HttpException& e) {
-      co_return GetErrorResponse(e.status(), e.what(), e.html_stacktrace(),
-                                 &e.source_location());
-    } catch (const Exception& e) {
-      co_return GetErrorResponse(500, e.what(), e.html_stacktrace(),
-                                 &e.source_location());
-    } catch (const std::exception& e) {
-      throw;
-      co_return GetErrorResponse(500, e.what(), "", nullptr);
+    } catch (...) {
+      co_return GetErrorResponse(GetErrorMetadata());
     }
   }();
   response.headers.emplace_back("Accept-CH", "Sec-CH-Prefers-Color-Scheme");
