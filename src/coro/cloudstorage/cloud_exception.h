@@ -11,11 +11,17 @@ class CloudException : public Exception {
  public:
   enum class Type { kNotFound, kUnauthorized, kRetry, kUnknown };
 
-  explicit CloudException(std::string message)
-      : type_(Type::kUnknown), message_(std::move(message)) {}
+  explicit CloudException(
+      std::string message,
+      stdx::source_location location = stdx::source_location::current())
+      : Exception(std::move(location)),
+        type_(Type::kUnknown),
+        message_(std::move(message)) {}
 
-  explicit CloudException(Type type)
-      : type_(type),
+  explicit CloudException(Type type, stdx::source_location location =
+                                         stdx::source_location::current())
+      : Exception(std::move(location)),
+        type_(type),
         message_(std::string("CloudException: ") + TypeToString(type)) {}
 
   Type type() const { return type_; }

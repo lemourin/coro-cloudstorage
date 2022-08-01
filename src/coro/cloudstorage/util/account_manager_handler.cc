@@ -52,16 +52,23 @@ std::string GetHtmlStacktrace(std::string_view stacktrace) {
   }
 
   std::stringstream stream;
-  stream << "<tr><br><br>Stacktrace: <br>" << std::move(stacktrace) << "</tr>";
+  stream << "<tr><td><br><br>Stacktrace: <br>" << std::move(stacktrace)
+         << "</td></tr>";
   return std::move(stream).str();
 }
 
-http::Response<> GetErrorResponse(int status, std::string_view error_message,
-                                  std::string_view stacktrace) {
-  std::string content =
-      fmt::format(fmt::runtime(kAssetsHtmlErrorPageHtml),
-                  fmt::arg("error_message", error_message),
-                  fmt::arg("stacktrace", GetHtmlStacktrace(stacktrace)));
+http::Response<> GetErrorResponse(
+    int status, std::string_view error_message, std::string_view stacktrace,
+    const stdx::source_location* source_location) {
+  std::string content = fmt::format(
+      fmt::runtime(kAssetsHtmlErrorPageHtml),
+      fmt::arg("error_message", error_message),
+      fmt::arg("source_location",
+               source_location
+                   ? StrCat("<tr><td>Source location: ",
+                            coro::ToString(*source_location), "</td></tr>")
+                   : ""),
+      fmt::arg("stacktrace", GetHtmlStacktrace(stacktrace)));
   auto length = content.size();
   return http::Response<>{
       .status = status,
@@ -180,11 +187,14 @@ auto AccountManagerHandler::Impl::operator()(Request request,
       co_return co_await HandleRequest(std::move(request),
                                        std::move(stop_token));
     } catch (const http::HttpException& e) {
-      co_return GetErrorResponse(e.status(), e.what(), e.html_stacktrace());
+      co_return GetErrorResponse(e.status(), e.what(), e.html_stacktrace(),
+                                 &e.source_location());
     } catch (const Exception& e) {
-      co_return GetErrorResponse(500, e.what(), e.html_stacktrace());
+      co_return GetErrorResponse(500, e.what(), e.html_stacktrace(),
+                                 &e.source_location());
     } catch (const std::exception& e) {
-      co_return GetErrorResponse(500, e.what(), "");
+      throw;
+      co_return GetErrorResponse(500, e.what(), "", nullptr);
     }
   }();
   response.headers.emplace_back("Accept-CH", "Sec-CH-Prefers-Color-Scheme");
