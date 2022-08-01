@@ -526,11 +526,13 @@ auto ToItem(const nlohmann::json& json, std::span<const uint8_t> master_key)
   }
 }
 
-CloudException ToException(int status) {
+CloudException ToException(int status, stdx::source_location location =
+                                           stdx::source_location::current()) {
   if (status == -3) {
-    return CloudException(CloudException::Type::kRetry);
+    return CloudException(CloudException::Type::kRetry, std::move(location));
   } else {
-    return CloudException(util::StrCat("mega error ", status));
+    return CloudException(util::StrCat("mega error ", status),
+                          std::move(location));
   }
 }
 
