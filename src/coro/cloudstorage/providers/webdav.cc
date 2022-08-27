@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+#include "coro/cloudstorage/util/string_utils.h"
 #include "coro/util/regex.h"
 
 #ifdef WIN32
@@ -18,6 +19,8 @@ namespace coro::cloudstorage {
 namespace {
 
 namespace re = ::coro::util::re;
+
+using ::coro::cloudstorage::util::SplitString;
 
 std::string ToAccessToken(const WebDAV::Auth::Credential& credential) {
   return http::ToBase64(credential.username + ":" + credential.password);
@@ -107,7 +110,11 @@ T ToItemImpl(const XmlNode<pugi::xml_node>& node) {
   T item{};
   auto props = node.child("propstat").child("prop");
   item.id = node.child("href").text().as_string();
-  item.name = http::DecodeUri(props.child("displayname").text().as_string());
+  if (auto name = props.child("displayname").text()) {
+    item.name = http::DecodeUri(name.as_string());
+  } else if (auto components = SplitString(item.id, '/'); !components.empty()) {
+    item.name = http::DecodeUri(components.back());
+  }
   if (auto timestamp = props.child("getlastmodified").text()) {
     item.timestamp = ParseTime(timestamp.as_string());
   }
@@ -229,7 +236,7 @@ WebDAV::Auth::AuthHandler::operator()(http::Request<> request,
 }
 
 auto WebDAV::GetRoot(stdx::stop_token) const -> Task<Directory> {
-  Directory d{{.id = "/"}};
+  Directory d{{.id = auth_token_.endpoint}};
   co_return d;
 }
 
@@ -266,7 +273,7 @@ auto WebDAV::GetGeneralData(stdx::stop_token stop_token) const
     result.space_used = text.as_llong();
   }
   if (auto text = stats.child("quota-available-bytes").text();
-      text && result.space_used) {
+      text && result.space_used && text.as_llong() >= 0) {
     result.space_total = text.as_llong() + *result.space_used;
   }
   co_return result;
