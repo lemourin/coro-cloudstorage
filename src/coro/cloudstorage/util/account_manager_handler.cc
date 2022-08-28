@@ -85,12 +85,14 @@ class AccountManagerHandler::Impl {
        const ThumbnailGenerator* thumbnail_generator,
        AccountListener account_listener, SettingsManager settings_manager);
 
+  ~Impl() { Quit(); }
+
   Impl(Impl&&) = delete;
   Impl& operator=(Impl&&) = delete;
 
   Task<Response> operator()(Request request, coro::stdx::stop_token stop_token);
 
-  Task<> Quit();
+  void Quit();
 
  private:
   struct AuthHandler {
@@ -166,14 +168,13 @@ AccountManagerHandler::Impl::Impl(const AbstractCloudFactory* factory,
   }
 }
 
-Task<> AccountManagerHandler::Impl::Quit() {
+void AccountManagerHandler::Impl::Quit() {
   while (!accounts_.empty()) {
     auto it = accounts_.begin();
     (*it)->stop_source_.request_stop();
     account_listener_.OnDestroy(*it);
     accounts_.erase(it);
   }
-  co_return;
 }
 
 auto AccountManagerHandler::Impl::operator()(Request request,
@@ -457,6 +458,6 @@ Task<http::Response<>> AccountManagerHandler::operator()(
   return (*impl_)(std::move(request), std::move(stop_token));
 }
 
-Task<> AccountManagerHandler::Quit() { return impl_->Quit(); }
+void AccountManagerHandler::Quit() { impl_->Quit(); }
 
 }  // namespace coro::cloudstorage::util

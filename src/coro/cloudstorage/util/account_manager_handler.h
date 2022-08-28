@@ -69,7 +69,7 @@ class AccountManagerHandler {
   Task<http::Response<>> operator()(http::Request<> request,
                                     stdx::stop_token stop_token);
 
-  Task<> Quit();
+  void Quit();
 
  private:
   class Impl;
