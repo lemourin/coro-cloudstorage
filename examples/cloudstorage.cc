@@ -92,6 +92,7 @@ int main() {
   signal(SIGPIPE, SIG_IGN);  // NOLINT
 #endif
 
+  signal(SIGINT, SignalHandler);
   signal(SIGTERM, SignalHandler);
 
   CloudFactoryContext factory_context(&gEventLoop);
