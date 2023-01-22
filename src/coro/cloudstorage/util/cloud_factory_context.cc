@@ -5,13 +5,12 @@
 namespace coro::cloudstorage::util {
 
 CloudFactoryContext::CloudFactoryContext(
-    const coro::util::EventLoop* event_loop,
-    coro::http::CacheHttpConfig http_cache_config, std::string config_path)
+    const coro::util::EventLoop* event_loop, CloudFactoryConfig config)
     : event_loop_(event_loop),
       thread_pool_(event_loop_, (std::thread::hardware_concurrency() + 1) / 2,
                    "coro-tpool"),
-      curl_http_(event_loop_, GetDirectoryPath(GetConfigFilePath())),
-      http_(http_cache_config, &curl_http_),
+      curl_http_(event_loop_, GetDirectoryPath(config.config_path)),
+      http_(config.http_cache_config, &curl_http_),
       thumbnail_thread_pool_(
           event_loop_, std::thread::hardware_concurrency() / 2, "coro-thumb"),
       thumbnail_generator_(&thumbnail_thread_pool_, event_loop_),
@@ -21,15 +20,23 @@ CloudFactoryContext::CloudFactoryContext(
       factory_(event_loop_, &thread_pool_, &http_, &thumbnail_generator_,
                &muxer_, &random_number_generator_),
       settings_manager_([&] {
-        AuthTokenManager auth_token_manager(&factory_, config_path);
+        AuthTokenManager auth_token_manager(&factory_, config.config_path);
         return SettingsManager(std::move(auth_token_manager),
-                               std::move(config_path));
+                               std::move(config));
       }()) {}
+
+CloudFactoryContext::CloudFactoryContext(
+    const coro::util::EventLoop* event_loop,
+    coro::http::CacheHttpConfig http_cache_config, std::string config_path)
+    : CloudFactoryContext(
+          event_loop,
+          CloudFactoryConfig{.http_cache_config = http_cache_config,
+                             .config_path = std::move(config_path)}) {}
 
 AccountManagerHandler CloudFactoryContext::CreateAccountManagerHandler(
     AccountListener listener) {
-  return AccountManagerHandler(&factory_, &thumbnail_generator_,
-                               std::move(listener), settings_manager_);
+  return {&factory_, &thumbnail_generator_, std::move(listener),
+          settings_manager_};
 }
 
 http::HttpServer<AccountManagerHandler> CloudFactoryContext::CreateHttpServer(

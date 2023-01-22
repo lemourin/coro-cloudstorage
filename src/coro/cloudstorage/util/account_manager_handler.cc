@@ -424,9 +424,8 @@ auto AccountManagerHandler::Impl::AuthHandler::operator()(
       std::move(stop_token));
   co_return Response{
       .status = 302,
-      .headers = {
-          {"Location", util::StrCat("/list/", account->type(), '/',
-                                    http::EncodeUri(account->username()))}}};
+      .headers = {{"Location", d->settings_manager_.GetPostAuthRedirectUri(
+                                   account->type(), account->username())}}};
 }
 
 auto AccountManagerHandler::Impl::OnRemoveHandler::operator()(

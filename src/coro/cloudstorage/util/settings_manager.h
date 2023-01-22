@@ -1,7 +1,10 @@
 #ifndef CORO_CLOUDSTORAGE_UTIL_SETTINGS_MANAGER_H
 #define CORO_CLOUDSTORAGE_UTIL_SETTINGS_MANAGER_H
 
+#include <functional>
+
 #include "coro/cloudstorage/util/auth_token_manager.h"
+#include "coro/cloudstorage/util/cloud_factory_config.h"
 #include "coro/cloudstorage/util/settings_utils.h"
 #include "coro/http/http_server.h"
 
@@ -10,7 +13,7 @@ namespace coro::cloudstorage::util {
 class SettingsManager {
  public:
   SettingsManager(AuthTokenManager auth_token_manager,
-                  std::string path = GetConfigFilePath());
+                  CloudFactoryConfig config = {});
 
   auto LoadTokenData() const { return auth_token_manager_.LoadTokenData(); }
 
@@ -32,9 +35,12 @@ class SettingsManager {
 
   http::HttpServerConfig GetHttpServerConfig() const;
 
+  std::string GetPostAuthRedirectUri(std::string_view account_type,
+                                     std::string_view username) const;
+
  private:
   AuthTokenManager auth_token_manager_;
-  std::string path_;
+  CloudFactoryConfig config_;
   bool effective_is_public_network_enabled_;
   uint16_t port_;
 };

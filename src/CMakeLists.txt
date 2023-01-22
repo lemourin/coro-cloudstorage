@@ -138,7 +138,9 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/on_auth_token_updated.h 
     coro/cloudstorage/util/thumbnail_quality.h
     coro/cloudstorage/util/exception_utils.h
-    coro/cloudstorage/util/exception_utils.cc)
+    coro/cloudstorage/util/exception_utils.cc
+    coro/cloudstorage/util/cloud_factory_config.h
+    coro/cloudstorage/util/cloud_factory_config.cc)
 
 target_include_directories(coro-cloudstorage PUBLIC .)
 target_include_directories(coro-cloudstorage PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ../contrib/)

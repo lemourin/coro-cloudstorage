@@ -18,8 +18,12 @@ namespace coro::cloudstorage::util {
 class CloudFactoryContext {
  public:
   CloudFactoryContext(const coro::util::EventLoop* event_loop,
-                      coro::http::CacheHttpConfig http_cache_config = {},
-                      std::string config_path = GetConfigFilePath());
+                      CloudFactoryConfig config);
+
+  [[deprecated]] CloudFactoryContext(
+      const coro::util::EventLoop* event_loop,
+      coro::http::CacheHttpConfig http_cache_config = {},
+      std::string config_path = GetConfigFilePath());
 
   CloudFactoryContext(CloudFactoryContext&&) = delete;
   CloudFactoryContext& operator=(CloudFactoryContext&&) = delete;

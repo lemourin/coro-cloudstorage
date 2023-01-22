@@ -5,8 +5,10 @@
 #include <string>
 #include <string_view>
 
-#include "coro/cloudstorage/util/settings_manager.h"
+#include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/cloudstorage/util/string_utils.h"
+#include "coro/stdx/stop_source.h"
+#include "coro/stdx/stop_token.h"
 #include "coro/util/type_list.h"
 
 namespace coro::cloudstorage::util {

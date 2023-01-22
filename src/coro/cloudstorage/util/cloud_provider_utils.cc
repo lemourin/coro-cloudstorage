@@ -65,15 +65,15 @@ FileType GetFileType(std::string_view mime_type) {
   }
 }
 
-Task<Item> GetItemByPathComponents(
-    const AbstractCloudProvider* d,
-    std::span<const std::string> components, stdx::stop_token stop_token) {
+Task<Item> GetItemByPathComponents(const AbstractCloudProvider* d,
+                                   std::span<const std::string> components,
+                                   stdx::stop_token stop_token) {
   co_return co_await GetItemByPathComponents(d, co_await d->GetRoot(stop_token),
                                              components, stop_token);
 }
 
-Task<Item> GetItemByPath(const AbstractCloudProvider* d,
-                         std::string path, stdx::stop_token stop_token) {
+Task<Item> GetItemByPath(const AbstractCloudProvider* d, std::string path,
+                         stdx::stop_token stop_token) {
   co_return co_await GetItemByPath(d, co_await d->GetRoot(stop_token),
                                    std::move(path), stop_token);
 }
