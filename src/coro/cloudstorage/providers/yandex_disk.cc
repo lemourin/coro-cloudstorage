@@ -52,7 +52,8 @@ std::string YandexDisk::Auth::GetAuthorizationUrl(const AuthData& data) {
          http::FormDataToString({{"response_type", "code"},
                                  {"client_id", data.client_id},
                                  {"redirect_uri", data.redirect_uri},
-                                 {"state", data.state}});
+                                 {"state", data.state},
+                                 {"force_confirm", "yes"}});
 }
 
 auto YandexDisk::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,

@@ -91,7 +91,8 @@ std::string PCloud::Auth::GetAuthorizationUrl(const AuthData& data) {
          http::FormDataToString({{"response_type", "code"},
                                  {"client_id", data.client_id},
                                  {"redirect_uri", data.redirect_uri},
-                                 {"state", data.state}});
+                                 {"state", data.state},
+                                 {"force_reapprove", "true"}});
 }
 
 auto PCloud::Auth::ExchangeAuthorizationCode(
