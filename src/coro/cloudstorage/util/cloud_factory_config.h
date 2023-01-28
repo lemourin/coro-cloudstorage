@@ -16,7 +16,6 @@ struct CloudFactoryConfig {
                             std::string_view username)>
       post_auth_redirect_uri = GetDefaultPostAuthRedirectUri;
 
- private:
   static std::string GetDefaultPostAuthRedirectUri(
       std::string_view account_type, std::string_view username);
 };
