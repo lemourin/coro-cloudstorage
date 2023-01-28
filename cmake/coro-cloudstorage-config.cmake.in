@@ -1,0 +1,35 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(coro-http REQUIRED)
+find_dependency(nlohmann_json 3.9.1 REQUIRED)
+find_dependency(fmt 8.0.0 REQUIRED)
+find_dependency(pugixml 1.11 REQUIRED)
+find_dependency(Libevent 2.1.12 REQUIRED)
+
+include(FindPkgConfig)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(avcodec REQUIRED libavcodec>=58.134.100 IMPORTED_TARGET)
+    pkg_check_modules(avformat REQUIRED libavformat>=58.76.100 IMPORTED_TARGET)
+    pkg_check_modules(avutil REQUIRED libavutil>=56.70.100 IMPORTED_TARGET)
+    pkg_check_modules(avfilter REQUIRED libavfilter>=7.110.100 IMPORTED_TARGET)
+    pkg_check_modules(swscale REQUIRED libswscale>=5.9.100 IMPORTED_TARGET)
+    pkg_check_modules(swresample REQUIRED libswresample>=3.9.100 IMPORTED_TARGET)
+else()
+    find_dependency(FFMPEG 4.4 REQUIRED)
+endif()
+
+if(NOT TARGET cryptopp::cryptopp)
+    find_path(CRYPTOPP_INCLUDE cryptopp/config.h REQUIRED)
+    find_library(CRYPTOPP_LIBRARY cryptopp cryptopp-static REQUIRED)
+    add_library(cryptopp::cryptopp UNKNOWN IMPORTED)
+    set_target_properties(cryptopp::cryptopp
+        PROPERTIES
+            IMPORTED_LOCATION "${CRYPTOPP_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${CRYPTOPP_INCLUDE}"
+    )
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/coro-cloudstorage.cmake")
+check_required_components("@PROJECT_NAME@")

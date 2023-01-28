@@ -1,0 +1,16 @@
+{
+  "name": "coro-cloudstorage",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "coro-http",
+    "nlohmann-json",
+    "fmt",
+    "pugixml",
+    "libevent",
+    "cryptopp",
+    {
+      "name": "ffmpeg",
+      "features": ["zlib"]
+    }
+  ]
+}

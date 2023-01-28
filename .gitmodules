@@ -1,3 +1,0 @@
-[submodule "coro-http"]
-	path = contrib/coro-http
-	url = https://github.com/lemourin/coro-http.git

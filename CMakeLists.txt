@@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.17)
 
 option(BUILD_SHARED_LIBS "build shared libs" OFF)
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/contrib/coro-http/cmake)
+find_package(coro-http REQUIRED)
+list(APPEND CMAKE_MODULE_PATH ${coro-http_DIR})
 
 find_package(nlohmann_json 3.9.1 REQUIRED)
 find_package(fmt 8.0.0 REQUIRED)
@@ -62,6 +63,5 @@ set_target_properties(cryptopp::cryptopp
         INTERFACE_INCLUDE_DIRECTORIES "${CRYPTOPP_INCLUDE}"
 )
 
-add_subdirectory(contrib)
 add_subdirectory(src)
 add_subdirectory(examples)
