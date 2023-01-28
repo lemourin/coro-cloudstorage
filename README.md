@@ -19,8 +19,7 @@ mkdir build
 cd build
 
 cmake .. \
-  -DUSE_BUNDLED_DEPENDENCIES=OFF \
-  -DCMAKE_TOOLCHAIN_FILE="$(which vcpkg)/scripts/buildsystems/vcpkg.cmake"
+  -DCMAKE_TOOLCHAIN_FILE="$(which vcpkg)/../scripts/buildsystems/vcpkg.cmake"
 
 cmake --build .
 ```

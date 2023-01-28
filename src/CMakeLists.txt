@@ -160,7 +160,6 @@ target_link_libraries(coro-cloudstorage PRIVATE
     fmt::fmt
     pugixml::pugixml
     libevent::core
-    Boost::regex
 )
 
 embed_resource(

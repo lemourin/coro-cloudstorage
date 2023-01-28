@@ -1,21 +1,3 @@
 [submodule "coro-http"]
 	path = contrib/coro-http
 	url = https://github.com/lemourin/coro-http.git
-[submodule "contrib/json"]
-	path = contrib/json
-	url = https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent
-[submodule "contrib/cryptopp"]
-	path = contrib/cryptopp
-	url = https://github.com/lemourin/cryptopp
-[submodule "contrib/pugixml"]
-	path = contrib/pugixml
-	url = https://github.com/zeux/pugixml
-[submodule "contrib/ffmpeg"]
-	path = contrib/ffmpeg
-	url = https://github.com/FFmpeg/FFmpeg
-[submodule "contrib/zlib-ng"]
-	path = contrib/zlib-ng
-	url = https://github.com/zlib-ng/zlib-ng
-[submodule "contrib/fmt"]
-	path = contrib/fmt
-	url = https://github.com/fmtlib/fmt
