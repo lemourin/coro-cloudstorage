@@ -9,7 +9,7 @@ find_dependency(pugixml 1.11 REQUIRED)
 find_dependency(Libevent 2.1.12 REQUIRED)
 
 if(@PKG_CONFIG_FOUND@)
-    include(FindPkgConfig)
+    find_dependency(PkgConfig REQUIRED)
     pkg_check_modules(avcodec REQUIRED libavcodec>=58.134.100 IMPORTED_TARGET)
     pkg_check_modules(avformat REQUIRED libavformat>=58.76.100 IMPORTED_TARGET)
     pkg_check_modules(avutil REQUIRED libavutil>=56.70.100 IMPORTED_TARGET)
