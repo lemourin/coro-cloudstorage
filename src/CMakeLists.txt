@@ -233,6 +233,12 @@ target_compile_definitions(
         PUBLIC CORO_CLOUDSTORAGE_REDIRECT_URI="${CORO_CLOUDSTORAGE_REDIRECT_URI}"
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+    target_compile_definitions(
+        coro-cloudstorage PRIVATE WINRT
+    )
+endif()
+
 function(define_auth_data)
     math(EXPR CNT "${ARGC} - 1")
     foreach(INDEX RANGE 0 ${CNT} 2)

@@ -8,6 +8,7 @@
 #ifdef WIN32
 #include <direct.h>
 #include <shlobj.h>
+#include <windows.h>
 
 #undef CreateDirectory
 #undef RemoveDirectory
@@ -38,7 +39,9 @@ int mkdir(const char* path) { return ::mkdir(path, 0777); }
 
 std::string GetConfigFilePath(std::string_view app_name,
                               std::string_view file_name) {
-#ifdef WIN32
+#if defined(WINRT)
+  return StrCat('.', '\\', app_name, '\\', file_name);
+#elif defined(WIN32)
   PWSTR path;
   if (SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &path) != S_OK) {
     throw RuntimeError("cannot fetch configuration path");
