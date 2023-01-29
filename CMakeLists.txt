@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.23)
 project(coro-cloudstorage CXX C)
 
 option(BUILD_SHARED_LIBS "build shared libs" OFF)
+option(BUILD_EXAMPLES "build examples" ON)
 
 find_package(coro-http REQUIRED)
 list(APPEND CMAKE_MODULE_PATH ${coro-http_DIR})
@@ -40,4 +41,6 @@ set_target_properties(cryptopp::cryptopp
 )
 
 add_subdirectory(src)
-add_subdirectory(examples)
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
