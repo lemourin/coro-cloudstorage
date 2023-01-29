@@ -31,14 +31,17 @@ else()
     find_package(FFMPEG 4.4 REQUIRED)
 endif()
 
-find_path(CRYPTOPP_INCLUDE cryptopp/config.h REQUIRED)
-find_library(CRYPTOPP_LIBRARY cryptopp cryptopp-static REQUIRED)
-add_library(cryptopp::cryptopp UNKNOWN IMPORTED)
-set_target_properties(cryptopp::cryptopp
-    PROPERTIES
-        IMPORTED_LOCATION "${CRYPTOPP_LIBRARY}"
-        INTERFACE_INCLUDE_DIRECTORIES "${CRYPTOPP_INCLUDE}"
-)
+find_package(cryptopp)
+if(NOT cryptopp_FOUND)
+    find_path(CRYPTOPP_INCLUDE cryptopp/config.h REQUIRED)
+    find_library(CRYPTOPP_LIBRARY cryptopp cryptopp-static REQUIRED)
+    add_library(cryptopp::cryptopp UNKNOWN IMPORTED)
+    set_target_properties(cryptopp::cryptopp
+        PROPERTIES
+            IMPORTED_LOCATION "${CRYPTOPP_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${CRYPTOPP_INCLUDE}"
+    )
+endif()
 
 add_subdirectory(src)
 if(BUILD_EXAMPLES)
