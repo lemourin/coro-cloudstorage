@@ -148,7 +148,9 @@ target_sources(coro-cloudstorage
         coro/cloudstorage/cloud_factory.h
 )
 
-target_include_directories(coro-cloudstorage PRIVATE . ${CMAKE_CURRENT_BINARY_DIR} ../contrib/)
+target_include_directories(coro-cloudstorage PRIVATE . ${CMAKE_CURRENT_BINARY_DIR} ../contrib/ ${FFMPEG_INCLUDE_DIRS})
+
+target_link_directories(coro-cloudstorage PRIVATE ${FFMPEG_LIBRARY_DIRS})
 
 target_link_libraries(coro-cloudstorage PUBLIC
     coro::coro-http
@@ -156,16 +158,23 @@ target_link_libraries(coro-cloudstorage PUBLIC
 )
 
 target_link_libraries(coro-cloudstorage PRIVATE
-    FFMPEG::avcodec
-    FFMPEG::avutil
-    FFMPEG::avformat
-    FFMPEG::swscale
-    FFMPEG::avfilter
     cryptopp::cryptopp
     fmt::fmt
     pugixml::pugixml
     libevent::core
 )
+
+if(FFMPEG_LIBRARIES)
+    target_link_libraries(coro-cloudstorage PRIVATE ${FFMPEG_LIBRARIES})
+else()
+    target_link_libraries(coro-cloudstorage PRIVATE
+        FFMPEG::avcodec
+        FFMPEG::avutil
+        FFMPEG::avformat
+        FFMPEG::swscale
+        FFMPEG::avfilter
+    )
+endif()
 
 embed_resource(
     TARGET coro-cloudstorage
