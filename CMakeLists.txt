@@ -43,6 +43,10 @@ if(NOT cryptopp_FOUND)
     )
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+    find_package(cppwinrt CONFIG REQUIRED)
+endif()
+
 add_subdirectory(src)
 if(BUILD_EXAMPLES)
     add_subdirectory(examples)

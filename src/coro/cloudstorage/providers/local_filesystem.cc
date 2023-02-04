@@ -1,6 +1,11 @@
 #include "coro/cloudstorage/providers/local_filesystem.h"
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+#include "coro/cloudstorage/util/string_utils.h"
+
+#ifdef WINRT
+#include <winrt/Windows.Storage.h>
+#endif
 
 #ifdef WIN32
 
@@ -25,7 +30,9 @@ constexpr const int kBufferSize = 4096;
 
 std::string GetHomeDirectory() {
 #ifdef WINRT
-  return ".";
+  auto directory =
+      winrt::Windows::Storage::ApplicationData::Current().LocalFolder();
+  return util::StrCat(winrt::to_string(directory.Path()));
 #elif _WIN32
   const char* drive = std::getenv("Homedrive");
   const char* path = std::getenv("Homepath");

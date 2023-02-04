@@ -5,6 +5,10 @@
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/exception.h"
 
+#ifdef WINRT
+#include <winrt/Windows.Storage.h>
+#endif
+
 #ifdef WIN32
 #include <direct.h>
 #include <shlobj.h>
@@ -40,7 +44,10 @@ int mkdir(const char* path) { return ::mkdir(path, 0777); }
 std::string GetConfigFilePath(std::string_view app_name,
                               std::string_view file_name) {
 #if defined(WINRT)
-  return StrCat('.', '\\', app_name, '\\', file_name);
+  auto directory =
+      winrt::Windows::Storage::ApplicationData::Current().LocalFolder();
+  return StrCat(winrt::to_string(directory.Path()), '\\', app_name, '\\',
+                file_name);
 #elif defined(WIN32)
   PWSTR path;
   if (SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &path) != S_OK) {

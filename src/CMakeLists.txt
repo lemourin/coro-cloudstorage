@@ -237,6 +237,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
     target_compile_definitions(
         coro-cloudstorage PRIVATE WINRT
     )
+    target_link_libraries(coro-cloudstorage PRIVATE Microsoft::CppWinRT)
 endif()
 
 function(define_auth_data)

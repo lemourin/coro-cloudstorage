@@ -33,5 +33,9 @@ elseif(NOT TARGET cryptopp::cryptopp)
     )
 endif()
 
+if(@cppwinrt_FOUND@)
+    find_dependency(cppwinrt CONFIG REQUIRED)
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/coro-cloudstorage.cmake")
 check_required_components("@PROJECT_NAME@")

@@ -11,6 +11,10 @@
     {
       "name": "ffmpeg",
       "features": ["zlib"]
+    },
+    {
+      "name": "cppwinrt",
+      "platform": "uwp"
     }
   ]
 }

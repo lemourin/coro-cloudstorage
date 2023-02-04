@@ -6,6 +6,9 @@
 #include <string>
 #include <string_view>
 
+#include "coro/cloudstorage/util/string_utils.h"
+#include "coro/exception.h"
+
 namespace coro::cloudstorage::util {
 
 std::string GetConfigFilePath(std::string_view app_name = "coro-cloudstorage",
@@ -27,9 +30,14 @@ void EditSettings(std::string_view path, const F& edit) {
     RemoveDirectory(GetDirectoryPath(path));
   } else {
     CreateDirectory(GetDirectoryPath(path));
-    std::ofstream stream{std::string(path)};
-    stream.exceptions(std::ofstream::failbit | std::ofstream::badbit);
-    stream << json.dump(2);
+    try {
+      std::ofstream stream{std::string(path)};
+      stream.exceptions(std::ofstream::failbit | std::ofstream::badbit);
+      stream << json.dump(2);
+    } catch (const std::exception& e) {
+      throw coro::RuntimeError(
+          StrCat("Failed to edit settings at ", path, ". detail=", e.what()));
+    }
   }
 }
 
