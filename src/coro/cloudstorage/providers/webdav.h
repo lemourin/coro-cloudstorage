@@ -53,7 +53,6 @@ class WebDAV {
       std::string endpoint;
       std::optional<Credential> credential;
     };
-    struct AuthData {};
 
     class AuthHandler;
   };
@@ -122,9 +121,6 @@ nlohmann::json ToJson<WebDAV::Auth::AuthToken>(WebDAV::Auth::AuthToken token);
 template <>
 WebDAV::Auth::AuthToken ToAuthToken<WebDAV::Auth::AuthToken>(
     const nlohmann::json& json);
-
-template <>
-WebDAV::Auth::AuthData GetAuthData<WebDAV>();
 
 }  // namespace util
 

@@ -317,10 +317,10 @@ PCloud::Auth::AuthToken ToAuthToken<PCloud::Auth::AuthToken>(
 }
 
 template <>
-PCloud::Auth::AuthData GetAuthData<PCloud>() {
+PCloud::Auth::AuthData GetAuthData<PCloud>(const nlohmann::json& json) {
   return {
-      .client_id = PCLOUD_CLIENT_ID,
-      .client_secret = PCLOUD_CLIENT_SECRET,
+      .client_id = json.at("client_id"),
+      .client_secret = json.at("client_secret"),
   };
 }
 

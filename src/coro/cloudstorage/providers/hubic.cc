@@ -241,8 +241,9 @@ HubiC::Auth::AuthToken ToAuthToken<HubiC::Auth::AuthToken>(
 }
 
 template <>
-HubiC::Auth::AuthData GetAuthData<HubiC>() {
-  return {.client_id = HUBIC_CLIENT_ID, .client_secret = HUBIC_CLIENT_SECRET};
+HubiC::Auth::AuthData GetAuthData<HubiC>(const nlohmann::json& json) {
+  return {.client_id = json.at("client_id"),
+          .client_secret = json.at("client_secret")};
 }
 
 template <>

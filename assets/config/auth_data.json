@@ -1,0 +1,34 @@
+{
+  "google": {
+    "client_id": "646432077068-hmvk44qgo6d0a64a5h9ieue34p3j2dcv.apps.googleusercontent.com",
+    "client_secret": "1f0FG5ch-kKOanTAv1Bqdp9U"
+  },
+  "box": {
+    "client_id": "zmiv9tv13hunxhyjk16zqv8dmdw0d773",
+    "client_secret": "IZ0T8WsUpJin7Qt3rHMf7qDAIFAkYZ0R"
+  },
+  "dropbox": {
+    "client_id": "ktryxp68ae5cicj",
+    "client_secret": "6evu94gcxnmyr59"
+  },
+  "hubic": {
+    "client_id": "api_hubic_kHQ5NUmE2yAAeiWfXPwQy2T53M6RP2fe",
+    "client_secret": "Xk1ezMMSGNeU4r0wv3jutleYX9XvXmgg8XVElJjqoDvlDw0KsC9U2tkSxJxYof8V"
+  },
+  "mega": {
+    "api_key": "ZVhB0Czb",
+    "app_name": "coro-cloudstorage"
+  },
+  "onedrive": {
+    "client_id": "56a1d60f-ea71-40e9-a489-b87fba12a23e",
+    "client_secret": "zJRAsd0o4E9c33q4OLc7OhY"
+  },
+  "pcloud": {
+    "client_id": "rjR7bUpwgdz",
+    "client_secret": "zNtirCfoYfmX5aFzoavWikKWyMlV"
+  },
+  "yandex": {
+    "client_id": "04d700d432884c4381c07e760213ed8a",
+    "client_secret": "197f9693caa64f0ebb51d201110074f9"
+  }
+}

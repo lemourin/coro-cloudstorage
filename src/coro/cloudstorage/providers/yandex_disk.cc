@@ -275,10 +275,10 @@ Task<nlohmann::json> YandexDisk::FetchJson(Request request,
 namespace util {
 
 template <>
-YandexDisk::Auth::AuthData GetAuthData<YandexDisk>() {
+YandexDisk::Auth::AuthData GetAuthData<YandexDisk>(const nlohmann::json& json) {
   return {
-      .client_id = YANDEX_DISK_CLIENT_ID,
-      .client_secret = YANDEX_DISK_CLIENT_SECRET,
+      .client_id = json.at("client_id"),
+      .client_secret = json.at("client_secret"),
   };
 }
 

@@ -32,7 +32,7 @@ template <typename T>
 concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
                                    {
                                      v.GetAuthorizationUrl({})
-                                     } -> stdx::convertible_to<std::string>;
+                                   } -> stdx::convertible_to<std::string>;
                                  };
 
 template <typename T>

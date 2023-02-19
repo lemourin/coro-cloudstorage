@@ -95,7 +95,7 @@ int main() {
   signal(SIGINT, SignalHandler);
   signal(SIGTERM, SignalHandler);
 
-  CloudFactoryContext factory_context(&gEventLoop);
+  CloudFactoryContext factory_context(&gEventLoop, {});
   coro::RunTask(CoMain(&factory_context, &gQuit));
   gEventLoop.EnterLoop();
   return 0;

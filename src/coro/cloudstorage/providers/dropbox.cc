@@ -355,10 +355,10 @@ auto Dropbox::GetItemThumbnail(File file, http::Range range,
 namespace util {
 
 template <>
-Dropbox::Auth::AuthData GetAuthData<Dropbox>() {
+Dropbox::Auth::AuthData GetAuthData<Dropbox>(const nlohmann::json& json) {
   return {
-      .client_id = DROPBOX_CLIENT_ID,
-      .client_secret = DROPBOX_CLIENT_SECRET,
+      .client_id = json.at("client_id"),
+      .client_secret = json.at("client_secret"),
   };
 }
 

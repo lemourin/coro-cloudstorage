@@ -1224,8 +1224,8 @@ Mega::Auth::AuthToken ToAuthToken<Mega::Auth::AuthToken>(
 }
 
 template <>
-Mega::Auth::AuthData GetAuthData<Mega>() {
-  return {.api_key = MEGA_API_KEY, .app_name = MEGA_APP_NAME};
+Mega::Auth::AuthData GetAuthData<Mega>(const nlohmann::json& json) {
+  return {.api_key = json.at("api_key"), .app_name = json.at("app_name")};
 }
 
 template <>

@@ -83,7 +83,7 @@ class AccountManagerHandler::Impl {
 
   Impl(const AbstractCloudFactory* factory,
        const ThumbnailGenerator* thumbnail_generator,
-       AccountListener account_listener, SettingsManager settings_manager);
+       AccountListener account_listener, SettingsManager* settings_manager);
 
   ~Impl() { Quit(); }
 
@@ -145,7 +145,7 @@ class AccountManagerHandler::Impl {
   const AbstractCloudFactory* factory_;
   const ThumbnailGenerator* thumbnail_generator_;
   AccountListener account_listener_;
-  SettingsManager settings_manager_;
+  SettingsManager* settings_manager_;
   std::vector<std::shared_ptr<CloudProviderAccount>> accounts_;
   int64_t version_ = 0;
 };
@@ -153,12 +153,12 @@ class AccountManagerHandler::Impl {
 AccountManagerHandler::Impl::Impl(const AbstractCloudFactory* factory,
                                   const ThumbnailGenerator* thumbnail_generator,
                                   AccountListener account_listener,
-                                  SettingsManager settings_manager)
+                                  SettingsManager* settings_manager)
     : factory_(factory),
       thumbnail_generator_(thumbnail_generator),
       account_listener_(std::move(account_listener)),
-      settings_manager_(std::move(settings_manager)) {
-  for (auto auth_token : settings_manager_.LoadTokenData()) {
+      settings_manager_(settings_manager) {
+  for (auto auth_token : settings_manager_->LoadTokenData()) {
     auto id = std::move(auth_token.id);
     auto account =
         accounts_.emplace_back(std::make_shared<CloudProviderAccount>(
@@ -287,8 +287,8 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
       .prefix = "/size",
       .handler = GetSizeHandler{
           std::span<std::shared_ptr<CloudProviderAccount>>(accounts_)}});
-  handlers.emplace_back(Handler{
-      .prefix = "/settings", .handler = SettingsHandler(&settings_manager_)});
+  handlers.emplace_back(Handler{.prefix = "/settings",
+                                .handler = SettingsHandler(settings_manager_)});
   handlers.emplace_back(
       Handler{.prefix = "/settings/theme-toggle", .handler = ThemeHandler{}});
 
@@ -306,7 +306,7 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
         .prefix = StrCat("/list/", account->type(), '/',
                          http::EncodeUri(account->username())),
         .handler = CloudProviderHandler(
-            &*account->provider(), thumbnail_generator_, &settings_manager_)});
+            &*account->provider(), thumbnail_generator_, settings_manager_)});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/remove/", account->type(), '/',
@@ -364,7 +364,7 @@ void AccountManagerHandler::Impl::RemoveCloudProvider(const F& predicate) {
     if (predicate(*it) && !(*it)->stop_token().stop_requested()) {
       (*it)->stop_source_.request_stop();
       account_listener_.OnDestroy(*it);
-      settings_manager_.RemoveToken((*it)->username(), (*it)->type());
+      settings_manager_->RemoveToken((*it)->username(), (*it)->type());
       *(*it)->username_ = std::nullopt;
       it = accounts_.erase(it);
     } else {
@@ -379,7 +379,7 @@ CloudProviderAccount AccountManagerHandler::Impl::CreateAccount(
   return CloudProviderAccount(
       username, version_++,
       factory_->Create(std::move(auth_token),
-                       OnAuthTokenChanged{&settings_manager_, username}));
+                       OnAuthTokenChanged{settings_manager_, username}));
 }
 
 Task<std::shared_ptr<CloudProviderAccount>> AccountManagerHandler::Impl::Create(
@@ -401,7 +401,7 @@ Task<std::shared_ptr<CloudProviderAccount>> AccountManagerHandler::Impl::Create(
     auto d = accounts_.emplace_back(
         std::make_shared<CloudProviderAccount>(std::move(account)));
     OnCloudProviderCreated(d);
-    settings_manager_.SaveToken(std::move(auth_token), **username);
+    settings_manager_->SaveToken(std::move(auth_token), **username);
     co_return d;
   } catch (...) {
     exception = std::current_exception();
@@ -424,7 +424,7 @@ auto AccountManagerHandler::Impl::AuthHandler::operator()(
       std::move(stop_token));
   co_return Response{
       .status = 302,
-      .headers = {{"Location", d->settings_manager_.GetPostAuthRedirectUri(
+      .headers = {{"Location", d->settings_manager_->GetPostAuthRedirectUri(
                                    account->type(), account->username())}}};
 }
 
@@ -439,10 +439,10 @@ auto AccountManagerHandler::Impl::OnRemoveHandler::operator()(
 AccountManagerHandler::AccountManagerHandler(
     const AbstractCloudFactory* factory,
     const ThumbnailGenerator* thumbnail_generator,
-    AccountListener account_listener, SettingsManager settings_manager)
+    AccountListener account_listener, SettingsManager* settings_manager)
     : impl_(std::make_unique<Impl>(factory, thumbnail_generator,
                                    std::move(account_listener),
-                                   std::move(settings_manager))) {}
+                                   settings_manager)) {}
 
 AccountManagerHandler::AccountManagerHandler(AccountManagerHandler&&) noexcept =
     default;

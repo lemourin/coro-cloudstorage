@@ -310,9 +310,9 @@ auto OneDrive::CreateUploadSession(Directory parent, std::string_view name,
 namespace util {
 
 template <>
-OneDrive::Auth::AuthData GetAuthData<OneDrive>() {
-  return {.client_id = ONE_DRIVE_CLIENT_ID,
-          .client_secret = ONE_DRIVE_CLIENT_SECRET};
+OneDrive::Auth::AuthData GetAuthData<OneDrive>(const nlohmann::json& json) {
+  return {.client_id = json.at("client_id"),
+          .client_secret = json.at("client_secret")};
 }
 
 template <>

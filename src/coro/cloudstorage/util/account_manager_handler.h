@@ -59,7 +59,7 @@ class AccountManagerHandler {
   AccountManagerHandler(const AbstractCloudFactory* factory,
                         const ThumbnailGenerator* thumbnail_generator,
                         AccountListener account_listener,
-                        SettingsManager settings_manager);
+                        SettingsManager* settings_manager);
   AccountManagerHandler(AccountManagerHandler&&) noexcept;
 
   ~AccountManagerHandler();

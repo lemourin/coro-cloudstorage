@@ -123,7 +123,7 @@ class Dropbox {
 namespace util {
 
 template <>
-Dropbox::Auth::AuthData GetAuthData<Dropbox>();
+Dropbox::Auth::AuthData GetAuthData<Dropbox>(const nlohmann::json&);
 
 }  // namespace util
 

@@ -275,7 +275,7 @@ Mega::Auth::AuthToken ToAuthToken<Mega::Auth::AuthToken>(
     const nlohmann::json& json);
 
 template <>
-Mega::Auth::AuthData GetAuthData<Mega>();
+Mega::Auth::AuthData GetAuthData<Mega>(const nlohmann::json&);
 
 }  // namespace util
 

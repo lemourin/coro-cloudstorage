@@ -313,10 +313,10 @@ auto Box::GetItemThumbnail(File file, http::Range range,
 namespace util {
 
 template <>
-Box::Auth::AuthData GetAuthData<Box>() {
+Box::Auth::AuthData GetAuthData<Box>(const nlohmann::json& json) {
   return {
-      .client_id = BOX_CLIENT_ID,
-      .client_secret = BOX_CLIENT_SECRET,
+      .client_id = json.at("client_id"),
+      .client_secret = json.at("client_secret"),
   };
 }
 

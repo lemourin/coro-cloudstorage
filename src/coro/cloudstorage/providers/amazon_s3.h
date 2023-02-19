@@ -154,7 +154,7 @@ AmazonS3::Auth::AuthToken ToAuthToken<AmazonS3::Auth::AuthToken>(
     const nlohmann::json& json);
 
 template <>
-AmazonS3::Auth::AuthData GetAuthData<AmazonS3>();
+AmazonS3::Auth::AuthData GetAuthData<AmazonS3>(const nlohmann::json&);
 
 }  // namespace util
 

@@ -133,7 +133,7 @@ class Box {
 namespace util {
 
 template <>
-Box::Auth::AuthData GetAuthData<Box>();
+Box::Auth::AuthData GetAuthData<Box>(const nlohmann::json&);
 
 }  // namespace util
 

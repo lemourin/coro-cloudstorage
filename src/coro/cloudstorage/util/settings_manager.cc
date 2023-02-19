@@ -20,7 +20,7 @@ SettingsManager::SettingsManager(AuthTokenManager auth_token_manager,
     : auth_token_manager_(std::move(auth_token_manager)),
       config_(std::move(config)),
       effective_is_public_network_enabled_(IsPublicNetworkEnabled()),
-      port_(GetPort(CORO_CLOUDSTORAGE_REDIRECT_URI)) {}
+      port_(GetPort(config_.auth_data.redirect_uri())) {}
 
 void SettingsManager::SetEnablePublicNetwork(bool enable) const {
   EditSettings(config_.config_path, [&](nlohmann::json settings) {

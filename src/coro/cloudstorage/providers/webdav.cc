@@ -200,11 +200,6 @@ WebDAV::Auth::AuthToken ToAuthToken<WebDAV::Auth::AuthToken>(
   return auth_token;
 }
 
-template <>
-WebDAV::Auth::AuthData GetAuthData<WebDAV>() {
-  return {};
-}
-
 }  // namespace util
 
 Task<std::variant<http::Response<>, WebDAV::Auth::AuthToken>>

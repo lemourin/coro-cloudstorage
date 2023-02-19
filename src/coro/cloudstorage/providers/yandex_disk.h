@@ -133,7 +133,7 @@ class YandexDisk {
 
 namespace util {
 template <>
-YandexDisk::Auth::AuthData GetAuthData<YandexDisk>();
+YandexDisk::Auth::AuthData GetAuthData<YandexDisk>(const nlohmann::json&);
 }  // namespace util
 
 }  // namespace coro::cloudstorage

@@ -133,7 +133,7 @@ class OneDrive {
 
 namespace util {
 template <>
-OneDrive::Auth::AuthData GetAuthData<OneDrive>();
+OneDrive::Auth::AuthData GetAuthData<OneDrive>(const nlohmann::json&);
 }  // namespace util
 
 }  // namespace coro::cloudstorage

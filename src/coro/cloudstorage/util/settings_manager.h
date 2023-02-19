@@ -13,7 +13,7 @@ namespace coro::cloudstorage::util {
 class SettingsManager {
  public:
   SettingsManager(AuthTokenManager auth_token_manager,
-                  CloudFactoryConfig config = {});
+                  CloudFactoryConfig config);
 
   auto LoadTokenData() const { return auth_token_manager_.LoadTokenData(); }
 

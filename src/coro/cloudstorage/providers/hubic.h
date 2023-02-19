@@ -105,7 +105,7 @@ HubiC::Auth::AuthToken ToAuthToken<HubiC::Auth::AuthToken>(
     const nlohmann::json& json);
 
 template <>
-HubiC::Auth::AuthData GetAuthData<HubiC>();
+HubiC::Auth::AuthData GetAuthData<HubiC>(const nlohmann::json& json);
 
 }  // namespace util
 

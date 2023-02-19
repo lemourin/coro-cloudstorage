@@ -24,7 +24,7 @@ class CloudFactory : public util::AbstractCloudFactory {
                const util::ThumbnailGenerator* thumbnail_generator,
                const util::Muxer* muxer,
                util::RandomNumberGenerator* random_number_generator,
-               util::AuthData auth_data = util::AuthData{});
+               util::AuthData auth_data);
 
   std::unique_ptr<util::AbstractCloudProvider> Create(
       util::AbstractCloudProvider::Auth::AuthToken auth_token,
@@ -35,7 +35,7 @@ class CloudFactory : public util::AbstractCloudFactory {
       util::AbstractCloudProvider::Type) const override;
 
   std::span<const util::AbstractCloudProvider::Type>
-  GetSupportedCloudProviders() const override;
+  GetSupportedCloudProviders() const final;
 
  private:
   std::unique_ptr<util::AbstractCloudFactory> CreateCloudFactory(

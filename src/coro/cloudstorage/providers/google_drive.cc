@@ -374,9 +374,10 @@ auto GoogleDrive::UploadFile(std::optional<std::string_view> id,
 namespace util {
 
 template <>
-GoogleDrive::Auth::AuthData GetAuthData<GoogleDrive>() {
-  return {.client_id = GOOGLE_DRIVE_CLIENT_ID,
-          .client_secret = GOOGLE_DRIVE_CLIENT_SECRET};
+GoogleDrive::Auth::AuthData GetAuthData<GoogleDrive>(
+    const nlohmann::json& json) {
+  return {.client_id = json.at("client_id"),
+          .client_secret = json.at("client_secret")};
 }
 
 template <>

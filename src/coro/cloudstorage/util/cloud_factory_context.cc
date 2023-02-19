@@ -18,25 +18,17 @@ CloudFactoryContext::CloudFactoryContext(
       random_engine_(std::random_device()()),
       random_number_generator_(&random_engine_),
       factory_(event_loop_, &thread_pool_, &http_, &thumbnail_generator_,
-               &muxer_, &random_number_generator_),
+               &muxer_, &random_number_generator_, config.auth_data),
       settings_manager_([&] {
         AuthTokenManager auth_token_manager(&factory_, config.config_path);
         return SettingsManager(std::move(auth_token_manager),
                                std::move(config));
       }()) {}
 
-CloudFactoryContext::CloudFactoryContext(
-    const coro::util::EventLoop* event_loop,
-    coro::http::CacheHttpConfig http_cache_config, std::string config_path)
-    : CloudFactoryContext(
-          event_loop,
-          CloudFactoryConfig{.http_cache_config = http_cache_config,
-                             .config_path = std::move(config_path)}) {}
-
 AccountManagerHandler CloudFactoryContext::CreateAccountManagerHandler(
     AccountListener listener) {
   return {&factory_, &thumbnail_generator_, std::move(listener),
-          settings_manager_};
+          &settings_manager_};
 }
 
 http::HttpServer<AccountManagerHandler> CloudFactoryContext::CreateHttpServer(

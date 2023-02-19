@@ -147,7 +147,7 @@ PCloud::Auth::AuthToken ToAuthToken<PCloud::Auth::AuthToken>(
     const nlohmann::json& json);
 
 template <>
-PCloud::Auth::AuthData GetAuthData<PCloud>();
+PCloud::Auth::AuthData GetAuthData<PCloud>(const nlohmann::json&);
 
 }  // namespace util
 
