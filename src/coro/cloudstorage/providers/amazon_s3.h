@@ -55,7 +55,6 @@ class AmazonS3 {
       std::string region;
       std::string bucket;
     };
-    struct AuthData {};
 
     class AuthHandler;
   };
@@ -65,10 +64,8 @@ class AmazonS3 {
     int64_t size;
   };
 
-  class CloudProvider;
-
   static constexpr std::string_view kId = "amazons3";
-  static inline constexpr auto& kIcon = util::kAssetsProvidersAmazons3Png;
+  static inline constexpr auto& kIcon = util::kAmazonS3Icon;
 
   AmazonS3(const coro::http::Http* http, AmazonS3::Auth::AuthToken auth_token)
       : http_(http), auth_token_(std::move(auth_token)) {}
@@ -152,9 +149,6 @@ nlohmann::json ToJson<AmazonS3::Auth::AuthToken>(
 template <>
 AmazonS3::Auth::AuthToken ToAuthToken<AmazonS3::Auth::AuthToken>(
     const nlohmann::json& json);
-
-template <>
-AmazonS3::Auth::AuthData GetAuthData<AmazonS3>(const nlohmann::json&);
 
 }  // namespace util
 

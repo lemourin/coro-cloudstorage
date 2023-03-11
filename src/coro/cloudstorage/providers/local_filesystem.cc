@@ -118,7 +118,7 @@ LocalFileSystem::Auth::AuthHandler::operator()(http::Request<> request,
     co_return http::Response<>{
         .status = 200,
         .body = http::CreateBody(
-            fmt::format(fmt::runtime(util::kAssetsHtmlLocalLoginHtml),
+            fmt::format(fmt::runtime(util::kLocalDriveLoginHtml),
                         fmt::arg("root", GetHomeDirectory())))};
   } else if (request.method == http::Method::kPost) {
     auto query =

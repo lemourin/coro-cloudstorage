@@ -63,7 +63,7 @@ class WebDAV {
   };
 
   static constexpr std::string_view kId = "webdav";
-  static inline constexpr auto& kIcon = util::kAssetsProvidersWebdavPng;
+  static inline constexpr auto& kIcon = util::kWebDAVIcon;
 
   WebDAV(const coro::http::Http* http, WebDAV::Auth::AuthToken auth_token)
       : http_(http), auth_token_(std::move(auth_token)) {}

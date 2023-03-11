@@ -80,10 +80,8 @@ class Box {
     static inline constexpr std::string_view mime_type = "image/png";
   };
 
-  class CloudProvider;
-
   static constexpr std::string_view kId = "box";
-  static inline constexpr auto& kIcon = util::kAssetsProvidersBoxPng;
+  static inline constexpr auto& kIcon = util::kBoxIcon;
 
   Box(coro::cloudstorage::util::AuthManager<Auth> auth_manager,
       const coro::http::Http* http)

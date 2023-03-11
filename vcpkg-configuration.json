@@ -2,13 +2,13 @@
   "default-registry": {
     "kind": "git",
     "repository": "https://github.com/microsoft/vcpkg",
-    "baseline": "62fb5ef70474ca6d4efe6fb0887d25d3ac30b5a1"
+    "baseline": "716c3524a54f1f50a25d16a4cdd360f5a7fcc150"
   },
   "registries": [
     {
       "kind": "git",
       "repository": "https://github.com/lemourin/vcpkg-registry",
-      "baseline": "e74e3136f802c2c1d1abb57596a2aab86430fef7",
+      "baseline": "d3b44e2ae4f2c959f59b4839d48555366b118495",
       "packages": [ "coro-http" ]
     }
   ]

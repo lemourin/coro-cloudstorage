@@ -77,7 +77,7 @@ class YandexDisk {
   };
 
   static constexpr std::string_view kId = "yandex";
-  static inline constexpr auto& kIcon = util::kAssetsProvidersYandexPng;
+  static inline constexpr auto& kIcon = util::kYandexIcon;
 
   YandexDisk(const coro::http::Http* http,
              const coro::util::EventLoop* event_loop,

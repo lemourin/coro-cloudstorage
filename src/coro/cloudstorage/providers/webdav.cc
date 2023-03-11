@@ -38,7 +38,7 @@ int64_t ParseTime(std::string str) {
 }
 
 Generator<std::string> GenerateLoginPage() {
-  co_yield std::string(util::kAssetsHtmlWebdavLoginHtml);
+  co_yield std::string(util::kWebdavLoginHtml);
 }
 
 std::string Concat(std::string parent, std::string_view name) {

@@ -84,7 +84,7 @@ Generator<std::string> GetDashPlayer(std::string host, std::string path) {
   std::stringstream stream;
   stream << "<source src='" << path << "'>";
   std::string content = fmt::format(
-      fmt::runtime(kAssetsHtmlDashPlayerHtml),
+      fmt::runtime(kDashPlayerHtml),
       fmt::arg("poster",
                RewriteThumbnailUrl(host, StrCat(path, "?hq_thumbnail=true"))),
       fmt::arg("source", std::move(stream).str()));
@@ -290,7 +290,7 @@ std::string CloudProviderHandler::GetItemEntry(std::string_view host,
                                                bool use_dash_player) const {
   std::string file_link = StrCat(path, http::EncodeUri(item.name));
   return fmt::format(
-      fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", item.name),
+      fmt::runtime(kItemEntryHtml), fmt::arg("name", item.name),
       fmt::arg("size", SizeToString(item.size)),
       fmt::arg("timestamp", TimeStampToString(item.timestamp)),
       fmt::arg("url",
@@ -317,7 +317,7 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
       "<body class='root-container'>"
       "<table class='content-table'>";
   std::string parent_entry = fmt::format(
-      fmt::runtime(kAssetsHtmlItemEntryHtml), fmt::arg("name", ".."),
+      fmt::runtime(kItemEntryHtml), fmt::arg("name", ".."),
       fmt::arg("size", ""), fmt::arg("timestamp", ""),
       fmt::arg("url", GetDirectoryPath(path)),
       fmt::arg("thumbnail_url",

@@ -50,7 +50,7 @@ class HubiC {
   };
 
   static constexpr std::string_view kId = "hubic";
-  static inline constexpr auto& kIcon = util::kAssetsProvidersHubicPng;
+  static inline constexpr auto& kIcon = util::kHubiCIcon;
 
   HubiC(const coro::http::Http* http, Auth::AuthToken auth_token,
         Auth::AuthData auth_data,

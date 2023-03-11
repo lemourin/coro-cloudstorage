@@ -37,7 +37,7 @@ Task<Response> StaticFileHandler::operator()(Request request,
   if (content) {
     mime_type = "image/png";
   } else if (request.url == "/static/layout.css") {
-    content = util::kAssetsStylesLayoutCss;
+    content = util::kLayoutCss;
     mime_type = "text/css";
   } else if (request.url == "/static/colors.css" ||
              request.url == "/static/user-trash.svg" ||
@@ -50,64 +50,64 @@ Task<Response> StaticFileHandler::operator()(Request request,
              request.url == "/static/go-previous.svg") {
     co_return Resolve(theme, request.url);
   } else if (request.url == "/static/colors-light.css") {
-    content = util::kAssetsStylesColorsLightCss;
+    content = util::kColorsLightCss;
     mime_type = "text/css";
   } else if (request.url == "/static/colors-dark.css") {
-    content = util::kAssetsStylesColorsDarkCss;
+    content = util::kColorsDarkCss;
     mime_type = "text/css";
   } else if (request.url == "/static/user-trash-light.svg") {
-    content = util::kAssetsIconsPlaces64UserTrashSvg;
+    content = util::kTrashIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/user-trash-dark.svg") {
-    content = util::kAssetsIconsDarkPlaces64UserTrashSvg;
+    content = util::kDarkTrashIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/audio-x-generic-light.svg") {
-    content = util::kAssetsIconsMimetypes64AudioXGenericSvg;
+    content = util::kAudioIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/audio-x-generic-dark.svg") {
-    content = util::kAssetsIconsDarkMimetypes64AudioXGenericSvg;
+    content = util::kDarkAudioIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/image-x-generic-light.svg") {
-    content = util::kAssetsIconsMimetypes64ImageXGenericSvg;
+    content = util::kImageIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/image-x-generic-dark.svg") {
-    content = util::kAssetsIconsDarkMimetypes64ImageXGenericSvg;
+    content = util::kDarkImageIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/unknown-light.svg") {
-    content = util::kAssetsIconsMimetypes64UnknownSvg;
+    content = util::kUnknownIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/unknown-dark.svg") {
-    content = util::kAssetsIconsDarkMimetypes64UnknownSvg;
+    content = util::kDarkUnknownIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/video-x-generic-light.svg") {
-    content = util::kAssetsIconsMimetypes64VideoXGenericSvg;
+    content = util::kVideoIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/video-x-generic-dark.svg") {
-    content = util::kAssetsIconsDarkMimetypes64VideoXGenericSvg;
+    content = util::kDarkVideoIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/folder-light.svg") {
-    content = util::kAssetsIconsPlaces64FolderSvg;
+    content = util::kFolderIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/folder-dark.svg") {
-    content = util::kAssetsIconsDarkPlaces64FolderSvg;
+    content = util::kDarkFolderIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/configure-settings-light.svg") {
-    content = util::kAssetsIconsActions32SettingsConfigureSvg;
+    content = util::kSettingsIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/configure-settings-dark.svg") {
-    content = util::kAssetsIconsDarkActions32SettingsConfigureSvg;
+    content = util::kDarkSettingsIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/go-previous-light.svg") {
-    content = util::kAssetsIconsActions32GoPreviousSvg;
+    content = util::kGoBackIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/go-previous-dark.svg") {
-    content = util::kAssetsIconsDarkActions32GoPreviousSvg;
+    content = util::kDarkGoBackIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/account_list_main.js") {
-    content = util::kAssetsJsAccountListMainJs;
+    content = util::kAccountListMainJs;
     mime_type = "text/javascript;charset=UTF-8";
   } else if (request.url == "/static/settings_main.js") {
-    content = util::kAssetsJsSettingsMainJs;
+    content = util::kSettingsMainJs;
     mime_type = "text/javascript;charset=UTF-8";
   }
   if (!content) {

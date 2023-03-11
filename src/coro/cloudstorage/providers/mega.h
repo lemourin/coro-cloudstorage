@@ -104,7 +104,7 @@ class Mega {
   };
 
   static constexpr std::string_view kId = "mega";
-  static inline const auto& kIcon = util::kAssetsProvidersMegaPng;
+  static inline const auto& kIcon = util::kMegaIcon;
 
   Mega(const coro::http::Http* http, const coro::util::EventLoop* event_loop,
        util::RandomNumberGenerator* random_number_generator,

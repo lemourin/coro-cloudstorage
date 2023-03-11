@@ -13,7 +13,7 @@ std::string CloudFactoryConfig::GetDefaultPostAuthRedirectUri(
 
 AuthData CloudFactoryConfig::GetDefaultAuthData() {
   return {"http://localhost:12345",
-          nlohmann::json::parse(kAssetsConfigAuthDataJson)};
+          nlohmann::json::parse(kAuthDataJson)};
 }
 
 }  // namespace coro::cloudstorage::util

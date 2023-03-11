@@ -39,7 +39,7 @@ std::string GetAuthUrl(AbstractCloudProvider::Type type,
   std::string url = factory->GetAuth(type).GetAuthorizationUrl().value_or(
       util::StrCat("/auth/", id));
   return fmt::format(
-      fmt::runtime(kAssetsHtmlProviderEntryHtml), fmt::arg("provider_url", url),
+      fmt::runtime(kProviderEntryHtml), fmt::arg("provider_url", url),
       fmt::arg("image_url", util::StrCat("/static/", id, ".png")));
 }
 
@@ -56,7 +56,7 @@ std::string GetHtmlStacktrace(const stdx::stacktrace& stacktrace) {
 
 http::Response<> GetErrorResponse(ErrorMetadata error) {
   std::string content = fmt::format(
-      fmt::runtime(kAssetsHtmlErrorPageHtml),
+      fmt::runtime(kErrorPageHtml),
       fmt::arg("error_message", error.what),
       fmt::arg(
           "source_location",
@@ -334,7 +334,7 @@ Generator<std::string> AccountManagerHandler::Impl::GetHomePage() const {
     auto provider_id = account->type();
     std::string provider_size;
     content_table << fmt::format(
-        fmt::runtime(kAssetsHtmlAccountEntryHtml),
+        fmt::runtime(kAccountEntryHtml),
         fmt::arg("provider_icon",
                  util::StrCat("/static/", provider_id, ".png")),
         fmt::arg("provider_url",
@@ -347,7 +347,7 @@ Generator<std::string> AccountManagerHandler::Impl::GetHomePage() const {
         fmt::arg("provider_type", account->type()));
   }
   std::string content = fmt::format(
-      fmt::runtime(kAssetsHtmlHomePageHtml),
+      fmt::runtime(kHomePageHtml),
       fmt::arg("supported_providers", std::move(supported_providers).str()),
       fmt::arg("content_table", std::move(content_table).str()));
   co_yield std::move(content);

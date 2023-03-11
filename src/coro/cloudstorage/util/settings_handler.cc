@@ -63,7 +63,7 @@ Task<Response> GetSettingsHandlerResponse(SettingsHandlerData d) {
   co_return Response{
       .status = 200,
       .body = http::CreateBody(fmt::format(
-          fmt::runtime(util::kAssetsHtmlSettingsPageHtml),
+          fmt::runtime(util::kSettingsPageHtml),
           fmt::arg("host_class", d.effective_public_network ? "" : "hidden"),
           fmt::arg("host_selector", d.effective_public_network
                                         ? GetHostSelector(d.headers)

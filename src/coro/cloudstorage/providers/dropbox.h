@@ -80,7 +80,7 @@ class Dropbox {
   };
 
   static constexpr std::string_view kId = "dropbox";
-  static inline constexpr auto& kIcon = util::kAssetsProvidersDropboxPng;
+  static inline constexpr auto& kIcon = util::kDropboxIcon;
 
   Dropbox(const coro::http::Http* http, Dropbox::Auth::AuthToken auth_token)
       : http_(http), auth_token_(std::move(auth_token)) {}

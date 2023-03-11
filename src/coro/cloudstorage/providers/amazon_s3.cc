@@ -20,7 +20,7 @@ using ::coro::cloudstorage::util::GetSHA256;
 using ::coro::cloudstorage::util::ToHex;
 
 Generator<std::string> GenerateLoginPage() {
-  co_yield std::string(util::kAssetsHtmlAmazons3LoginHtml);
+  co_yield std::string(util::kAmazonS3LoginHtml);
 }
 
 std::string GetDate(std::chrono::system_clock::time_point now) {
@@ -459,11 +459,6 @@ AmazonS3::Auth::AuthToken ToAuthToken<AmazonS3::Auth::AuthToken>(
   auth_token.region = json.at("region");
   auth_token.bucket = json.at("bucket");
   return auth_token;
-}
-
-template <>
-AmazonS3::Auth::AuthData GetAuthData<AmazonS3>(const nlohmann::json&) {
-  return {};
 }
 
 template <>

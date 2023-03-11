@@ -87,7 +87,7 @@ class GoogleDrive {
   };
 
   static constexpr std::string_view kId = "google";
-  static inline constexpr auto& kIcon = util::kAssetsProvidersGooglePng;
+  static inline constexpr auto& kIcon = util::kGoogleDriveIcon;
 
   GoogleDrive(util::AuthManager<Auth> auth_manager,
               const coro::http::Http* http)

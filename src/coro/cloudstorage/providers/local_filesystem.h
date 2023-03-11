@@ -52,7 +52,7 @@ class LocalFileSystem {
   };
 
   static constexpr std::string_view kId = "local";
-  static inline constexpr const auto& kIcon = util::kAssetsProvidersLocalPng;
+  static inline constexpr const auto& kIcon = util::kLocalDriveIcon;
 
   LocalFileSystem(coro::util::ThreadPool* thread_pool,
                   Auth::AuthToken auth_token)

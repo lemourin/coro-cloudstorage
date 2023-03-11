@@ -76,7 +76,7 @@ class PCloud {
   };
 
   static constexpr std::string_view kId = "pcloud";
-  static inline constexpr auto& kIcon = util::kAssetsProvidersPcloudPng;
+  static inline constexpr auto& kIcon = util::kPCloudIcon;
 
   PCloud(const coro::http::Http* http, PCloud::Auth::AuthToken auth_token)
       : http_(http), auth_token_(std::move(auth_token)) {}

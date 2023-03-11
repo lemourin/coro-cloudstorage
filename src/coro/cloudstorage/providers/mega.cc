@@ -1198,7 +1198,7 @@ auto Mega::Auth::AuthHandler::operator()(http::Request<> request,
   } else {
     co_return http::Response<>{
         .status = 200,
-        .body = http::CreateBody(std::string(util::kAssetsHtmlMegaLoginHtml))};
+        .body = http::CreateBody(std::string(util::kMegaLoginHtml))};
   }
 }
 

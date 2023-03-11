@@ -1,6 +1,6 @@
 include(CheckSymbolExists)
 include(CheckCXXSourceCompiles)
-include(embed_resource)
+include(EmbedResource)
 
 add_library(coro-cloudstorage)
 
@@ -176,56 +176,58 @@ else()
     )
 endif()
 
-embed_resource(
-    TARGET coro-cloudstorage
+add_resource_library(
+    coro-cloudstorage-resource
     NAMESPACE coro::cloudstorage::util
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/coro/cloudstorage/util/assets.h
     INPUT
-        ../assets/icons/mimetypes/64/audio-x-generic.svg
-        ../assets/icons/mimetypes/64/image-x-generic.svg
-        ../assets/icons/mimetypes/64/unknown.svg
-        ../assets/icons/mimetypes/64/video-x-generic.svg
-        ../assets/icons/places/64/folder.svg
-        ../assets/icons/places/64/user-trash.svg
-        ../assets/icons/actions/32/settings-configure.svg
-        ../assets/icons/actions/32/go-previous.svg
-        ../assets/icons-dark/mimetypes/64/audio-x-generic.svg
-        ../assets/icons-dark/mimetypes/64/image-x-generic.svg
-        ../assets/icons-dark/mimetypes/64/unknown.svg
-        ../assets/icons-dark/mimetypes/64/video-x-generic.svg
-        ../assets/icons-dark/places/64/folder.svg
-        ../assets/icons-dark/places/64/user-trash.svg
-        ../assets/icons-dark/actions/32/settings-configure.svg
-        ../assets/icons-dark/actions/32/go-previous.svg
-        ../assets/html/mega_login.html
-        ../assets/html/local_login.html
-        ../assets/html/webdav_login.html
-        ../assets/html/amazons3_login.html
-        ../assets/html/dash_player.html
-        ../assets/html/item_entry.html
-        ../assets/html/provider_entry.html
-        ../assets/html/account_entry.html
-        ../assets/html/home_page.html
-        ../assets/html/settings_page.html
-        ../assets/html/error_page.html
-        ../assets/providers/box.png
-        ../assets/providers/yandex.png
-        ../assets/providers/dropbox.png
-        ../assets/providers/onedrive.png
-        ../assets/providers/pcloud.png
-        ../assets/providers/webdav.png
-        ../assets/providers/google.png
-        ../assets/providers/mega.png
-        ../assets/providers/amazons3.png
-        ../assets/providers/local.png
-        ../assets/providers/hubic.png
-        ../assets/styles/layout.css
-        ../assets/styles/colors_light.css
-        ../assets/styles/colors_dark.css
-        ../assets/js/account_list_main.js
-        ../assets/js/settings_main.js
-        ../assets/config/auth_data.json
+        kAudioIcon ../assets/icons/mimetypes/64/audio-x-generic.svg
+        kImageIcon ../assets/icons/mimetypes/64/image-x-generic.svg
+        kUnknownIcon ../assets/icons/mimetypes/64/unknown.svg
+        kVideoIcon ../assets/icons/mimetypes/64/video-x-generic.svg
+        kFolderIcon ../assets/icons/places/64/folder.svg
+        kTrashIcon ../assets/icons/places/64/user-trash.svg
+        kSettingsIcon ../assets/icons/actions/32/settings-configure.svg
+        kGoBackIcon ../assets/icons/actions/32/go-previous.svg
+        kDarkAudioIcon ../assets/icons-dark/mimetypes/64/audio-x-generic.svg
+        kDarkImageIcon ../assets/icons-dark/mimetypes/64/image-x-generic.svg
+        kDarkUnknownIcon ../assets/icons-dark/mimetypes/64/unknown.svg
+        kDarkVideoIcon ../assets/icons-dark/mimetypes/64/video-x-generic.svg
+        kDarkFolderIcon ../assets/icons-dark/places/64/folder.svg
+        kDarkTrashIcon ../assets/icons-dark/places/64/user-trash.svg
+        kDarkSettingsIcon ../assets/icons-dark/actions/32/settings-configure.svg
+        kDarkGoBackIcon ../assets/icons-dark/actions/32/go-previous.svg
+        kMegaLoginHtml ../assets/html/mega_login.html
+        kLocalDriveLoginHtml ../assets/html/local_login.html
+        kWebdavLoginHtml ../assets/html/webdav_login.html
+        kAmazonS3LoginHtml ../assets/html/amazons3_login.html
+        kDashPlayerHtml ../assets/html/dash_player.html
+        kItemEntryHtml ../assets/html/item_entry.html
+        kProviderEntryHtml ../assets/html/provider_entry.html
+        kAccountEntryHtml ../assets/html/account_entry.html
+        kHomePageHtml ../assets/html/home_page.html
+        kSettingsPageHtml ../assets/html/settings_page.html
+        kErrorPageHtml ../assets/html/error_page.html
+        kBoxIcon ../assets/providers/box.png
+        kYandexIcon ../assets/providers/yandex.png
+        kDropboxIcon ../assets/providers/dropbox.png
+        kOneDriveIcon ../assets/providers/onedrive.png
+        kPCloudIcon ../assets/providers/pcloud.png
+        kWebDAVIcon ../assets/providers/webdav.png
+        kGoogleDriveIcon ../assets/providers/google.png
+        kMegaIcon ../assets/providers/mega.png
+        kAmazonS3Icon ../assets/providers/amazons3.png
+        kLocalDriveIcon ../assets/providers/local.png
+        kHubiCIcon ../assets/providers/hubic.png
+        kLayoutCss ../assets/styles/layout.css
+        kColorsLightCss ../assets/styles/colors_light.css
+        kColorsDarkCss ../assets/styles/colors_dark.css
+        kAccountListMainJs ../assets/js/account_list_main.js
+        kSettingsMainJs ../assets/js/settings_main.js
+        kAuthDataJson ../assets/config/auth_data.json
 )
+
+target_link_libraries(coro-cloudstorage PRIVATE coro-cloudstorage-resource)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
     target_compile_definitions(
@@ -236,7 +238,7 @@ endif()
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
-install(TARGETS coro-cloudstorage EXPORT coro-cloudstorage FILE_SET public_headers)
+install(TARGETS coro-cloudstorage coro-cloudstorage-resource EXPORT coro-cloudstorage FILE_SET public_headers)
 install(EXPORT coro-cloudstorage NAMESPACE coro:: DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/${PROJECT_NAME})
 configure_package_config_file(
         ../cmake/coro-cloudstorage-config.cmake.in

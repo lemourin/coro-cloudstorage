@@ -16,7 +16,7 @@ class OneDrive {
   using json = nlohmann::json;
 
   static constexpr std::string_view kId = "onedrive";
-  static inline constexpr auto& kIcon = util::kAssetsProvidersOnedrivePng;
+  static inline constexpr auto& kIcon = util::kOneDriveIcon;
 
   struct Auth {
     struct AuthToken {
