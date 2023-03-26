@@ -2,7 +2,10 @@
   "name": "coro-cloudstorage",
   "version-string": "0.1.0",
   "dependencies": [
-    "coro-http",
+    {
+      "name": "coro-http",
+      "features": ["stacktrace"]
+    },
     "nlohmann-json",
     "fmt",
     "pugixml",
