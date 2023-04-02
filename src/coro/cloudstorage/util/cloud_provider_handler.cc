@@ -69,6 +69,10 @@ std::string GetItemPathPrefix(
 bool IsRoot(std::string_view path) { return GetEffectivePath(path).empty(); }
 
 std::string RewriteThumbnailUrl(std::string_view host, std::string url) {
+#ifdef WINRT
+  (void)host;
+  return url;
+#else
   auto host_uri = http::ParseUri(StrCat("//", host));
   if (host_uri.host.value() != "localhost") {
     return url;
@@ -78,6 +82,7 @@ std::string RewriteThumbnailUrl(std::string_view host, std::string url) {
   uri.port = host_uri.port;
   std::string rewritten = http::ToString(uri);
   return rewritten;
+#endif
 }
 
 Generator<std::string> GetDashPlayer(std::string host, std::string path) {
