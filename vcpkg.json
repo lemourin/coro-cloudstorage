@@ -4,7 +4,14 @@
   "dependencies": [
     {
       "name": "coro-http",
-      "features": ["stacktrace"]
+      "platform": "uwp"
+    },
+    {
+      "name": "coro-http",
+      "platform": "!uwp",
+      "features": [
+        "stacktrace"
+      ]
     },
     "nlohmann-json",
     "fmt",
@@ -13,7 +20,9 @@
     "cryptopp",
     {
       "name": "ffmpeg",
-      "features": ["zlib"]
+      "features": [
+        "zlib"
+      ]
     },
     {
       "name": "cppwinrt",

@@ -86,19 +86,34 @@ std::string GetDirectoryPath(std::string_view path) {
 }
 
 void CreateDirectory(std::string_view path) {
+#ifdef WINRT
+  size_t it = 0;
+  int status = 0;
+  while (it != std::string::npos) {
+    it = path.find_first_of(kDelimiter, it + 1);
+    std::string directory(
+        path.begin(), it == std::string::npos ? path.end() : path.begin() + it);
+    status = mkdir(directory.c_str());
+  }
+  if (status != 0 && errno != EEXIST) {
+    throw RuntimeError(StrCat("cannot create directory, errno=", errno, " ",
+                              ErrorToString(errno), ", path=", path));
+  }
+#else
   size_t it = 0;
   while (it != std::string::npos) {
     it = path.find_first_of(kDelimiter, it + 1);
-    if (mkdir(std::string(path.begin(), it == std::string::npos
-                                            ? path.end()
-                                            : path.begin() + it)
-                  .c_str()) != 0) {
+    std::string directory(
+        path.begin(), it == std::string::npos ? path.end() : path.begin() + it);
+    if (mkdir(directory.c_str()) != 0) {
       if (errno != EEXIST) {
-        throw RuntimeError(StrCat("cannot create directory ", path, ": ",
-                                  ErrorToString(errno)));
+        throw RuntimeError(StrCat("cannot create parent directory=", directory,
+                                  ", errno=", errno, " ", ErrorToString(errno),
+                                  ", path=", path));
       }
     }
   }
+#endif
 }
 
 void RemoveDirectory(std::string_view path) {
