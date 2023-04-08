@@ -54,6 +54,7 @@ class Dropbox {
       std::string client_secret;
       std::string redirect_uri;
       std::string state;
+      std::string code_verifier;
     };
 
     static std::string GetAuthorizationUrl(const AuthData& data);

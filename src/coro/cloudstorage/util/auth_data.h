@@ -16,10 +16,8 @@ typename CloudProvider::Auth::AuthData GetAuthData(const nlohmann::json&) =
 
 template <typename T>
 concept HasRedirectUri = requires(T v) {
-                           {
-                             v.redirect_uri
-                             } -> stdx::convertible_to<std::string>;
-                         };
+  { v.redirect_uri } -> stdx::convertible_to<std::string>;
+};
 
 class AuthData {
  public:

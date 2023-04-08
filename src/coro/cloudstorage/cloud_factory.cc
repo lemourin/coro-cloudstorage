@@ -25,15 +25,13 @@ using ::coro::cloudstorage::util::AbstractCloudProvider;
 
 template <typename Auth>
 concept HasAuthData = requires(typename Auth::AuthData* d) {
-                        { d } -> stdx::convertible_to<typename Auth::AuthData*>;
-                      };
+  { d } -> stdx::convertible_to<typename Auth::AuthData*>;
+};
 
 template <typename T>
 concept HasGetAuthorizationUrl = requires(typename T::Auth v) {
-                                   {
-                                     v.GetAuthorizationUrl({})
-                                   } -> stdx::convertible_to<std::string>;
-                                 };
+  { v.GetAuthorizationUrl({}) } -> stdx::convertible_to<std::string>;
+};
 
 template <typename T>
 concept HasAuthHandler = requires { typename T::Auth::AuthHandler; };
@@ -343,6 +341,8 @@ std::unique_ptr<AbstractCloudFactory> CloudFactory::CreateCloudFactory(
       return create.operator()<WebDAV>();
     case AbstractCloudProvider::Type::kYandexDisk:
       return create.operator()<YandexDisk>();
+    default:
+      throw CloudException("Invalid CloudProvider type.");
   }
 }
 

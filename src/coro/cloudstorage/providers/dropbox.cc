@@ -119,11 +119,17 @@ Task<nlohmann::json> FetchJson(const coro::http::Http& http,
 }  // namespace
 
 std::string Dropbox::Auth::GetAuthorizationUrl(const AuthData& data) {
+  std::vector<std::pair<std::string, std::string>> params = {
+      {"response_type", "code"},
+      {"client_id", data.client_id},
+      {"redirect_uri", data.redirect_uri},
+      {"state", data.state}};
+  if (!data.code_verifier.empty()) {
+    params.emplace_back("code_challenge_method", "plain");
+    params.emplace_back("code_challenge", data.code_verifier);
+  }
   return "https://www.dropbox.com/oauth2/authorize?" +
-         http::FormDataToString({{"response_type", "code"},
-                                 {"client_id", data.client_id},
-                                 {"redirect_uri", data.redirect_uri},
-                                 {"state", data.state}});
+         http::FormDataToString(params);
 }
 
 auto Dropbox::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,
@@ -131,16 +137,20 @@ auto Dropbox::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,
                                               std::string code,
                                               stdx::stop_token stop_token)
     -> Task<AuthToken> {
+  std::vector<std::pair<std::string, std::string>> params = {
+      {"grant_type", "authorization_code"},
+      {"client_secret", auth_data.client_secret},
+      {"client_id", auth_data.client_id},
+      {"redirect_uri", auth_data.redirect_uri},
+      {"code", std::move(code)}};
+  if (!auth_data.code_verifier.empty()) {
+    params.emplace_back("code_verifier", auth_data.code_verifier);
+  }
   auto request = http::Request<std::string>{
       .url = "https://api.dropboxapi.com/oauth2/token",
       .method = http::Method::kPost,
       .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
-      .body =
-          http::FormDataToString({{"grant_type", "authorization_code"},
-                                  {"client_secret", auth_data.client_secret},
-                                  {"client_id", auth_data.client_id},
-                                  {"redirect_uri", auth_data.redirect_uri},
-                                  {"code", std::move(code)}})};
+      .body = http::FormDataToString(params)};
   json json =
       co_await util::FetchJson(http, std::move(request), std::move(stop_token));
   co_return AuthToken{.access_token = json["access_token"]};
@@ -356,10 +366,15 @@ namespace util {
 
 template <>
 Dropbox::Auth::AuthData GetAuthData<Dropbox>(const nlohmann::json& json) {
-  return {
+  Dropbox::Auth::AuthData auth_data{
       .client_id = json.at("client_id"),
       .client_secret = json.at("client_secret"),
   };
+  if (auto it = json.find("code_verifier");
+      it != json.end() && it->is_string()) {
+    auth_data.code_verifier = *it;
+  }
+  return auth_data;
 }
 
 template <>

@@ -11,15 +11,13 @@ namespace coro::cloudstorage::util {
 
 template <typename T>
 concept HasEndpoint = requires(T v) {
-                        { v.endpoint } -> stdx::convertible_to<std::string>;
-                      };
+  { v.endpoint } -> stdx::convertible_to<std::string>;
+};
 
 template <typename T>
 concept HasRefreshToken = requires(T v) {
-                            {
-                              v.refresh_token
-                              } -> stdx::convertible_to<std::string>;
-                          };
+  { v.refresh_token } -> stdx::convertible_to<std::string>;
+};
 
 template <typename AuthToken>
 nlohmann::json ToJson(AuthToken token) {
