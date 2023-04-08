@@ -18,7 +18,7 @@ template <typename T>
 concept HasRedirectUri = requires(T v) {
                            {
                              v.redirect_uri
-                           } -> stdx::convertible_to<std::string>;
+                             } -> stdx::convertible_to<std::string>;
                          };
 
 class AuthData {
@@ -29,11 +29,16 @@ class AuthData {
 
   template <typename CloudProvider>
   auto operator()() const {
-    auto auth_data =
-        GetAuthData<CloudProvider>(auth_data_.at(CloudProvider::kId));
+    nlohmann::json json = auth_data_.at(CloudProvider::kId);
+    auto auth_data = GetAuthData<CloudProvider>(json);
     if constexpr (HasRedirectUri<decltype(auth_data)>) {
-      auth_data.redirect_uri =
-          StrCat(redirect_uri_, "/auth/", CloudProvider::kId);
+      if (auto it = json.find("redirect_uri");
+          it != json.end() && it->is_string()) {
+        auth_data.redirect_uri = *it;
+      } else {
+        auth_data.redirect_uri =
+            StrCat(redirect_uri_, "/auth/", CloudProvider::kId);
+      }
     }
     return auth_data;
   }
