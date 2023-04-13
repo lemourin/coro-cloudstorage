@@ -10,7 +10,7 @@ namespace coro::cloudstorage::util {
 
 namespace {
 
-std::string GetAvError(int err) {
+std::string GetAVError(int err) {
   std::string buffer(AV_ERROR_MAX_STRING_SIZE, 0);
   if (av_strerror(err, buffer.data(), AV_ERROR_MAX_STRING_SIZE) < 0) {
     return "invalid error";
@@ -23,7 +23,7 @@ std::string GetAvError(int err) {
 
 void CheckAVError(int code, std::string_view call) {
   if (code < 0) {
-    throw RuntimeError(std::string(call) + " (" + GetAvError(code) + ")");
+    throw RuntimeError(std::string(call) + " (" + GetAVError(code) + ")");
   }
 }
 

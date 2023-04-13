@@ -105,26 +105,31 @@ ImageSize GetThumbnailSize(ImageSize i, int target) {
   }
 }
 
-auto CreateSourceFilter(AVFilterGraph* graph, int width, int height, int format,
-                        AVRational time_base) {
+auto CreateFilter(
+    AVFilterGraph* graph, const char* name,
+    std::initializer_list<std::pair<const char*, std::string>> args) {
   std::unique_ptr<AVFilterContext, AVFilterContextDeleter> filter(
-      avfilter_graph_alloc_filter(graph, avfilter_get_by_name("buffer"),
-                                  nullptr));
+      avfilter_graph_alloc_filter(graph, avfilter_get_by_name(name), nullptr));
   if (!filter) {
-    throw LogicError("filter buffer unavailable");
+    throw LogicError(StrCat("filter ", name, " unavailable"));
   }
   AVDictionary* d = nullptr;
   auto scope_guard = AtScopeExit([&] { av_dict_free(&d); });
-  CheckAVError(av_dict_set_int(&d, "width", width, 0), "av_dict_set_int");
-  CheckAVError(av_dict_set_int(&d, "height", height, 0), "av_dict_set_int");
-  CheckAVError(av_dict_set_int(&d, "pix_fmt", format, 0), "av_dict_set_int");
-  CheckAVError(
-      av_dict_set(&d, "time_base",
-                  StrCat(time_base.num, '/', time_base.den).c_str(), 0),
-      "av_dict_set");
-  CheckAVError(avfilter_init_dict(filter.get(), &d),
-               "avfilter_init_dict source");
+  for (const auto& [key, value] : args) {
+    CheckAVError(av_dict_set(&d, key, value.c_str(), 0), "av_dict_set");
+  }
+  CheckAVError(avfilter_init_dict(filter.get(), &d), "avfilter_init_dict");
   return filter;
+}
+
+auto CreateSourceFilter(AVFilterGraph* graph, int width, int height, int format,
+                        AVRational time_base) {
+  return CreateFilter(
+      graph, "buffer",
+      {{"width", std::to_string(width)},
+       {"height", std::to_string(height)},
+       {"pix_fmt", std::to_string(format)},
+       {"time_base", StrCat(time_base.num, '/', time_base.den)}});
 }
 
 auto CreateSourceFilter(AVFilterGraph* graph, AVFrame* frame) {
@@ -137,54 +142,6 @@ auto CreateSourceFilter(AVFilterGraph* graph, AVFormatContext* format_context,
   return CreateSourceFilter(graph, codec_context->width, codec_context->height,
                             codec_context->pix_fmt,
                             format_context->streams[stream]->time_base);
-}
-
-auto CreateFilter(AVFilterGraph* graph, const char* name) {
-  std::unique_ptr<AVFilterContext, AVFilterContextDeleter> filter(
-      avfilter_graph_alloc_filter(graph, avfilter_get_by_name(name), nullptr));
-  if (!filter) {
-    throw LogicError(StrCat("filter ", name, " unavailable"));
-  }
-  CheckAVError(avfilter_init_dict(filter.get(), nullptr), "avfilter_init_dict");
-  return filter;
-}
-
-auto CreateSinkFilter(AVFilterGraph* graph) {
-  return CreateFilter(graph, "buffersink");
-}
-
-auto CreateThumbnailFilter(AVFilterGraph* graph) {
-  return CreateFilter(graph, "thumbnail");
-}
-
-auto CreateScaleFilter(AVFilterGraph* graph, ImageSize size) {
-  std::unique_ptr<AVFilterContext, AVFilterContextDeleter> filter(
-      avfilter_graph_alloc_filter(graph, avfilter_get_by_name("scale"),
-                                  nullptr));
-  if (!filter) {
-    throw LogicError("filter scale unavailable");
-  }
-  AVDictionary* d = nullptr;
-  auto scope_guard = AtScopeExit([&] { av_dict_free(&d); });
-  CheckAVError(av_dict_set_int(&d, "width", size.width, 0), "av_dict_set_int");
-  CheckAVError(av_dict_set_int(&d, "height", size.height, 0),
-               "av_dict_set_int");
-  CheckAVError(avfilter_init_dict(filter.get(), &d), "avfilter_init_dict");
-  return filter;
-}
-
-auto CreateTransposeFilter(AVFilterGraph* graph, const char* dir) {
-  std::unique_ptr<AVFilterContext, AVFilterContextDeleter> filter(
-      avfilter_graph_alloc_filter(graph, avfilter_get_by_name("transpose"),
-                                  nullptr));
-  if (!filter) {
-    throw LogicError("filter transpose unavailable");
-  }
-  AVDictionary* d = nullptr;
-  auto scope_guard = AtScopeExit([&] { av_dict_free(&d); });
-  CheckAVError(av_dict_set(&d, "dir", dir, 0), "av_dict_set");
-  CheckAVError(avfilter_init_dict(filter.get(), &d), "avfilter_init_dict");
-  return filter;
 }
 
 auto RotateFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
@@ -201,41 +158,36 @@ auto RotateFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
 
   auto source_filter = CreateSourceFilter(graph.get(), frame.get());
   std::vector<std::unique_ptr<AVFilterContext, AVFilterContextDeleter>> filters;
-  AVFilterContext* last_filter = source_filter.get();
   if (orientation >= 5) {
-    auto transpose_filter = CreateTransposeFilter(graph.get(), [&] {
-      switch (orientation) {
-        case 5:
-          return "cclock";
-        case 6:
-          return "cclock_flip";
-        case 7:
-          return "clock";
-        case 8:
-          return "clock_flip";
-        default:
-          throw RuntimeError("unexpected");
-      }
-    }());
-    CheckAVError(avfilter_link(last_filter, 0, transpose_filter.get(), 0),
-                 "avfilter_link");
-    last_filter = filters.emplace_back(std::move(transpose_filter)).get();
+    filters.emplace_back(CreateFilter(graph.get(), "transpose",
+                                      {{"dir", [&] {
+                                          switch (orientation) {
+                                            case 5:
+                                              return "cclock";
+                                            case 6:
+                                              return "cclock_flip";
+                                            case 7:
+                                              return "clock";
+                                            case 8:
+                                              return "clock_flip";
+                                            default:
+                                              throw RuntimeError("unexpected");
+                                          }
+                                        }()}}));
   }
   if (orientation == 3 || orientation == 4) {
-    auto vflip = CreateFilter(graph.get(), "vflip");
-    CheckAVError(avfilter_link(last_filter, 0, vflip.get(), 0),
-                 "avfilter_link");
-    last_filter = filters.emplace_back(std::move(vflip)).get();
+    filters.emplace_back(CreateFilter(graph.get(), "vflip", {}));
   }
   if (orientation == 2 || orientation == 4) {
-    auto hflip = CreateFilter(graph.get(), "hflip");
-    CheckAVError(avfilter_link(last_filter, 0, hflip.get(), 0),
-                 "avfilter_link");
-    last_filter = filters.emplace_back(std::move(hflip)).get();
+    filters.emplace_back(CreateFilter(graph.get(), "hflip", {}));
   }
-  auto sink_filter = CreateSinkFilter(graph.get());
-  CheckAVError(avfilter_link(last_filter, 0, sink_filter.get(), 0),
-               "avfilter_link");
+  for (size_t i = 0; i + 1 < filters.size(); i++) {
+    CheckAVError(avfilter_link(filters[i].get(), 0, filters[i + 1].get(), 0),
+                 "avfilter_link");
+  }
+  auto* sink_filter =
+      filters.emplace_back(CreateFilter(graph.get(), "buffersink", {})).get();
+
   CheckAVError(avfilter_graph_config(graph.get(), nullptr),
                "avfilter_graph_config");
 
@@ -243,7 +195,7 @@ auto RotateFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
                "av_buffersrc_write_frame");
 
   std::unique_ptr<AVFrame, AVFrameDeleter> received_frame(av_frame_alloc());
-  CheckAVError(av_buffersink_get_frame(sink_filter.get(), received_frame.get()),
+  CheckAVError(av_buffersink_get_frame(sink_filter, received_frame.get()),
                "av_buffersrc_write_frame");
 
   return received_frame;
@@ -389,17 +341,32 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
   if (!filter_graph) {
     throw RuntimeError("avfilter_graph_alloc error");
   }
-  auto source_filter = CreateSourceFilter(filter_graph.get(), context.get(),
-                                          stream, codec_context.get());
-  auto sink_filter = CreateSinkFilter(filter_graph.get());
-  auto thumbnail_filter = CreateThumbnailFilter(filter_graph.get());
-  auto scale_filter = CreateScaleFilter(filter_graph.get(), size);
-  CheckAVError(avfilter_link(source_filter.get(), 0, scale_filter.get(), 0),
-               "avfilter_link");
-  CheckAVError(avfilter_link(scale_filter.get(), 0, thumbnail_filter.get(), 0),
-               "avfilter_link");
-  CheckAVError(avfilter_link(thumbnail_filter.get(), 0, sink_filter.get(), 0),
-               "avfilter_link");
+  std::vector<std::unique_ptr<AVFilterContext, AVFilterContextDeleter>> filters;
+  filters.emplace_back(CreateSourceFilter(filter_graph.get(), context.get(),
+                                          stream, codec_context.get()));
+  filters.emplace_back(CreateFilter(filter_graph.get(), "scale",
+                                    {{"width", std::to_string(size.width)},
+                                     {"height", std::to_string(size.height)}}));
+
+  if (avfilter_get_by_name("blackframe") != nullptr) {
+    filters.emplace_back(
+        CreateFilter(filter_graph.get(), "blackframe", {{"amount", "0"}}));
+    filters.emplace_back(CreateFilter(filter_graph.get(), "metadata",
+                                      {{"mode", "select"},
+                                       {"key", "lavfi.blackframe.pblack"},
+                                       {"value", "95"},
+                                       {"function", "less"}}));
+  }
+
+  filters.emplace_back(CreateFilter(filter_graph.get(), "thumbnail", {}));
+  filters.emplace_back(CreateFilter(filter_graph.get(), "buffersink", {}));
+
+  AVFilterContext* source_filter = filters.front().get();
+  AVFilterContext* sink_filter = filters.back().get();
+  for (size_t i = 0; i + 1 < filters.size(); i++) {
+    CheckAVError(avfilter_link(filters[i].get(), 0, filters[i + 1].get(), 0),
+                 "avfilter_link");
+  }
   CheckAVError(avfilter_graph_config(filter_graph.get(), nullptr),
                "avfilter_graph_config");
   int stream_orientation = [&] {
@@ -414,7 +381,7 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
 
   while (true) {
     std::unique_ptr<AVFrame, AVFrameDeleter> received_frame(av_frame_alloc());
-    int err = av_buffersink_get_frame(sink_filter.get(), received_frame.get());
+    int err = av_buffersink_get_frame(sink_filter, received_frame.get());
     if (err == AVERROR(EAGAIN)) {
       auto frame =
           DecodeFrame(context.get(), codec_context.get(), stream, interrupted);
@@ -431,7 +398,7 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
               "av_dict_set_int");
         }
       }
-      CheckAVError(av_buffersrc_write_frame(source_filter.get(), frame.get()),
+      CheckAVError(av_buffersrc_write_frame(source_filter, frame.get()),
                    "av_buffersrc_write_frame");
     } else if (err != 0) {
       CheckAVError(err, "av_buffersink_get_frame");
