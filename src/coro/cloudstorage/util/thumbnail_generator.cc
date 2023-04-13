@@ -79,7 +79,10 @@ class Graph {
     if (err == AVERROR(EAGAIN)) {
       return std::nullopt;
     }
-    CheckAVError(err, "av_buffersink_get_frame");
+    if (err == AVERROR_EOF) {
+      return nullptr;
+    }
+    CheckAVError(err, "av_buffersink_get_frame2");
     return received_frame;
   }
 
@@ -354,6 +357,21 @@ int GetExifOrientation(const int32_t* matrix) {
   }
 }
 
+bool IsFrameBlack(const AVFrame* frame) {
+  int count = 0;
+  for (int i = 0; i < frame->height; i++) {
+    for (int j = 0; j < frame->width; j++) {
+      int value =
+          *std::max(frame->data[0] + i * frame->linesize[0] + 3 * j,
+                    frame->data[0] + i * frame->linesize[0] + 3 * (j + 1));
+      if (value < 32) {
+        count++;
+      }
+    }
+  }
+  return count >= 0.95 * frame->width * frame->height;
+}
+
 auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
                        std::atomic_bool* interrupted) {
   auto context = CreateFormatContext(io_context);
@@ -370,22 +388,17 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
   auto codec_context = CreateCodecContext(context.get(), stream);
   auto size = GetThumbnailSize({codec_context->width, codec_context->height},
                                options.size);
-  GraphBuilder graph_builder(context.get(), stream, codec_context.get());
-
-  graph_builder.AddFilter("scale", {{"width", std::to_string(size.width)},
-                                    {"height", std::to_string(size.height)}});
-
-  if (avfilter_get_by_name("blackframe") != nullptr) {
-    graph_builder.AddFilter("blackframe", {{"amount", "0"}})
-        .AddFilter("metadata", {{"mode", "select"},
-                                {"key", "lavfi.blackframe.pblack"},
-                                {"value", "95"},
-                                {"function", "less"}});
-  }
-
-  graph_builder.AddFilter("thumbnail", {});
-
-  Graph graph = std::move(graph_builder).Build();
+  Graph read_graph =
+      std::move(
+          GraphBuilder(context.get(), stream, codec_context.get())
+              .AddFilter("scale", {{"width", std::to_string(size.width)},
+                                   {"height", std::to_string(size.height)}})
+              .AddFilter("format", {{"pix_fmts", "rgb24"}}))
+          .Build();
+  Graph thumbnail_graph =
+      std::move(GraphBuilder(size.width, size.height, AV_PIX_FMT_RGB24, {1, 24})
+                    .AddFilter("thumbnail", {}))
+          .Build();
 
   int stream_orientation = [&] {
     auto* stream_matrix = reinterpret_cast<int32_t*>(av_stream_get_side_data(
@@ -398,9 +411,16 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
   }();
 
   while (true) {
-    auto received_frame = graph.PullFrame();
+    auto received_frame = thumbnail_graph.PullFrame();
     if (received_frame) {
       return std::move(*received_frame);
+    }
+    received_frame = read_graph.PullFrame();
+    if (received_frame) {
+      if (!received_frame->get() || !IsFrameBlack(received_frame->get())) {
+        thumbnail_graph.WriteFrame(received_frame->get());
+      }
+      continue;
     }
     auto frame =
         DecodeFrame(context.get(), codec_context.get(), stream, interrupted);
@@ -417,7 +437,7 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
             "av_dict_set_int");
       }
     }
-    graph.WriteFrame(frame.get());
+    read_graph.WriteFrame(frame.get());
   }
 }
 
