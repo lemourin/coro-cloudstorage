@@ -257,20 +257,34 @@ auto RotateFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
   return graph.PullFrame().value();
 }
 
-auto ConvertFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
-                  const AVCodec* codec) {
-  int orientation = [&] {
-    if (AVDictionaryEntry* entry =
-            av_dict_get(frame->metadata, "Orientation", nullptr, 0)) {
-      int value = std::stoi(entry->value);
-      if (value > 1 && value <= 8) {
-        return value;
-      }
-    }
-    return 1;
-  }();
-  frame = RotateFrame(std::move(frame), orientation);
+auto ConvertFrame(const AVFrame* frame, AVPixelFormat format) {
+  std::unique_ptr<SwsContext, SwsContextDeleter> sws_context(sws_getContext(
+      frame->width, frame->height, AVPixelFormat(frame->format), frame->width,
+      frame->height, format, SWS_BICUBIC, nullptr, nullptr, nullptr));
+  if (!sws_context) {
+    throw RuntimeError("sws_getContext returned null");
+  }
+  std::unique_ptr<AVFrame, AVFrameConvertedDeleter> target_frame(
+      av_frame_alloc());
+  if (!target_frame) {
+    throw RuntimeError("av_frame_alloc");
+  }
+  CheckAVError(av_frame_copy_props(target_frame.get(), frame),
+               "av_frame_copy_props");
+  target_frame->format = format;
+  target_frame->width = frame->width;
+  target_frame->height = frame->height;
+  CheckAVError(av_image_alloc(target_frame->data, target_frame->linesize,
+                              frame->width, frame->height, format, 32),
+               "av_image_alloc");
+  CheckAVError(
+      sws_scale(sws_context.get(), frame->data, frame->linesize, 0,
+                frame->height, target_frame->data, target_frame->linesize),
+      "sws_scale");
+  return target_frame;
+}
 
+auto ConvertFrame(const AVFrame* frame, const AVCodec* codec) {
   std::vector<AVPixelFormat> supported;
   for (const auto* p = codec->pix_fmts; p && *p != -1; p++) {
     if (sws_isSupportedOutput(*p)) {
@@ -281,32 +295,7 @@ auto ConvertFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
   AVPixelFormat format = avcodec_find_best_pix_fmt_of_list(
       supported.data(), AVPixelFormat(frame->format), false,
       /*loss_ptr=*/nullptr);
-  std::unique_ptr<SwsContext, SwsContextDeleter> sws_context(sws_getContext(
-      frame->width, frame->height, AVPixelFormat(frame->format), frame->width,
-      frame->height, format, SWS_BICUBIC, nullptr, nullptr, nullptr));
-  if (!sws_context) {
-    throw RuntimeError("sws_getContext returned null");
-  }
-  std::unique_ptr<AVFrame, AVFrameConvertedDeleter> rgb_frame(av_frame_alloc());
-  if (!rgb_frame) {
-    throw RuntimeError("av_frame_alloc");
-  }
-  CheckAVError(av_frame_copy_props(rgb_frame.get(), frame.get()),
-               "av_frame_copy_props");
-  if (orientation != 1) {
-    CheckAVError(av_dict_set_int(&rgb_frame->metadata, "Orientation", 1, 0),
-                 "av_dict_set_int");
-  }
-  rgb_frame->format = format;
-  rgb_frame->width = frame->width;
-  rgb_frame->height = frame->height;
-  CheckAVError(av_image_alloc(rgb_frame->data, rgb_frame->linesize,
-                              frame->width, frame->height, format, 32),
-               "av_image_alloc");
-  CheckAVError(sws_scale(sws_context.get(), frame->data, frame->linesize, 0,
-                         frame->height, rgb_frame->data, rgb_frame->linesize),
-               "sws_scale");
-  return rgb_frame;
+  return ConvertFrame(frame, format);
 }
 
 std::string EncodeFrame(std::unique_ptr<AVFrame, AVFrameDeleter> input_frame,
@@ -318,7 +307,22 @@ std::string EncodeFrame(std::unique_ptr<AVFrame, AVFrameDeleter> input_frame,
   if (!codec) {
     throw LogicError("codec not found");
   }
-  auto frame = ConvertFrame(std::move(input_frame), codec);
+  int orientation = [&] {
+    if (AVDictionaryEntry* entry =
+            av_dict_get(input_frame->metadata, "Orientation", nullptr, 0)) {
+      int value = std::stoi(entry->value);
+      if (value > 1 && value <= 8) {
+        return value;
+      }
+    }
+    return 1;
+  }();
+  if (orientation != 1) {
+    input_frame = RotateFrame(std::move(input_frame), orientation);
+    CheckAVError(av_dict_set_int(&input_frame->metadata, "Orientation", 1, 0),
+                 "av_dict_set_int");
+  }
+  auto frame = ConvertFrame(input_frame.get(), codec);
   std::unique_ptr<AVCodecContext, AVCodecContextDeleter> context(
       avcodec_alloc_context3(codec));
   if (!context) {
@@ -377,11 +381,7 @@ int GetExifOrientation(const int32_t* matrix) {
 }
 
 bool IsFrameBlack(const AVFrame* input) {
-  Graph graph = std::move(GraphBuilder(input).AddFilter(
-                              "format", {{"pix_fmts", "rgb24"}}))
-                    .Build();
-  graph.WriteFrame(input);
-  auto frame = graph.PullFrame().value();
+  auto frame = ConvertFrame(input, AV_PIX_FMT_RGB24);
   int count = 0;
   for (int i = 0; i < frame->height; i++) {
     for (int j = 0; j < frame->width; j++) {
