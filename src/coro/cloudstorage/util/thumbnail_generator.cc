@@ -64,8 +64,20 @@ class Graph {
             filters)
       : graph_(std::move(graph)), filters_(std::move(filters)) {}
 
-  void WriteFrame(AVFrame* frame) {
-    CheckAVError(av_buffersrc_write_frame(filters_.front().get(), frame),
+  AVRational GetSinkTimeBase() const {
+    return av_buffersink_get_time_base(sink());
+  }
+
+  int GetSinkWidth() const { return av_buffersink_get_w(sink()); }
+
+  int GetSinkHeight() const { return av_buffersink_get_h(sink()); }
+
+  AVPixelFormat GetSinkFormat() const {
+    return AVPixelFormat(av_buffersink_get_format(sink()));
+  }
+
+  void WriteFrame(const AVFrame* frame) {
+    CheckAVError(av_buffersrc_write_frame(source(), frame),
                  "av_buffersrc_write_frame");
   }
 
@@ -74,8 +86,7 @@ class Graph {
     if (!received_frame) {
       throw RuntimeError("av_frame_alloc error");
     }
-    int err =
-        av_buffersink_get_frame(filters_.back().get(), received_frame.get());
+    int err = av_buffersink_get_frame(sink(), received_frame.get());
     if (err == AVERROR(EAGAIN)) {
       return std::nullopt;
     }
@@ -87,6 +98,10 @@ class Graph {
   }
 
  private:
+  AVFilterContext* source() const { return filters_.front().get(); }
+
+  AVFilterContext* sink() const { return filters_.back().get(); }
+
   std::unique_ptr<AVFilterGraph, AVFilterGraphDeleter> graph_;
   std::vector<std::unique_ptr<AVFilterContext, AVFilterContextDeleter>>
       filters_;
@@ -102,11 +117,15 @@ class GraphBuilder {
                {"time_base", StrCat(time_base.num, '/', time_base.den)}});
   }
 
-  explicit GraphBuilder(AVFrame* frame)
+  GraphBuilder(const Graph& input)
+      : GraphBuilder(input.GetSinkWidth(), input.GetSinkHeight(),
+                     input.GetSinkFormat(), input.GetSinkTimeBase()) {}
+
+  explicit GraphBuilder(const AVFrame* frame)
       : GraphBuilder(frame->width, frame->height, frame->format, {1, 24}) {}
 
-  GraphBuilder(AVFormatContext* format_context, int stream,
-               AVCodecContext* codec_context)
+  GraphBuilder(const AVFormatContext* format_context, int stream,
+               const AVCodecContext* codec_context)
       : GraphBuilder(codec_context->width, codec_context->height,
                      codec_context->pix_fmt,
                      format_context->streams[stream]->time_base) {}
@@ -357,7 +376,12 @@ int GetExifOrientation(const int32_t* matrix) {
   }
 }
 
-bool IsFrameBlack(const AVFrame* frame) {
+bool IsFrameBlack(const AVFrame* input) {
+  Graph graph = std::move(GraphBuilder(input).AddFilter(
+                              "format", {{"pix_fmts", "rgb24"}}))
+                    .Build();
+  graph.WriteFrame(input);
+  auto frame = graph.PullFrame().value();
   int count = 0;
   for (int i = 0; i < frame->height; i++) {
     for (int j = 0; j < frame->width; j++) {
@@ -392,13 +416,10 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
       std::move(
           GraphBuilder(context.get(), stream, codec_context.get())
               .AddFilter("scale", {{"width", std::to_string(size.width)},
-                                   {"height", std::to_string(size.height)}})
-              .AddFilter("format", {{"pix_fmts", "rgb24"}}))
+                                   {"height", std::to_string(size.height)}}))
           .Build();
   Graph thumbnail_graph =
-      std::move(GraphBuilder(size.width, size.height, AV_PIX_FMT_RGB24, {1, 24})
-                    .AddFilter("thumbnail", {}))
-          .Build();
+      std::move(GraphBuilder(read_graph).AddFilter("thumbnail", {})).Build();
 
   int stream_orientation = [&] {
     auto* stream_matrix = reinterpret_cast<int32_t*>(av_stream_get_side_data(
