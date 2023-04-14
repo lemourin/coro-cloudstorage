@@ -436,6 +436,9 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
   while (true) {
     auto received_frame = thumbnail_graph.PullFrame();
     if (received_frame) {
+      if (*received_frame == nullptr) {
+        throw LogicError("Couldn't extract any frame.");
+      }
       return std::move(*received_frame);
     }
     received_frame = read_graph.PullFrame();
