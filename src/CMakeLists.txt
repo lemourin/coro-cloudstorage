@@ -197,6 +197,7 @@ add_resource_library(
         kDarkTrashIcon ../assets/icons-dark/places/64/user-trash.svg
         kDarkSettingsIcon ../assets/icons-dark/actions/32/settings-configure.svg
         kDarkGoBackIcon ../assets/icons-dark/actions/32/go-previous.svg
+        kFavIcon ../assets/icons/favicon.ico
         kMegaLoginHtml ../assets/html/mega_login.html
         kLocalDriveLoginHtml ../assets/html/local_login.html
         kWebdavLoginHtml ../assets/html/webdav_login.html

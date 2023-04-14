@@ -109,6 +109,9 @@ Task<Response> StaticFileHandler::operator()(Request request,
   } else if (request.url == "/static/settings_main.js") {
     content = util::kSettingsMainJs;
     mime_type = "text/javascript;charset=UTF-8";
+  } else if (request.url == "/static/favicon.ico") {
+    content = util::kFavIcon;
+    mime_type = "image/x-icon";
   }
   if (!content) {
     co_return Response{.status = 404};

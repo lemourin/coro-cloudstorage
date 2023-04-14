@@ -318,6 +318,7 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
       "        content='width=device-width, initial-scale=1'>"
       "  <link rel=stylesheet href='/static/layout.css'>"
       "  <link rel=stylesheet href='/static/colors.css'>"
+      "  <link rel='icon' type='image/x-icon' href='/static/favicon.ico'>"
       "</head>"
       "<body class='root-container'>"
       "<table class='content-table'>";
