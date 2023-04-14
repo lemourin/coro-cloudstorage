@@ -431,6 +431,8 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
     }
   }();
 
+  int read_frame_count = 0;
+  int written_frame_count = 0;
   while (true) {
     auto received_frame = thumbnail_graph.PullFrame();
     if (received_frame) {
@@ -438,7 +440,9 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
     }
     received_frame = read_graph.PullFrame();
     if (received_frame) {
-      if (!received_frame->get() || !IsFrameBlack(received_frame->get())) {
+      if (!received_frame->get() || written_frame_count == 0 ||
+          !IsFrameBlack(received_frame->get())) {
+        written_frame_count++;
         thumbnail_graph.WriteFrame(received_frame->get());
       }
       continue;
@@ -458,7 +462,8 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
             "av_dict_set_int");
       }
     }
-    read_graph.WriteFrame(frame.get());
+    read_frame_count++;
+    read_graph.WriteFrame(read_frame_count < 200 ? frame.get() : nullptr);
   }
 }
 
