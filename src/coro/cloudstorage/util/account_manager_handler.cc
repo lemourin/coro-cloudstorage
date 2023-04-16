@@ -18,7 +18,7 @@ namespace coro::cloudstorage::util {
 
 namespace {
 
-using ::coro::util::StopTokenOr;
+using ::coro::util::MakeUniqueStopTokenOr;
 
 struct OnAuthTokenChanged {
   void operator()(AbstractCloudProvider::Auth::AuthToken auth_token) {
@@ -207,8 +207,8 @@ auto AccountManagerHandler::Impl::HandleRequest(
   }
   if (auto handler = ChooseHandler(*path)) {
     if (handler->account != nullptr) {
-      auto stop_token_or = std::make_unique<StopTokenOr>(
-          handler->account->stop_token(), std::move(stop_token));
+      auto stop_token_or = MakeUniqueStopTokenOr(handler->account->stop_token(),
+                                                 std::move(stop_token));
       auto response = co_await handler->handler(std::move(request),
                                                 stop_token_or->GetToken());
       response.body = Forward(std::move(response.body),

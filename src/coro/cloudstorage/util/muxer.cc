@@ -32,7 +32,7 @@ auto CreateMuxerIOContext(std::FILE* file) {
         return Fseek(file, offset, whence);
       });
   if (!io_context) {
-    throw std::runtime_error("avio_alloc_context");
+    throw RuntimeError("avio_alloc_context");
   }
   return io_context;
 }
@@ -51,7 +51,7 @@ auto CreateMuxerIOContext(std::vector<uint8_t>* data) {
       },
       /*seek=*/nullptr);
   if (!io_context) {
-    throw std::runtime_error("avio_alloc_context");
+    throw RuntimeError("avio_alloc_context");
   }
   return io_context;
 }
@@ -117,7 +117,7 @@ MuxerContext::MuxerContext(coro::util::ThreadPool* thread_pool,
                              case MediaContainer::kWebm:
                                return "webm";
                              default:
-                               throw std::runtime_error("invalid container");
+                               throw RuntimeError("invalid container");
                            }
                          }(),
                          /*filename=*/nullptr),
@@ -130,10 +130,14 @@ MuxerContext::MuxerContext(coro::util::ThreadPool* thread_pool,
   streams_.emplace_back(CreateStream(audio, AVMEDIA_TYPE_AUDIO));
   AVDictionary* options_dict = nullptr;
   auto guard = coro::util::AtScopeExit([&] { av_dict_free(&options_dict); });
-  if (options.container == MediaContainer::kMp4 && !options.buffered) {
-    CheckAVError(
-        av_dict_set(&options_dict, "movflags", "frag_keyframe+empty_moov", 0),
-        "av_dict_set");
+  if (!options.buffered) {
+    if (options.container == MediaContainer::kMp4) {
+      CheckAVError(
+          av_dict_set(&options_dict, "movflags", "frag_keyframe+empty_moov", 0),
+          "av_dict_set");
+    } else {
+      throw LogicError("non-buffered muxing supported only for mp4");
+    }
   }
   CheckAVError(avformat_write_header(format_context_.get(), &options_dict),
                "avformat_write_header");
@@ -150,7 +154,7 @@ MuxerContext::Stream MuxerContext::CreateStream(AVIOContext* io_context,
   stream.stream =
       avformat_new_stream(format_context_.get(), stream.codec_context->codec);
   if (!stream.stream) {
-    throw std::runtime_error("couldn't add stream");
+    throw RuntimeError("couldn't add stream");
   }
   CheckAVError(avcodec_parameters_from_context(stream.stream->codecpar,
                                                stream.codec_context.get()),

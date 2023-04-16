@@ -8,43 +8,14 @@
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/http/http_parse.h"
 #include "coro/stdx/stop_source.h"
+#include "coro/util/stop_token_or.h"
 #include "coro/when_all.h"
 
 namespace coro::cloudstorage::util {
 
 namespace {
 
-struct OnCancel {
-  void operator()() const { stop_source->request_stop(); }
-  stdx::stop_source* stop_source;
-};
-
-template <int N>
-class StopTokenWrapper {
- public:
-  template <typename... Args>
-  explicit StopTokenWrapper(Args&&... args)
-      : stop_callbacks_{
-            {{std::forward<Args>(args), OnCancel{&stop_source_}}...}} {}
-
-  template <typename... Args>
-  explicit StopTokenWrapper(stdx::stop_source stop_source, Args&&... args)
-      : stop_source_(std::move(stop_source)),
-        stop_callbacks_{
-            {{std::forward<Args>(args), OnCancel{&stop_source_}}...}} {}
-
-  stdx::stop_token stop_token() const { return stop_source_.get_token(); }
-
- private:
-  stdx::stop_source stop_source_;
-  std::array<stdx::stop_callback<OnCancel>, N> stop_callbacks_;
-};
-
-template <typename... Args>
-auto MakeStopTokenOr(Args&&... stop_token) {
-  return std::make_unique<StopTokenWrapper<sizeof...(Args)>>(
-      std::forward<Args>(stop_token)...);
-}
+using ::coro::util::MakeUniqueStopTokenOr;
 
 std::vector<std::string> GetPathComponents(const std::string& encoded_path) {
   std::vector<std::string> components = SplitString(encoded_path, '/');
@@ -97,27 +68,32 @@ Task<http::Response<>> MuxHandler::operator()(
   auto audio_path_components = GetPathComponents(audio_path->second);
 
   auto stop_token_or =
-      MakeStopTokenOr(video_account->stop_token(), audio_account->stop_token(),
-                      std::move(stop_token));
+      MakeUniqueStopTokenOr(video_account->stop_token(),
+                            audio_account->stop_token(), std::move(stop_token));
 
-  auto [video_item, audio_item] =
-      co_await WhenAll(GetItemByPathComponents(video_account->provider().get(),
-                                               video_path_components,
-                                               stop_token_or->stop_token()),
-                       GetItemByPathComponents(audio_account->provider().get(),
-                                               audio_path_components,
-                                               stop_token_or->stop_token()));
+  auto [video_item, audio_item] = co_await WhenAll(
+      GetItemByPathComponents(video_account->provider().get(),
+                              video_path_components, stop_token_or->GetToken()),
+      GetItemByPathComponents(audio_account->provider().get(),
+                              audio_path_components,
+                              stop_token_or->GetToken()));
+
+  auto video_file = std::get<AbstractCloudProvider::File>(video_item);
+  auto audio_file = std::get<AbstractCloudProvider::File>(audio_item);
 
   Generator<std::string> content =
-      (*muxer_)(video_account->provider().get(),
-                std::get<AbstractCloudProvider::File>(video_item),
-                audio_account->provider().get(),
-                std::get<AbstractCloudProvider::File>(audio_item),
+      (*muxer_)(video_account->provider().get(), video_file,
+                audio_account->provider().get(), audio_file,
                 {.container = MediaContainer::kMp4, .buffered = false},
-                stop_token_or->stop_token());
+                stop_token_or->GetToken());
   co_return http::Response<>{
       .status = 200,
-      .headers = {{"Content-Type", "video/mp4"}},
+      .headers =
+          {
+              {"Content-Type", "video/mp4"},
+              {"Content-Disposition",
+               "inline; filename=\"" + video_file.name + "\""},
+          },
       .body = Forward(std::move(content), video_account, audio_account,
                       std::move(stop_token_or))};
 }

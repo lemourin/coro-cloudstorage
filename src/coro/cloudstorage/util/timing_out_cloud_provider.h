@@ -116,7 +116,7 @@ class TimingOutCloudProvider : public AbstractCloudProvider {
 
    private:
     TimingOutStopToken timing_out_stop_token_;
-    coro::util::StopTokenOr token_or_;
+    coro::util::StopTokenOr<2> token_or_;
   };
 
   ContextStopToken CreateStopToken(std::string action,

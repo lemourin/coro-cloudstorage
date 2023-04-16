@@ -8,6 +8,8 @@ namespace coro::cloudstorage::util {
 
 namespace {
 
+using ::coro::util::MakeStopTokenOr;
+
 template <typename T, typename Entry>
 T ToItem(MergedCloudProvider::AccountId account_id, Entry entry) {
   T item;
@@ -65,8 +67,8 @@ auto MergedCloudProvider::ListDirectoryPage(ProviderTypeRoot directory,
     -> Task<PageData> {
   auto get_root = [&](Account *account,
                       stdx::stop_token stop_token) -> Task<Directory> {
-    coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
-                                          std::move(stop_token));
+    auto stop_token_or = MakeStopTokenOr(account->stop_source.get_token(),
+                                         std::move(stop_token));
     auto item = co_await account->provider->GetRoot(stop_token_or.GetToken());
     Directory root;
     root.account_id = {directory.id, account->id};
@@ -93,8 +95,8 @@ auto MergedCloudProvider::ListDirectoryPage(
     stdx::stop_token stop_token) -> Task<PageData> {
   auto *account = GetAccount(directory.account_id);
   auto p = account->provider;
-  coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
-                                        std::move(stop_token));
+  auto stop_token_or =
+      MakeStopTokenOr(account->stop_source.get_token(), std::move(stop_token));
   auto page_data = co_await p->ListDirectoryPage(
       directory.item, std::move(page_token), stop_token_or.GetToken());
   PageData result{.next_page_token = std::move(page_data.next_page_token)};
@@ -119,8 +121,8 @@ auto MergedCloudProvider::GetGeneralData(stdx::stop_token stop_token)
     -> Task<GeneralData> {
   auto get_volume_data =
       [&](Account &account) -> Task<AbstractCloudProvider::GeneralData> {
-    coro::util::StopTokenOr stop_token_or(account.stop_source.get_token(),
-                                          std::move(stop_token));
+    auto stop_token_or =
+        MakeStopTokenOr(account.stop_source.get_token(), std::move(stop_token));
     co_return co_await account.provider->GetGeneralData(
         stop_token_or.GetToken());
   };
@@ -147,8 +149,8 @@ auto MergedCloudProvider::GetGeneralData(stdx::stop_token stop_token)
 Generator<std::string> MergedCloudProvider::GetFileContent(
     File file, http::Range range, stdx::stop_token stop_token) {
   auto *account = GetAccount(file.account_id);
-  coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
-                                        std::move(stop_token));
+  auto stop_token_or =
+      MakeStopTokenOr(account->stop_source.get_token(), std::move(stop_token));
   auto generator = account->provider->GetFileContent(
       std::move(file.item), range, stop_token_or.GetToken());
   FOR_CO_AWAIT(std::string & chunk, generator) { co_yield std::move(chunk); }
@@ -159,8 +161,8 @@ Task<ItemT> MergedCloudProvider::RenameItem(ItemT item, std::string new_name,
                                             stdx::stop_token stop_token) {
   auto *account = GetAccount(item.account_id);
   auto p = account->provider;
-  coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
-                                        std::move(stop_token));
+  auto stop_token_or =
+      MakeStopTokenOr(account->stop_source.get_token(), std::move(stop_token));
   co_return ToItem<ItemT>(
       item.account_id,
       co_await p->RenameItem(std::move(item.item), std::move(new_name),
@@ -172,8 +174,8 @@ auto MergedCloudProvider::CreateDirectory(Directory parent, std::string name,
     -> Task<Directory> {
   auto *account = GetAccount(parent.account_id);
   auto p = account->provider;
-  coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
-                                        std::move(stop_token));
+  auto stop_token_or =
+      MakeStopTokenOr(account->stop_source.get_token(), std::move(stop_token));
   co_return ToItem<Directory>(
       parent.account_id,
       co_await p->CreateDirectory(std::move(parent.item), std::move(name),
@@ -185,8 +187,8 @@ Task<> MergedCloudProvider::RemoveItem(ItemT item,
                                        stdx::stop_token stop_token) {
   auto *account = GetAccount(item.account_id);
   auto p = account->provider;
-  coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
-                                        std::move(stop_token));
+  auto stop_token_or =
+      MakeStopTokenOr(account->stop_source.get_token(), std::move(stop_token));
   co_await p->RemoveItem(std::move(item.item), stop_token_or.GetToken());
 }
 
@@ -198,8 +200,8 @@ Task<ItemT> MergedCloudProvider::MoveItem(ItemT source, Directory destination,
   } else {
     auto *account = GetAccount(source.account_id);
     auto p = account->provider;
-    coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
-                                          std::move(stop_token));
+    auto stop_token_or =
+        MakeStopTokenOr(account->stop_source.get_token(), std::move(stop_token));
     co_return ToItem<ItemT>(source.account_id,
                             co_await p->MoveItem(std::move(source.item),
                                                  std::move(destination.item),
@@ -213,8 +215,8 @@ auto MergedCloudProvider::CreateFile(Directory parent, std::string_view name,
     -> Task<File> {
   auto *account = GetAccount(parent.account_id);
   auto p = account->provider;
-  coro::util::StopTokenOr stop_token_or(account->stop_source.get_token(),
-                                        std::move(stop_token));
+  auto stop_token_or =
+      MakeStopTokenOr(account->stop_source.get_token(), std::move(stop_token));
   AbstractCloudProvider::FileContent ncontent{.data = std::move(content.data),
                                               .size = content.size};
   co_return ToItem<File>(
