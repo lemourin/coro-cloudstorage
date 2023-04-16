@@ -8,6 +8,11 @@ namespace coro::cloudstorage::util {
 
 enum class MediaContainer { kMp4, kWebm };
 
+struct MuxerOptions {
+  MediaContainer container;
+  bool buffered = true;
+};
+
 class Muxer {
  public:
   Muxer(const coro::util::EventLoop* event_loop,
@@ -18,7 +23,7 @@ class Muxer {
                                     AbstractCloudProvider::File video_track,
                                     AbstractCloudProvider* audio_cloud_provider,
                                     AbstractCloudProvider::File audio_track,
-                                    MediaContainer container,
+                                    MuxerOptions container,
                                     stdx::stop_token stop_token) const;
 
  private:

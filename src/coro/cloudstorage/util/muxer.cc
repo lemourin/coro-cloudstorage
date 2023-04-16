@@ -7,6 +7,7 @@
 #include "coro/cloudstorage/util/file_utils.h"
 #include "coro/generator.h"
 #include "coro/util/event_loop.h"
+#include "coro/util/raii_utils.h"
 #include "coro/util/thread_pool.h"
 #include "coro/when_all.h"
 
@@ -36,10 +37,29 @@ auto CreateMuxerIOContext(std::FILE* file) {
   return io_context;
 }
 
+auto CreateMuxerIOContext(std::vector<uint8_t>* data) {
+  const int kBufferSize = 4 * 1024;
+  auto* buffer = static_cast<uint8_t*>(av_malloc(kBufferSize));
+  auto* io_context = avio_alloc_context(
+      buffer, kBufferSize, /*write_flag=*/1, data,
+      /*read_packet=*/nullptr,
+      /*write_packet=*/
+      [](void* opaque, uint8_t* buf, int buf_size) -> int {
+        auto* data = reinterpret_cast<std::vector<uint8_t>*>(opaque);
+        data->insert(data->end(), buf, buf + buf_size);
+        return buf_size;
+      },
+      /*seek=*/nullptr);
+  if (!io_context) {
+    throw std::runtime_error("avio_alloc_context");
+  }
+  return io_context;
+}
+
 class MuxerContext {
  public:
   MuxerContext(coro::util::ThreadPool* thread_pool, AVIOContext* video,
-               AVIOContext* audio, MediaContainer container,
+               AVIOContext* audio, MuxerOptions options,
                stdx::stop_token stop_token);
 
   Generator<std::string> GetContent();
@@ -68,6 +88,8 @@ class MuxerContext {
 
   Stream CreateStream(AVIOContext* io_context, AVMediaType type) const;
 
+  std::unique_ptr<std::vector<uint8_t>> data_ =
+      std::make_unique<std::vector<uint8_t>>();
   coro::util::ThreadPool* thread_pool_;
   std::unique_ptr<std::FILE, FileDeleter> file_;
   std::unique_ptr<AVIOContext, AVIOContextDeleter> io_context_;
@@ -78,18 +100,18 @@ class MuxerContext {
 
 MuxerContext::MuxerContext(coro::util::ThreadPool* thread_pool,
                            AVIOContext* video, AVIOContext* audio,
-                           MediaContainer container,
-                           stdx::stop_token stop_token)
+                           MuxerOptions options, stdx::stop_token stop_token)
     : thread_pool_(thread_pool),
-      file_(CreateTmpFile()),
-      io_context_(CreateMuxerIOContext(file_.get())),
+      file_(options.buffered ? CreateTmpFile() : nullptr),
+      io_context_(options.buffered ? CreateMuxerIOContext(file_.get())
+                                   : CreateMuxerIOContext(data_.get())),
       format_context_([&] {
         AVFormatContext* format_context;
         CheckAVError(avformat_alloc_output_context2(
                          &format_context,
                          /*oformat=*/nullptr,
                          [&] {
-                           switch (container) {
+                           switch (options.container) {
                              case MediaContainer::kMp4:
                                return "mp4";
                              case MediaContainer::kWebm:
@@ -106,9 +128,15 @@ MuxerContext::MuxerContext(coro::util::ThreadPool* thread_pool,
       stop_token_(std::move(stop_token)) {
   streams_.emplace_back(CreateStream(video, AVMEDIA_TYPE_VIDEO));
   streams_.emplace_back(CreateStream(audio, AVMEDIA_TYPE_AUDIO));
-  CheckAVError(
-      avformat_write_header(format_context_.get(), /*options=*/nullptr),
-      "avformat_write_header");
+  AVDictionary* options_dict = nullptr;
+  auto guard = coro::util::AtScopeExit([&] { av_dict_free(&options_dict); });
+  if (options.container == MediaContainer::kMp4 && !options.buffered) {
+    CheckAVError(
+        av_dict_set(&options_dict, "movflags", "frag_keyframe+empty_moov", 0),
+        "av_dict_set");
+  }
+  CheckAVError(avformat_write_header(format_context_.get(), &options_dict),
+               "avformat_write_header");
 }
 
 MuxerContext::Stream MuxerContext::CreateStream(AVIOContext* io_context,
@@ -191,6 +219,10 @@ Generator<std::string> MuxerContext::GetContent() {
     CheckAVError(
         av_write_frame(format_context_.get(), picked_stream->packet.get()),
         "av_write_frame");
+    if (!data_->empty()) {
+      co_yield std::string(data_->begin(), data_->end());
+      data_->clear();
+    }
     picked_stream->packet.reset();
   }
 
@@ -198,10 +230,17 @@ Generator<std::string> MuxerContext::GetContent() {
                "av_write_frame");
   CheckAVError(av_write_trailer(format_context_.get()), "av_write_trailer");
 
+  if (!data_->empty()) {
+    co_yield std::string(data_->begin(), data_->end());
+    data_->clear();
+  }
+
   std::cerr << "TRANSCODE DONE\n";
 
-  FOR_CO_AWAIT(std::string & chunk, ReadFile(thread_pool_, file_.get())) {
-    co_yield std::move(chunk);
+  if (file_) {
+    FOR_CO_AWAIT(std::string & chunk, ReadFile(thread_pool_, file_.get())) {
+      co_yield std::move(chunk);
+    }
   }
 }
 
@@ -227,7 +266,7 @@ Generator<std::string> Muxer::operator()(
     AbstractCloudProvider* video_cloud_provider,
     AbstractCloudProvider::File video_track,
     AbstractCloudProvider* audio_cloud_provider,
-    AbstractCloudProvider::File audio_track, MediaContainer container,
+    AbstractCloudProvider::File audio_track, MuxerOptions options,
     stdx::stop_token stop_token) const {
   std::unique_ptr<AVIOContext, AVIOContextDeleter> video_io_context;
   std::unique_ptr<AVIOContext, AVIOContextDeleter> audio_io_context;
@@ -243,7 +282,7 @@ Generator<std::string> Muxer::operator()(
         },
         stop_token);
     return MuxerContext(thread_pool_, video_io_context.get(),
-                        audio_io_context.get(), container, stop_token);
+                        audio_io_context.get(), options, stop_token);
   });
   FOR_CO_AWAIT(std::string & chunk, muxer_context.GetContent()) {
     if (!chunk.empty()) {

@@ -85,6 +85,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/cloud_factory_config.cc
     coro/cloudstorage/util/generator_utils.cc
     coro/cloudstorage/util/cloud_provider_handler.cc
+    coro/cloudstorage/util/mux_handler.cc
     coro/cloudstorage/cloud_factory.cc
 )
 
@@ -144,6 +145,7 @@ target_sources(coro-cloudstorage
         coro/cloudstorage/util/settings_handler.h
         coro/cloudstorage/util/get_size_handler.h
         coro/cloudstorage/util/merged_cloud_provider.h
+        coro/cloudstorage/util/mux_handler.h
         coro/cloudstorage/cloud_exception.h
         coro/cloudstorage/cloud_factory.h
 )

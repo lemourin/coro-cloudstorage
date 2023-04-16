@@ -7,6 +7,15 @@
 
 namespace coro::cloudstorage::util {
 
+inline Generator<std::string> ToGenerator(std::string chunk) {
+  co_yield std::move(chunk);
+}
+
+template <typename... Args>
+Generator<std::string> Forward(Generator<std::string> body, Args...) {
+  FOR_CO_AWAIT(std::string & chunk, body) { co_yield std::move(chunk); }
+}
+
 Generator<std::string> Take(Generator<std::string>& generator,
                             Generator<std::string>::iterator& iterator,
                             size_t at_most);

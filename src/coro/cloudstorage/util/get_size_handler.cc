@@ -15,7 +15,7 @@ auto GetSizeHandler::operator()(Request request,
   if (account_type == query.end() || account_username == query.end()) {
     co_return Response{.status = 400};
   }
-  for (std::shared_ptr<CloudProviderAccount>& account : accounts) {
+  for (const std::shared_ptr<CloudProviderAccount>& account : accounts) {
     if (account->id() ==
         CloudProviderAccount::Id{.type = account_type->second,
                                  .username = account_username->second}) {

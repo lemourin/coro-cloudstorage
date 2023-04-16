@@ -5,7 +5,9 @@
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/cloud_provider_handler.h"
 #include "coro/cloudstorage/util/exception_utils.h"
+#include "coro/cloudstorage/util/generator_utils.h"
 #include "coro/cloudstorage/util/get_size_handler.h"
+#include "coro/cloudstorage/util/mux_handler.h"
 #include "coro/cloudstorage/util/settings_handler.h"
 #include "coro/cloudstorage/util/static_file_handler.h"
 #include "coro/cloudstorage/util/theme_handler.h"
@@ -28,11 +30,6 @@ struct OnAuthTokenChanged {
   std::shared_ptr<std::optional<std::string>> account_id;
 };
 
-template <typename... Args>
-Generator<std::string> GetResponse(Generator<std::string> body, Args...) {
-  FOR_CO_AWAIT(std::string & chunk, body) { co_yield std::move(chunk); }
-}
-
 std::string GetAuthUrl(AbstractCloudProvider::Type type,
                        const AbstractCloudFactory* factory) {
   std::string id(factory->GetAuth(type).GetId());
@@ -41,10 +38,6 @@ std::string GetAuthUrl(AbstractCloudProvider::Type type,
   return fmt::format(
       fmt::runtime(kProviderEntryHtml), fmt::arg("provider_url", url),
       fmt::arg("image_url", util::StrCat("/static/", id, ".png")));
-}
-
-Generator<std::string> ToGenerator(std::string chunk) {
-  co_yield std::move(chunk);
 }
 
 std::string GetHtmlStacktrace(const stdx::stacktrace& stacktrace) {
@@ -56,8 +49,7 @@ std::string GetHtmlStacktrace(const stdx::stacktrace& stacktrace) {
 
 http::Response<> GetErrorResponse(ErrorMetadata error) {
   std::string content = fmt::format(
-      fmt::runtime(kErrorPageHtml),
-      fmt::arg("error_message", error.what),
+      fmt::runtime(kErrorPageHtml), fmt::arg("error_message", error.what),
       fmt::arg(
           "source_location",
           error.source_location
@@ -82,7 +74,7 @@ class AccountManagerHandler::Impl {
   using Response = coro::http::Response<>;
 
   Impl(const AbstractCloudFactory* factory,
-       const ThumbnailGenerator* thumbnail_generator,
+       const ThumbnailGenerator* thumbnail_generator, const Muxer* muxer,
        AccountListener account_listener, SettingsManager* settings_manager);
 
   ~Impl() { Quit(); }
@@ -144,6 +136,7 @@ class AccountManagerHandler::Impl {
 
   const AbstractCloudFactory* factory_;
   const ThumbnailGenerator* thumbnail_generator_;
+  const Muxer* muxer_;
   AccountListener account_listener_;
   SettingsManager* settings_manager_;
   std::vector<std::shared_ptr<CloudProviderAccount>> accounts_;
@@ -152,10 +145,12 @@ class AccountManagerHandler::Impl {
 
 AccountManagerHandler::Impl::Impl(const AbstractCloudFactory* factory,
                                   const ThumbnailGenerator* thumbnail_generator,
+                                  const Muxer* muxer,
                                   AccountListener account_listener,
                                   SettingsManager* settings_manager)
     : factory_(factory),
       thumbnail_generator_(thumbnail_generator),
+      muxer_(muxer),
       account_listener_(std::move(account_listener)),
       settings_manager_(settings_manager) {
   for (auto auth_token : settings_manager_->LoadTokenData()) {
@@ -216,13 +211,13 @@ auto AccountManagerHandler::Impl::HandleRequest(
           handler->account->stop_token(), std::move(stop_token));
       auto response = co_await handler->handler(std::move(request),
                                                 stop_token_or->GetToken());
-      response.body = GetResponse(std::move(response.body),
-                                  std::move(stop_token_or), std::move(handler));
+      response.body = Forward(std::move(response.body),
+                              std::move(stop_token_or), std::move(handler));
       co_return response;
     } else {
       auto response =
           co_await handler->handler(std::move(request), std::move(stop_token));
-      response.body = GetResponse(std::move(response.body), std::move(handler));
+      response.body = Forward(std::move(response.body), std::move(handler));
       co_return response;
     }
   } else if (*path == "/" || *path == "") {
@@ -286,11 +281,16 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
   handlers.emplace_back(Handler{
       .prefix = "/size",
       .handler = GetSizeHandler{
-          std::span<std::shared_ptr<CloudProviderAccount>>(accounts_)}});
+          std::span<const std::shared_ptr<CloudProviderAccount>>(accounts_)}});
   handlers.emplace_back(Handler{.prefix = "/settings",
                                 .handler = SettingsHandler(settings_manager_)});
   handlers.emplace_back(
       Handler{.prefix = "/settings/theme-toggle", .handler = ThemeHandler{}});
+  handlers.emplace_back(Handler{
+      .prefix = "/mux/",
+      .handler = MuxHandler{
+          muxer_,
+          std::span<const std::shared_ptr<CloudProviderAccount>>(accounts_)}});
 
   for (AbstractCloudProvider::Type type :
        factory_->GetSupportedCloudProviders()) {
@@ -438,9 +438,9 @@ auto AccountManagerHandler::Impl::OnRemoveHandler::operator()(
 
 AccountManagerHandler::AccountManagerHandler(
     const AbstractCloudFactory* factory,
-    const ThumbnailGenerator* thumbnail_generator,
+    const ThumbnailGenerator* thumbnail_generator, const Muxer* muxer,
     AccountListener account_listener, SettingsManager* settings_manager)
-    : impl_(std::make_unique<Impl>(factory, thumbnail_generator,
+    : impl_(std::make_unique<Impl>(factory, thumbnail_generator, muxer,
                                    std::move(account_listener),
                                    settings_manager)) {}
 

@@ -27,7 +27,7 @@ CloudFactoryContext::CloudFactoryContext(
 
 AccountManagerHandler CloudFactoryContext::CreateAccountManagerHandler(
     AccountListener listener) {
-  return {&factory_, &thumbnail_generator_, std::move(listener),
+  return {&factory_, &thumbnail_generator_, &muxer_, std::move(listener),
           &settings_manager_};
 }
 
