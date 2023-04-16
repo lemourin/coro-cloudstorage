@@ -763,12 +763,14 @@ Generator<std::string> YouTube::GetMuxedFileContent(
   audio_stream.itag = best_audio["itag"];
   audio_stream.size = std::stoll(std::string(best_audio["contentLength"]));
   auto impl = CreateAbstractCloudProviderImpl(this);
-  FOR_CO_AWAIT(
-      std::string & chunk,
-      (*muxer_)(&impl, impl.Convert(std::move(video_stream)), &impl,
-                impl.Convert(std::move(audio_stream)),
-                type == "webm" ? MediaContainer::kWebm : MediaContainer::kMp4,
-                std::move(stop_token))) {
+  FOR_CO_AWAIT(std::string & chunk,
+               (*muxer_)(&impl, impl.Convert(std::move(video_stream)), &impl,
+                         impl.Convert(std::move(audio_stream)),
+                         util::MuxerOptions{
+                             .container = type == "webm" ? MediaContainer::kWebm
+                                                         : MediaContainer::kMp4,
+                             .buffered = type != "mp4"},
+                         std::move(stop_token))) {
     co_yield std::move(chunk);
   }
 }
@@ -887,9 +889,8 @@ auto YouTube::GetStreamData::operator()(std::string video_id,
 namespace util {
 
 template <>
-YouTube::Auth::AuthData GetAuthData<YouTube>() {
-  return {.client_id = YOUTUBE_CLIENT_ID,
-          .client_secret = YOUTUBE_CLIENT_SECRET};
+YouTube::Auth::AuthData GetAuthData<YouTube>(const nlohmann::json& json) {
+  return GetAuthData<GoogleDrive>(json);
 }
 
 template <>

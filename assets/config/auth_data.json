@@ -26,5 +26,9 @@
   "yandex": {
     "client_id": "04d700d432884c4381c07e760213ed8a",
     "client_secret": "197f9693caa64f0ebb51d201110074f9"
+  },
+  "youtube": {
+    "client_id": "379556609343-0v8r2fpijkjpj707a76no2rve6nto2co.apps.googleusercontent.com",
+    "client_secret": "_VUpM5Pf9_54RIZq2GGUbUMZ"
   }
 }

@@ -114,7 +114,7 @@ class YouTube {
   };
 
   static constexpr std::string_view kId = "youtube";
-  static inline constexpr auto& kIcon = util::kAssetsProvidersYoutubePng;
+  static inline constexpr auto& kIcon = util::kYouTubeIcon;
 
   YouTube(AuthManager auth_manager, const http::Http* http,
           const util::Muxer* muxer)
@@ -196,7 +196,7 @@ class YouTube {
 
 namespace util {
 template <>
-YouTube::Auth::AuthData GetAuthData<YouTube>();
+YouTube::Auth::AuthData GetAuthData<YouTube>(const nlohmann::json&);
 }  // namespace util
 
 }  // namespace coro::cloudstorage
