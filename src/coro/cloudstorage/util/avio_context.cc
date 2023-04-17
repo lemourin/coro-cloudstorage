@@ -28,7 +28,7 @@ void AVIOContextDeleter::operator()(AVIOContext* context) {
 std::unique_ptr<AVIOContext, AVIOContextDeleter> CreateIOContext(
     const coro::util::EventLoop* event_loop, AbstractCloudProvider* provider,
     AbstractCloudProvider::File file, stdx::stop_token stop_token) {
-  const int kBufferSize = 4 * 1024 * 1024;
+  const int kBufferSize = 32 * 1024;
   auto buffer = static_cast<uint8_t*>(av_malloc(kBufferSize));
   std::unique_ptr<AVIOContext, AVIOContextDeleter> context(avio_alloc_context(
       buffer, kBufferSize, /*write_flag=*/0,
