@@ -403,10 +403,13 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
                                     nullptr, 0);
   CheckAVError(stream, "av_find_best_stream");
   if (context->duration > 0) {
-    if (av_seek_frame(context.get(), -1, context->duration / 10, 0) < 0) {
-      CheckAVError(av_seek_frame(context.get(), 0, 0,
-                                 AVSEEK_FLAG_BYTE | AVSEEK_FLAG_BACKWARD),
-                   "av_seek_frame");
+    if (int err = av_seek_frame(context.get(), -1, context->duration / 10, 0);
+        err < 0) {
+      if (err != AVERROR(EPERM)) {
+        CheckAVError(av_seek_frame(context.get(), 0, 0,
+                                   AVSEEK_FLAG_BYTE | AVSEEK_FLAG_BACKWARD),
+                     "av_seek_frame");
+      }
     }
   }
   auto codec_context = CreateCodecContext(context.get(), stream);
