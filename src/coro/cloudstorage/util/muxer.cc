@@ -37,7 +37,7 @@ auto CreateMuxerIOContext(std::FILE* file) {
   return io_context;
 }
 
-auto CreateMuxerIOContext(std::vector<uint8_t>* data) {
+auto CreateMuxerIOContext(std::string* data) {
   const int kBufferSize = 4 * 1024;
   auto* buffer = static_cast<uint8_t*>(av_malloc(kBufferSize));
   auto* io_context = avio_alloc_context(
@@ -45,7 +45,7 @@ auto CreateMuxerIOContext(std::vector<uint8_t>* data) {
       /*read_packet=*/nullptr,
       /*write_packet=*/
       [](void* opaque, uint8_t* buf, int buf_size) -> int {
-        auto* data = reinterpret_cast<std::vector<uint8_t>*>(opaque);
+        auto* data = reinterpret_cast<std::string*>(opaque);
         data->insert(data->end(), buf, buf + buf_size);
         return buf_size;
       },
@@ -88,8 +88,7 @@ class MuxerContext {
 
   Stream CreateStream(AVIOContext* io_context, AVMediaType type) const;
 
-  std::unique_ptr<std::vector<uint8_t>> data_ =
-      std::make_unique<std::vector<uint8_t>>();
+  std::unique_ptr<std::string> data_ = std::make_unique<std::string>();
   coro::util::ThreadPool* thread_pool_;
   std::unique_ptr<std::FILE, FileDeleter> file_;
   std::unique_ptr<AVIOContext, AVIOContextDeleter> io_context_;
@@ -222,7 +221,7 @@ Generator<std::string> MuxerContext::GetContent() {
         av_write_frame(format_context_.get(), picked_stream->packet.get()),
         "av_write_frame");
     if (!data_->empty()) {
-      co_yield std::string(data_->begin(), data_->end());
+      co_yield std::move(*data_);
       data_->clear();
     }
     picked_stream->packet.reset();
@@ -233,7 +232,7 @@ Generator<std::string> MuxerContext::GetContent() {
   CheckAVError(av_write_trailer(format_context_.get()), "av_write_trailer");
 
   if (!data_->empty()) {
-    co_yield std::string(data_->begin(), data_->end());
+    co_yield std::move(*data_);
     data_->clear();
   }
 
