@@ -135,8 +135,6 @@ MuxerContext::MuxerContext(coro::util::ThreadPool* thread_pool,
       CheckAVError(
           av_dict_set(&options_dict, "movflags", "frag_keyframe+empty_moov", 0),
           "av_dict_set");
-    } else {
-      throw LogicError("non-buffered muxing supported only for mp4");
     }
   }
   CheckAVError(avformat_write_header(format_context_.get(), &options_dict),

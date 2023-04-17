@@ -51,9 +51,14 @@ Task<http::Response<>> MuxHandler::operator()(
   auto audio_account_type = query.find("audio_account_type");
   auto audio_account_name = query.find("audio_account_name");
   auto audio_path = query.find("audio_path");
+  auto format = query.find("format");
   if (video_account_type == query.end() || video_account_name == query.end() ||
       video_path == query.end() || audio_account_type == query.end() ||
-      audio_account_name == query.end() || audio_path == query.end()) {
+      audio_account_name == query.end() || audio_path == query.end() ||
+      format == query.end()) {
+    co_return http::Response<>{.status = 400};
+  }
+  if (format->second != "webm" && format->second != "mp4") {
     co_return http::Response<>{.status = 400};
   }
 
@@ -84,13 +89,15 @@ Task<http::Response<>> MuxHandler::operator()(
   Generator<std::string> content =
       (*muxer_)(video_account->provider().get(), video_file,
                 audio_account->provider().get(), audio_file,
-                {.container = MediaContainer::kMp4, .buffered = false},
+                {.container = format->second == "mp4" ? MediaContainer::kMp4
+                                                      : MediaContainer::kWebm,
+                 .buffered = false},
                 stop_token_or->GetToken());
   co_return http::Response<>{
       .status = 200,
       .headers =
           {
-              {"Content-Type", "video/mp4"},
+              {"Content-Type", "video/" + format->second},
               {"Content-Disposition",
                "inline; filename=\"" + video_file.name + "\""},
           },
