@@ -296,8 +296,10 @@ auto Box::CreateFile(Directory parent, std::string_view name,
 
 auto Box::GetItemThumbnail(File file, http::Range range,
                            stdx::stop_token stop_token) -> Task<Thumbnail> {
-  Request request{.url = GetEndpoint("/files/" + file.id + "/thumbnail.png"),
-                  .headers = {ToRangeHeader(range)}};
+  Request request{
+      .url = GetEndpoint("/files/" + file.id +
+                         "/thumbnail.png?min_width=256&min_height=256"),
+      .headers = {ToRangeHeader(range)}};
   auto response =
       co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
   Thumbnail result;
