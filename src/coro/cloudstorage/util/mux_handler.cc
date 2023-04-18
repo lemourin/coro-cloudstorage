@@ -47,12 +47,16 @@ Task<http::Response<>> MuxHandler::operator()(
     http::Request<> request, stdx::stop_token stop_token) const {
   http::Uri uri = http::ParseUri(request.url);
   if (uri.path == "/mux/sample.mp4") {
-    co_return http::Response<>{.status = 302,
-                               .headers = {{"Location", kMp4Sample}}};
+    co_return http::Response<>{
+        .status = 302,
+        .headers = {
+            {"Location", StrCat(kMp4Sample, '&', uri.query.value_or(""))}}};
   }
   if (uri.path == "/mux/sample.webm") {
-    co_return http::Response<>{.status = 302,
-                               .headers = {{"Location", kWebmSample}}};
+    co_return http::Response<>{
+        .status = 302,
+        .headers = {
+            {"Location", StrCat(kWebmSample, '&', uri.query.value_or(""))}}};
   }
   if (!uri.query) {
     co_return http::Response<>{.status = 400};
@@ -65,6 +69,7 @@ Task<http::Response<>> MuxHandler::operator()(
   auto audio_account_name = query.find("audio_account_name");
   auto audio_path = query.find("audio_path");
   auto format = query.find("format");
+  auto seekable = query.find("seekable");
   if (video_account_type == query.end() || video_account_name == query.end() ||
       video_path == query.end() || audio_account_type == query.end() ||
       audio_account_name == query.end() || audio_path == query.end() ||
@@ -99,18 +104,21 @@ Task<http::Response<>> MuxHandler::operator()(
   auto video_file = std::get<AbstractCloudProvider::File>(video_item);
   auto audio_file = std::get<AbstractCloudProvider::File>(audio_item);
 
+  bool is_seekable =
+      seekable != query.end() ? seekable->second == "true" : false;
   Generator<std::string> content =
       (*muxer_)(video_account->provider().get(), video_file,
                 audio_account->provider().get(), audio_file,
                 {.container = format->second == "mp4" ? MediaContainer::kMp4
                                                       : MediaContainer::kWebm,
-                 .buffered = false},
+                 .buffered = is_seekable},
                 stop_token_or->GetToken());
   co_return http::Response<>{
       .status = 200,
       .headers =
           {
-              {"Content-Type", "video/" + format->second},
+              {"Content-Type", is_seekable ? "application/octet-stream"
+                                           : "video/" + format->second},
               {"Content-Disposition",
                "inline; filename=\"" + video_file.name + "\""},
           },
