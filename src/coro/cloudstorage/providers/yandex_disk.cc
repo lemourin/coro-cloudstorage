@@ -1,6 +1,7 @@
 #include "coro/cloudstorage/providers/yandex_disk.h"
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+#include "coro/cloudstorage/util/string_utils.h"
 
 namespace coro::cloudstorage {
 
@@ -8,17 +9,20 @@ namespace {
 
 constexpr std::string_view kEndpoint = "https://cloud-api.yandex.net/v1";
 
+using ::coro::cloudstorage::util::StrCat;
+
 std::string GetEndpoint(std::string_view path) {
-  return std::string(kEndpoint) + std::string(path);
+  return StrCat(kEndpoint, path);
 }
 
 std::string Concatenate(std::string_view path, std::string_view child) {
-  return std::string(path) + (!path.empty() && path.back() == '/' ? "" : "/") +
-         std::string(child);
+  return StrCat(path, !path.empty() && path.back() == '/' ? "" : "/", child);
 }
 
 std::string GetParentPath(std::string result) {
-  if (result.back() == '/') result.pop_back();
+  if (result.back() == '/') {
+    result.pop_back();
+  }
   return result.substr(0, result.find_last_of('/'));
 }
 
@@ -97,7 +101,7 @@ auto YandexDisk::ListDirectoryPage(Directory directory,
                                    stdx::stop_token stop_token)
     -> Task<PageData> {
   std::vector<std::pair<std::string, std::string>> params = {
-      {"path", directory.id}};
+      {"path", directory.id}, {"preview_size", "M"}};
   if (page_token) {
     params.emplace_back("offset", *page_token);
   }
