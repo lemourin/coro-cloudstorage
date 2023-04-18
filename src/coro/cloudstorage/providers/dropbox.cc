@@ -347,6 +347,7 @@ auto Dropbox::GetItemThumbnail(File file, http::Range range,
   json json;
   json["resource"][".tag"] = "path";
   json["resource"]["path"] = file.id;
+  json["size"] = "w256h256";
   auto request = Request{
       .url = "https://content.dropboxapi.com/2/files/get_thumbnail_v2",
       .method = http::Method::kPost,
