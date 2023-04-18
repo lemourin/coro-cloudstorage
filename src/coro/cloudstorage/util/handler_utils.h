@@ -7,10 +7,18 @@
 #include <vector>
 
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
+#include "coro/generator.h"
 #include "coro/http/http.h"
 #include "coro/http/http_parse.h"
 
 namespace coro::cloudstorage::util {
+
+namespace internal {
+
+Generator<std::string> GetFileContentResponseBody(
+    Generator<std::string> content, Generator<std::string>::iterator it);
+
+}  // namespace internal
 
 template <typename T>
 bool Equal(std::span<const T> s1, std::span<const T> s2) {
@@ -43,9 +51,9 @@ auto ToFileContent(AbstractCloudProvider* p,
 }
 
 template <typename CloudProvider, typename Item>
-http::Response<> GetFileContentResponse(CloudProvider* provider, Item d,
-                                        std::optional<http::Range> range,
-                                        stdx::stop_token stop_token) {
+Task<http::Response<>> GetFileContentResponse(CloudProvider* provider, Item d,
+                                              std::optional<http::Range> range,
+                                              stdx::stop_token stop_token) {
   std::vector<std::pair<std::string, std::string>> headers = {
       {"Content-Type", d.mime_type},
       {"Content-Disposition", "inline; filename=\"" + d.name + "\""},
@@ -66,11 +74,13 @@ http::Response<> GetFileContentResponse(CloudProvider* provider, Item d,
       headers.emplace_back("Content-Range", std::move(stream).str());
     }
   }
-  return http::Response<>{
-      .status = !range || !size ? 200 : 206,
-      .headers = std::move(headers),
-      .body = provider->GetFileContent(d, range.value_or(http::Range{}),
-                                       std::move(stop_token))};
+  auto content = provider->GetFileContent(
+      std::move(d), range.value_or(http::Range{}), std::move(stop_token));
+  auto it = co_await content.begin();
+  co_return http::Response<>{.status = !range || !size ? 200 : 206,
+                             .headers = std::move(headers),
+                             .body = internal::GetFileContentResponseBody(
+                                 std::move(content), std::move(it))};
 }
 
 }  // namespace coro::cloudstorage::util

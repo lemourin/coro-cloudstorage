@@ -2,11 +2,22 @@
 
 #include <string>
 
-#include "coro/cloudstorage/cloud_exception.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/http/http.h"
 
 namespace coro::cloudstorage::util {
+
+namespace internal {
+
+Generator<std::string> GetFileContentResponseBody(
+    Generator<std::string> content, Generator<std::string>::iterator it) {
+  while (it != content.end()) {
+    co_yield std::move(*it);
+    co_await ++it;
+  }
+}
+
+}  // namespace internal
 
 std::vector<std::string> GetEffectivePath(std::string_view uri_path) {
   std::vector<std::string> components;

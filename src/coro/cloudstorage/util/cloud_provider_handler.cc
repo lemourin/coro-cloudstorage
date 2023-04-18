@@ -260,7 +260,7 @@ auto CloudProviderHandler::HandleExistingItem(Request request,
                                               AbstractCloudProvider::File d,
                                               stdx::stop_token stop_token)
     -> Task<Response> {
-  co_return GetFileContentResponse(
+  return GetFileContentResponse(
       provider_, std::move(d),
       [&]() -> std::optional<http::Range> {
         if (auto header = http::GetHeader(request.headers, "Range")) {
