@@ -269,7 +269,7 @@ auto PCloud::GetItemThumbnail(File file, http::Range range,
   Request request{
       .url = GetEndpoint("/getthumb") + "?" +
              http::FormDataToString(
-                 {{"fileid", std::to_string(file.id)}, {"size", "64x64"}}),
+                 {{"fileid", std::to_string(file.id)}, {"size", "256x256"}}),
       .headers = {ToRangeHeader(range)}};
   auto response = co_await Fetch(*http_, auth_token_.access_token,
                                  std::move(request), std::move(stop_token));
