@@ -4,12 +4,15 @@
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
 #include "coro/cloudstorage/util/generator_utils.h"
+#include "coro/cloudstorage/util/string_utils.h"
 
 namespace coro::cloudstorage {
 
 namespace {
 
 constexpr std::string_view kEndpoint = "https://api.dropboxapi.com/2";
+
+using ::coro::cloudstorage::util::StrCat;
 
 template <typename T>
 T ToItemImpl(const nlohmann::json& json) {
@@ -47,7 +50,7 @@ Task<Dropbox::UploadSession> CreateUploadSession(const coro::http::Http& http,
   auto response =
       co_await util::FetchJson(http, std::move(request), std::move(stop_token));
   co_return Dropbox::UploadSession{.id = response["session_id"],
-                                   .path = parent.id + "/" + std::string(name)};
+                                   .path = StrCat(parent.id, '/', name)};
 }
 
 Task<Dropbox::UploadSession> WriteChunk(const coro::http::Http& http,
@@ -103,27 +106,38 @@ std::string GetDirectoryPath(std::string_view path) {
 }
 
 std::string GetEndpoint(std::string_view path) {
-  return std::string(kEndpoint) + std::string(path);
-}
-
-Task<nlohmann::json> FetchJson(const coro::http::Http& http,
-                               std::string access_token,
-                               http::Request<std::string> request,
-                               stdx::stop_token stop_token) {
-  request.method = http::Method::kPost;
-  request.headers.emplace_back("Content-Type", "application/json");
-  request.headers.emplace_back("Authorization", "Bearer " + access_token);
-  return util::FetchJson(http, std::move(request), std::move(stop_token));
+  return StrCat(kEndpoint, path);
 }
 
 }  // namespace
+
+auto Dropbox::Auth::RefreshAccessToken(const coro::http::Http& http,
+                                       AuthData auth_data, AuthToken auth_token,
+                                       stdx::stop_token stop_token)
+    -> Task<AuthToken> {
+  auto request = http::Request<std::string>{
+      .url = "https://api.dropbox.com/oauth2/token",
+      .method = http::Method::kPost,
+      .headers = {{"Content-Type", "application/x-www-form-urlencoded"}},
+      .body =
+          http::FormDataToString({{"refresh_token", auth_token.refresh_token},
+                                  {"client_id", auth_data.client_id},
+                                  {"client_secret", auth_data.client_secret},
+                                  {"grant_type", "refresh_token"}})};
+  json json =
+      co_await util::FetchJson(http, std::move(request), std::move(stop_token));
+  auth_token.access_token = json["access_token"];
+  auth_token.refresh_token = json["refresh_token"];
+  co_return auth_token;
+}
 
 std::string Dropbox::Auth::GetAuthorizationUrl(const AuthData& data) {
   std::vector<std::pair<std::string, std::string>> params = {
       {"response_type", "code"},
       {"client_id", data.client_id},
       {"redirect_uri", data.redirect_uri},
-      {"state", data.state}};
+      {"state", data.state},
+      {"token_access_type", "offline"}};
   if (!data.code_verifier.empty()) {
     params.emplace_back("code_challenge_method", "plain");
     params.emplace_back("code_challenge", data.code_verifier);
@@ -153,7 +167,8 @@ auto Dropbox::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,
       .body = http::FormDataToString(params)};
   json json =
       co_await util::FetchJson(http, std::move(request), std::move(stop_token));
-  co_return AuthToken{.access_token = json["access_token"]};
+  co_return AuthToken{.access_token = json["access_token"],
+                      .refresh_token = json["refresh_token"]};
 }
 
 auto Dropbox::GetRoot(stdx::stop_token) -> Task<Directory> {
@@ -162,23 +177,17 @@ auto Dropbox::GetRoot(stdx::stop_token) -> Task<Directory> {
 }
 
 auto Dropbox::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
-  Task<json> task1 = util::FetchJson(
-      *http_,
-      Request{
-          .url = GetEndpoint("/users/get_current_account"),
-          .method = http::Method::kPost,
-          .headers = {{"Content-Type", ""},
-                      {"Authorization", "Bearer " + auth_token_.access_token}},
-          .invalidates_cache = false},
+  Task<json> task1 = auth_manager_.FetchJson(
+      Request{.url = GetEndpoint("/users/get_current_account"),
+              .method = http::Method::kPost,
+              .headers = {{"Content-Type", ""}},
+              .invalidates_cache = false},
       stop_token);
-  Task<json> task2 = util::FetchJson(
-      *http_,
-      Request{
-          .url = GetEndpoint("/users/get_space_usage"),
-          .method = http::Method::kPost,
-          .headers = {{"Content-Type", ""},
-                      {"Authorization", "Bearer " + auth_token_.access_token}},
-          .invalidates_cache = false},
+  Task<json> task2 = auth_manager_.FetchJson(
+      Request{.url = GetEndpoint("/users/get_space_usage"),
+              .method = http::Method::kPost,
+              .headers = {{"Content-Type", ""}},
+              .invalidates_cache = false},
       stop_token);
   auto [json1, json2] = co_await WhenAll(std::move(task1), std::move(task2));
   co_return GeneralData{.username = json1["email"],
@@ -194,17 +203,21 @@ auto Dropbox::ListDirectoryPage(Directory directory,
     json body;
     body["cursor"] = *page_token;
     request = {.url = GetEndpoint("/files/list_folder/continue"),
+               .method = http::Method::kPost,
+               .headers = {{"Content-Type", "application/json"}},
                .body = body.dump(),
                .invalidates_cache = false};
   } else {
     json body;
     body["path"] = std::move(directory.id);
     request = {.url = GetEndpoint("/files/list_folder"),
+               .method = http::Method::kPost,
+               .headers = {{"Content-Type", "application/json"}},
                .body = body.dump(),
                .invalidates_cache = false};
   }
-  auto response = co_await FetchJson(*http_, auth_token_.access_token,
-                                     std::move(request), std::move(stop_token));
+  auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                   std::move(stop_token));
 
   PageData page_data;
   for (const json& entry : response["entries"]) {
@@ -220,66 +233,76 @@ Generator<std::string> Dropbox::GetFileContent(File file, http::Range range,
                                                stdx::stop_token stop_token) {
   json json;
   json["path"] = file.id;
-  auto request = Request{
-      .url = "https://content.dropboxapi.com/2/files/download",
-      .method = http::Method::kPost,
-      .headers = {http::ToRangeHeader(range),
-                  {"Content-Type", ""},
-                  {"Dropbox-API-arg", json.dump()},
-                  {"Authorization", "Bearer " + auth_token_.access_token}},
-      .invalidates_cache = false};
+  auto request =
+      Request{.url = "https://content.dropboxapi.com/2/files/download",
+              .method = http::Method::kPost,
+              .headers = {http::ToRangeHeader(range),
+                          {"Content-Type", ""},
+                          {"Dropbox-API-arg", json.dump()}},
+              .invalidates_cache = false};
   auto response =
-      co_await http_->Fetch(std::move(request), std::move(stop_token));
+      co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
   FOR_CO_AWAIT(std::string & body, response.body) { co_yield std::move(body); }
 }
 
 template <typename ItemT>
 Task<ItemT> Dropbox::RenameItem(ItemT item, std::string new_name,
                                 stdx::stop_token stop_token) {
-  auto request = Request{.url = GetEndpoint("/files/move_v2"),
-                         .method = http::Method::kPost};
+  auto request = Request{
+      .url = GetEndpoint("/files/move_v2"),
+      .method = http::Method::kPost,
+      .headers = {{"Content-Type", "application/json"}},
+  };
   json json;
   json["from_path"] = item.id;
   json["to_path"] = GetDirectoryPath(item.id) + "/" + new_name;
   request.body = json.dump();
-  auto response = co_await FetchJson(*http_, auth_token_.access_token,
-                                     std::move(request), std::move(stop_token));
+  auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                   std::move(stop_token));
   co_return ToItemImpl<ItemT>(response["metadata"]);
 }
 
 auto Dropbox::CreateDirectory(Directory parent, std::string name,
                               stdx::stop_token stop_token) -> Task<Directory> {
-  auto request = Request{.url = GetEndpoint("/files/create_folder_v2"),
-                         .method = http::Method::kPost};
+  auto request = Request{
+      .url = GetEndpoint("/files/create_folder_v2"),
+      .method = http::Method::kPost,
+      .headers = {{"Content-Type", "application/json"}},
+  };
   json json;
   json["path"] = parent.id + "/" + std::move(name);
   request.body = json.dump();
-  auto response = co_await FetchJson(*http_, auth_token_.access_token,
-                                     std::move(request), std::move(stop_token));
+  auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                   std::move(stop_token));
   co_return ToItemImpl<Directory>(response["metadata"]);
 }
 
 Task<> Dropbox::RemoveItem(Item item, stdx::stop_token stop_token) {
-  auto request = Request{.url = GetEndpoint("/files/delete"),
-                         .method = http::Method::kPost};
+  auto request = Request{
+      .url = GetEndpoint("/files/delete"),
+      .method = http::Method::kPost,
+      .headers = {{"Content-Type", "application/json"}},
+  };
   json json;
   json["path"] = std::visit([](const auto& d) { return d.id; }, item);
   request.body = json.dump();
-  co_await FetchJson(*http_, auth_token_.access_token, std::move(request),
-                     std::move(stop_token));
+  co_await auth_manager_.FetchJson(std::move(request), std::move(stop_token));
 }
 
 template <typename ItemT>
 Task<ItemT> Dropbox::MoveItem(ItemT source, Directory destination,
                               stdx::stop_token stop_token) {
-  auto request = Request{.url = GetEndpoint("/files/move_v2"),
-                         .method = http::Method::kPost};
+  auto request = Request{
+      .url = GetEndpoint("/files/move_v2"),
+      .method = http::Method::kPost,
+      .headers = {{"Content-Type", "application/json"}},
+  };
   json json;
   json["from_path"] = source.id;
   json["to_path"] = destination.id + "/" + source.name;
   request.body = json.dump();
-  auto response = co_await FetchJson(*http_, auth_token_.access_token,
-                                     std::move(request), std::move(stop_token));
+  auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                   std::move(stop_token));
   co_return ToItemImpl<ItemT>(response["metadata"]);
 }
 
@@ -288,7 +311,7 @@ auto Dropbox::CreateFile(Directory parent, std::string_view name,
     -> Task<File> {
   if (content.size < 150 * 1024 * 1024) {
     json json;
-    json["path"] = parent.id + "/" + std::string(name);
+    json["path"] = StrCat(parent.id, '/', name);
     json["mode"] = "overwrite";
     auto request = http::Request<>{
         .url = "https://content.dropboxapi.com/2/files/upload",
@@ -351,11 +374,9 @@ auto Dropbox::GetItemThumbnail(File file, http::Range range,
   auto request = Request{
       .url = "https://content.dropboxapi.com/2/files/get_thumbnail_v2",
       .method = http::Method::kPost,
-      .headers = {{"Authorization", "Bearer " + auth_token_.access_token},
-                  {"Dropbox-API-Arg", json.dump()},
-                  ToRangeHeader(range)}};
+      .headers = {{"Dropbox-API-Arg", json.dump()}, ToRangeHeader(range)}};
   auto response =
-      co_await http_->FetchOk(std::move(request), std::move(stop_token));
+      co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
   Thumbnail result;
   result.size =
       std::stoll(http::GetHeader(response.headers, "Content-Length").value());

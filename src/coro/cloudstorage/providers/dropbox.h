@@ -6,6 +6,7 @@
 
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
+#include "coro/cloudstorage/util/auth_manager.h"
 #include "coro/cloudstorage/util/fetch_json.h"
 #include "coro/http/http.h"
 #include "coro/when_all.h"
@@ -47,6 +48,7 @@ class Dropbox {
 
     struct AuthToken {
       std::string access_token;
+      std::string refresh_token;
     };
 
     struct AuthData {
@@ -58,6 +60,11 @@ class Dropbox {
     };
 
     static std::string GetAuthorizationUrl(const AuthData& data);
+
+    static Task<AuthToken> RefreshAccessToken(const coro::http::Http& http,
+                                              AuthData auth_data,
+                                              AuthToken auth_token,
+                                              stdx::stop_token stop_token);
 
     static Task<AuthToken> ExchangeAuthorizationCode(
         const coro::http::Http& http, AuthData auth_data, std::string code,
@@ -83,8 +90,11 @@ class Dropbox {
   static constexpr std::string_view kId = "dropbox";
   static inline constexpr auto& kIcon = util::kDropboxIcon;
 
-  Dropbox(const coro::http::Http* http, Dropbox::Auth::AuthToken auth_token)
-      : http_(http), auth_token_(std::move(auth_token)) {}
+  Dropbox(const coro::http::Http* http, util::AuthManager<Auth> auth_manager,
+          Dropbox::Auth::AuthToken auth_token)
+      : http_(http),
+        auth_manager_(std::move(auth_manager)),
+        auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token);
 
@@ -118,6 +128,7 @@ class Dropbox {
 
  private:
   const coro::http::Http* http_;
+  util::AuthManager<Auth> auth_manager_;
   Dropbox::Auth::AuthToken auth_token_;
 };
 
