@@ -90,11 +90,8 @@ class Dropbox {
   static constexpr std::string_view kId = "dropbox";
   static inline constexpr auto& kIcon = util::kDropboxIcon;
 
-  Dropbox(const coro::http::Http* http, util::AuthManager<Auth> auth_manager,
-          Dropbox::Auth::AuthToken auth_token)
-      : http_(http),
-        auth_manager_(std::move(auth_manager)),
-        auth_token_(std::move(auth_token)) {}
+  explicit Dropbox(util::AuthManager<Auth> auth_manager)
+      : auth_manager_(std::move(auth_manager)) {}
 
   Task<Directory> GetRoot(stdx::stop_token);
 
@@ -127,9 +124,7 @@ class Dropbox {
                                    stdx::stop_token stop_token);
 
  private:
-  const coro::http::Http* http_;
   util::AuthManager<Auth> auth_manager_;
-  Dropbox::Auth::AuthToken auth_token_;
 };
 
 namespace util {

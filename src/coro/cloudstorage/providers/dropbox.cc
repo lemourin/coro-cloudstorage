@@ -11,8 +11,10 @@ namespace coro::cloudstorage {
 namespace {
 
 constexpr std::string_view kEndpoint = "https://api.dropboxapi.com/2";
+constexpr int kChunkSize = 8 * 1024 * 1024;
 
 using ::coro::cloudstorage::util::StrCat;
+using ::coro::http::GetBody;
 
 template <typename T>
 T ToItemImpl(const nlohmann::json& json) {
@@ -34,65 +36,60 @@ Dropbox::Item ToItem(const nlohmann::json& json) {
   }
 }
 
-Task<Dropbox::UploadSession> CreateUploadSession(const coro::http::Http& http,
-                                                 std::string access_token,
-                                                 Dropbox::Directory parent,
-                                                 std::string_view name,
-                                                 Dropbox::FileContent content,
-                                                 stdx::stop_token stop_token) {
-  http::Request<> request{
+Task<Dropbox::UploadSession> CreateUploadSession(
+    util::AuthManager<Dropbox::Auth>* auth_manager, Dropbox::Directory parent,
+    std::string_view name, Dropbox::FileContent content,
+    stdx::stop_token stop_token) {
+  std::string body = co_await GetBody(std::move(content.data));
+  http::Request<std::string> request{
       .url = "https://content.dropboxapi.com/2/files/upload_session/start",
       .method = http::Method::kPost,
-      .headers = {{"Authorization", "Bearer " + access_token},
-                  {"Content-Type", "application/octet-stream"},
+      .headers = {{"Content-Type", "application/octet-stream"},
                   {"Dropbox-API-Arg", "{}"}},
-      .body = std::move(content.data)};
-  auto response =
-      co_await util::FetchJson(http, std::move(request), std::move(stop_token));
+      .body = std::move(body)};
+  auto response = co_await auth_manager->FetchJson(std::move(request),
+                                                   std::move(stop_token));
   co_return Dropbox::UploadSession{.id = response["session_id"],
                                    .path = StrCat(parent.id, '/', name)};
 }
 
-Task<Dropbox::UploadSession> WriteChunk(const coro::http::Http& http,
-                                        std::string access_token,
-                                        Dropbox::UploadSession session,
-                                        Dropbox::FileContent content,
-                                        int64_t offset,
-                                        stdx::stop_token stop_token) {
+Task<Dropbox::UploadSession> WriteChunk(
+    util::AuthManager<Dropbox::Auth>* auth_manager,
+    Dropbox::UploadSession session, Dropbox::FileContent content,
+    int64_t offset, stdx::stop_token stop_token) {
   nlohmann::json json;
-  json["cursor"]["session_id"] = std::move(session.id);
+  json["cursor"]["session_id"] = session.id;
   json["cursor"]["offset"] = offset;
-  http::Request<> request = {
+  std::string body = co_await GetBody(std::move(content.data));
+  http::Request<std::string> request = {
       .url = "https://content.dropboxapi.com/2/files/upload_session/append_v2",
       .method = http::Method::kPost,
-      .headers = {{"Authorization", "Bearer " + access_token},
-                  {"Content-Type", "application/octet-stream"},
+      .headers = {{"Content-Type", "application/octet-stream"},
                   {"Dropbox-API-Arg", json.dump()}},
-      .body = std::move(content.data)};
-  co_await http.FetchOk(std::move(request), stop_token);
+      .body = std::move(body)};
+  co_await auth_manager->Fetch(std::move(request), stop_token);
   co_return std::move(session);
 }
 
-Task<Dropbox::File> FinishUploadSession(const coro::http::Http& http,
-                                        std::string access_token,
-                                        Dropbox::UploadSession session,
-                                        Dropbox::FileContent content,
-                                        int64_t offset,
-                                        stdx::stop_token stop_token) {
+Task<Dropbox::File> FinishUploadSession(
+    util::AuthManager<Dropbox::Auth>* auth_manager,
+    Dropbox::UploadSession session, Dropbox::FileContent content,
+    int64_t offset, stdx::stop_token stop_token) {
   nlohmann::json json;
   json["cursor"]["session_id"] = std::move(session.id);
   json["cursor"]["offset"] = offset;
   json["commit"]["path"] = std::move(session.path);
   json["commit"]["mode"] = "overwrite";
-  http::Request<> request{
+
+  std::string body = co_await GetBody(std::move(content.data));
+  http::Request<std::string> request{
       .url = "https://content.dropboxapi.com/2/files/upload_session/finish",
       .method = http::Method::kPost,
-      .headers = {{"Authorization", "Bearer " + access_token},
-                  {"Content-Type", "application/octet-stream"},
+      .headers = {{"Content-Type", "application/octet-stream"},
                   {"Dropbox-API-Arg", json.dump()}},
-      .body = std::move(content.data)};
+      .body = std::move(body)};
   auto response =
-      co_await util::FetchJson(http, std::move(request), stop_token);
+      co_await auth_manager->FetchJson(std::move(request), stop_token);
   co_return ToItemImpl<Dropbox::File>(response);
 }
 
@@ -309,19 +306,19 @@ Task<ItemT> Dropbox::MoveItem(ItemT source, Directory destination,
 auto Dropbox::CreateFile(Directory parent, std::string_view name,
                          FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
-  if (content.size < 150 * 1024 * 1024) {
+  if (content.size < kChunkSize) {
     json json;
     json["path"] = StrCat(parent.id, '/', name);
     json["mode"] = "overwrite";
-    auto request = http::Request<>{
+    std::string body = co_await GetBody(std::move(content.data));
+    auto request = http::Request<std::string>{
         .url = "https://content.dropboxapi.com/2/files/upload",
         .method = http::Method::kPost,
         .headers = {{"Dropbox-API-Arg", json.dump()},
-                    {"Authorization", "Bearer " + auth_token_.access_token},
                     {"Content-Type", "application/octet-stream"}},
-        .body = std::move(content.data)};
-    auto response = co_await util::FetchJson(*http_, std::move(request),
-                                             std::move(stop_token));
+        .body = std::move(body)};
+    auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                     std::move(stop_token));
     co_return ToItemImpl<File>(response);
   } else {
     int64_t offset = 0;
@@ -329,24 +326,23 @@ auto Dropbox::CreateFile(Directory parent, std::string_view name,
     auto it = co_await content.data.begin();
     while (true) {
       auto chunk_size = std::min<size_t>(
-          150 * 1024 * 1024,
+          kChunkSize,
           static_cast<size_t>(
               content.size.value_or((std::numeric_limits<size_t>::max)()) -
               offset));
       FileContent chunk{.data = util::Take(content.data, it, chunk_size),
                         .size = chunk_size};
       if (!session) {
-        session = co_await CreateUploadSession(*http_, auth_token_.access_token,
-                                               std::move(parent), name,
-                                               std::move(chunk), stop_token);
+        session =
+            co_await CreateUploadSession(&auth_manager_, std::move(parent),
+                                         name, std::move(chunk), stop_token);
       } else if (offset + static_cast<int64_t>(chunk_size) < content.size) {
-        session = co_await WriteChunk(*http_, auth_token_.access_token,
-                                      std::move(*session), std::move(chunk),
-                                      offset, stop_token);
+        session = co_await WriteChunk(&auth_manager_, std::move(*session),
+                                      std::move(chunk), offset, stop_token);
       } else {
         co_return co_await FinishUploadSession(
-            *http_, auth_token_.access_token, std::move(*session),
-            std::move(chunk), offset, std::move(stop_token));
+            &auth_manager_, std::move(*session), std::move(chunk), offset,
+            std::move(stop_token));
       }
       offset += chunk_size;
     }
