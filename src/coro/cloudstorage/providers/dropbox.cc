@@ -124,7 +124,6 @@ auto Dropbox::Auth::RefreshAccessToken(const coro::http::Http& http,
   json json =
       co_await util::FetchJson(http, std::move(request), std::move(stop_token));
   auth_token.access_token = json["access_token"];
-  auth_token.refresh_token = json["refresh_token"];
   co_return auth_token;
 }
 
