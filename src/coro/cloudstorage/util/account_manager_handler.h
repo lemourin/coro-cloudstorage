@@ -1,6 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
 #define CORO_CLOUDSTORAGE_ACCOUNT_MANAGER_HANDLER_H
 
+#include "coro/cloudstorage/util/cache_manager.h"
 #include "coro/cloudstorage/util/cloud_provider_account.h"
 #include "coro/cloudstorage/util/muxer.h"
 #include "coro/cloudstorage/util/settings_manager.h"
@@ -60,7 +61,7 @@ class AccountManagerHandler {
   AccountManagerHandler(const AbstractCloudFactory* factory,
                         const ThumbnailGenerator* thumbnail_generator,
                         const Muxer* muxer, AccountListener account_listener,
-                        SettingsManager* settings_manager);
+                        SettingsManager* settings_manager, CacheManager* cache_manager);
   AccountManagerHandler(AccountManagerHandler&&) noexcept;
 
   ~AccountManagerHandler();

@@ -13,6 +13,7 @@ namespace coro::cloudstorage::util {
 struct CloudFactoryConfig {
   coro::http::CacheHttpConfig http_cache_config = {};
   std::string config_path = GetConfigFilePath();
+  std::string cache_path = GetCacheFilePath();
   std::function<std::string(std::string_view account_type,
                             std::string_view username)>
       post_auth_redirect_uri = GetDefaultPostAuthRedirectUri;

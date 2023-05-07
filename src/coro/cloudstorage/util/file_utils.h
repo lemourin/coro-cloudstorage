@@ -10,6 +10,8 @@
 
 namespace coro::cloudstorage::util {
 
+extern const char kPathSeparator;
+
 struct FileDeleter {
   void operator()(std::FILE* file) const {
     if (file) {
@@ -17,6 +19,12 @@ struct FileDeleter {
     }
   }
 };
+
+std::string GetCacheDirectory();
+std::string GetConfigDirectory();
+void CreateDirectory(std::string_view path);
+void RemoveDirectory(std::string_view path);
+bool IsPathSeparator(char);
 
 int64_t Ftell(std::FILE* file);
 int Fseek(std::FILE* file, int64_t offset, int origin);
@@ -26,61 +34,13 @@ std::string GetDirectoryPath(std::string path);
 std::span<const std::string> GetDirectoryPath(
     std::span<const std::string> path);
 
-template <typename ThreadPool>
-Task<int64_t> GetFileSize(ThreadPool* thread_pool, std::FILE* file) {
-  co_return co_await thread_pool->Do([=] {
-    if (Fseek(file, 0, SEEK_END) != 0) {
-      throw RuntimeError("fseek failed");
-    }
-    return Ftell(file);
-  });
-}
-
-template <typename ThreadPool>
-Task<> WriteFile(ThreadPool* thread_pool, std::FILE* file, int64_t offset,
-                 std::string_view data) {
-  co_return co_await thread_pool->Do([=] {
-    if (Fseek(file, offset, SEEK_SET) != 0) {
-      throw RuntimeError("fseek failed " + std::to_string(offset) + " " +
-                         std::to_string(errno));
-    }
-    if (fwrite(data.data(), 1, data.size(), file) != data.size()) {
-      throw RuntimeError("fwrite failed");
-    }
-  });
-}
-
-template <typename ThreadPool>
-Generator<std::string> ReadFile(ThreadPool* thread_pool, std::FILE* file) {
-  const int kBufferSize = 4096;
-  char buffer[kBufferSize];
-  if (co_await thread_pool->Do(Fseek, file, 0, SEEK_SET) != 0) {
-    throw std::runtime_error("fseek failed");
-  }
-  while (feof(file) == 0) {
-    size_t size =
-        co_await thread_pool->Do(fread, &buffer, 1, kBufferSize, file);
-    if (ferror(file) != 0) {
-      throw std::runtime_error("read error");
-    }
-    co_yield std::string(buffer, size);
-  }
-}
-
-template <typename ThreadPool>
-Task<std::string> ReadFile(ThreadPool* thread_pool, std::FILE* file,
-                           int64_t offset, size_t size) {
-  co_return co_await thread_pool->Do([=] {
-    if (Fseek(file, offset, SEEK_SET) != 0) {
-      throw std::runtime_error("fseek failed " + std::to_string(offset));
-    }
-    std::string buffer(size, 0);
-    if (fread(buffer.data(), 1, size, file) != size) {
-      throw std::runtime_error("fread failed");
-    }
-    return buffer;
-  });
-}
+Task<int64_t> GetFileSize(coro::util::ThreadPool* thread_pool, std::FILE* file);
+Task<> WriteFile(coro::util::ThreadPool* thread_pool, std::FILE* file,
+                 int64_t offset, std::string_view data);
+Generator<std::string> ReadFile(coro::util::ThreadPool* thread_pool,
+                                std::FILE* file);
+Task<std::string> ReadFile(coro::util::ThreadPool* thread_pool, std::FILE* file,
+                           int64_t offset, size_t size);
 
 #ifdef __ANDROID__
 void SetAndroidTempDirectory(std::string path);

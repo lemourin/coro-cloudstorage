@@ -12,6 +12,7 @@ find_package(nlohmann_json 3.9.1 REQUIRED)
 find_package(fmt 8.0.0 REQUIRED)
 find_package(pugixml 1.11 REQUIRED)
 find_package(Libevent 2.1.12 REQUIRED)
+find_package(SqliteOrm 1.8.0 REQUIRED)
 
 include(FindPkgConfig)
 if(PKG_CONFIG_FOUND)

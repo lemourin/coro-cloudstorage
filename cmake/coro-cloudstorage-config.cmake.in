@@ -7,6 +7,7 @@ find_dependency(nlohmann_json 3.9.1 REQUIRED)
 find_dependency(fmt 8.0.0 REQUIRED)
 find_dependency(pugixml 1.11 REQUIRED)
 find_dependency(Libevent 2.1.12 REQUIRED)
+find_dependency(SqliteOrm 1.8.0 REQUIRED)
 
 if(@PKG_CONFIG_FOUND@)
     find_dependency(PkgConfig REQUIRED)

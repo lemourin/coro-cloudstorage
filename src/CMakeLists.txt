@@ -86,6 +86,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/generator_utils.cc
     coro/cloudstorage/util/cloud_provider_handler.cc
     coro/cloudstorage/util/mux_handler.cc
+    coro/cloudstorage/util/cache_manager.cc
     coro/cloudstorage/cloud_factory.cc
 )
 
@@ -146,6 +147,7 @@ target_sources(coro-cloudstorage
         coro/cloudstorage/util/get_size_handler.h
         coro/cloudstorage/util/merged_cloud_provider.h
         coro/cloudstorage/util/mux_handler.h
+        coro/cloudstorage/util/cache_manager.h
         coro/cloudstorage/cloud_exception.h
         coro/cloudstorage/cloud_factory.h
 )
@@ -164,6 +166,7 @@ target_link_libraries(coro-cloudstorage PRIVATE
     fmt::fmt
     pugixml::pugixml
     libevent::core
+    sqlite_orm::sqlite_orm
 )
 
 if(FFMPEG_LIBRARIES)

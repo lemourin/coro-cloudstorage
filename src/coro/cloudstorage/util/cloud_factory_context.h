@@ -4,6 +4,7 @@
 #include "coro/cloudstorage/cloud_factory.h"
 #include "coro/cloudstorage/util/account_manager_handler.h"
 #include "coro/cloudstorage/util/auth_data.h"
+#include "coro/cloudstorage/util/cache_manager.h"
 #include "coro/cloudstorage/util/muxer.h"
 #include "coro/cloudstorage/util/random_number_generator.h"
 #include "coro/cloudstorage/util/thumbnail_generator.h"
@@ -25,6 +26,7 @@ class CloudFactoryContext {
 
   auto* factory() { return &factory_; }
   auto* thread_pool() { return &thread_pool_; }
+  auto* cache() { return &cache_; }
 
   AccountManagerHandler CreateAccountManagerHandler(AccountListener listener);
 
@@ -48,6 +50,7 @@ class CloudFactoryContext {
   util::Muxer muxer_;
   std::default_random_engine random_engine_;
   util::RandomNumberGenerator random_number_generator_;
+  util::CacheManager cache_;
   CloudFactory factory_;
   util::SettingsManager settings_manager_;
 };

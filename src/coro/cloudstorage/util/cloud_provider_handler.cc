@@ -114,6 +114,39 @@ std::string_view GetIconName(AbstractCloudProvider::File file) {
   throw RuntimeError("invalid file type");
 }
 
+template <typename Item>
+std::string GetItemEntry(std::string_view host, const Item& item,
+                         std::string_view path, bool use_dash_player) {
+  std::string file_link = StrCat(path, http::EncodeUri(item.name));
+  return fmt::format(
+      fmt::runtime(kItemEntryHtml), fmt::arg("name", item.name),
+      fmt::arg("size", SizeToString(item.size)),
+      fmt::arg("timestamp", TimeStampToString(item.timestamp)),
+      fmt::arg("url",
+               StrCat(file_link, use_dash_player ? "?dash_player=true" : "")),
+      fmt::arg(
+          "thumbnail_url",
+          RewriteThumbnailUrl(host, StrCat(file_link, "?thumbnail=true"))));
+}
+
+std::string GetItemEntry(std::string_view host,
+                         const AbstractCloudProvider::Item& item,
+                         std::string_view path, bool use_dash_player) {
+  return std::visit(
+      [&]<typename Item>(const Item& item) {
+        bool effective_use_dash_player = [&] {
+          if constexpr (std::is_same_v<Item, AbstractCloudProvider::File>) {
+            return item.name.ends_with(".mpd") ||
+                   (use_dash_player && item.mime_type.starts_with("video"));
+          } else {
+            return false;
+          }
+        }();
+        return GetItemEntry(host, item, path, effective_use_dash_player);
+      },
+      item);
+}
+
 }  // namespace
 
 auto CloudProviderHandler::operator()(Request request,
@@ -283,32 +316,16 @@ auto CloudProviderHandler::HandleExistingItem(
       .status = 200,
       .headers = {{"Content-Type", "text/html"}},
       .body = GetDirectoryContent(
-          http::GetHeader(request.headers, "Host").value(),
-          GetItemPathPrefix(request.headers),
-          ListDirectory(provider_, d, std::move(stop_token)), directory_path)};
-}
-
-template <typename Item>
-std::string CloudProviderHandler::GetItemEntry(std::string_view host,
-                                               const Item& item,
-                                               std::string_view path,
-                                               bool use_dash_player) const {
-  std::string file_link = StrCat(path, http::EncodeUri(item.name));
-  return fmt::format(
-      fmt::runtime(kItemEntryHtml), fmt::arg("name", item.name),
-      fmt::arg("size", SizeToString(item.size)),
-      fmt::arg("timestamp", TimeStampToString(item.timestamp)),
-      fmt::arg("url",
-               StrCat(file_link, use_dash_player ? "?dash_player=true" : "")),
-      fmt::arg(
-          "thumbnail_url",
-          RewriteThumbnailUrl(host, StrCat(file_link, "?thumbnail=true"))));
+          http::GetHeader(request.headers, "Host").value(), directory_path, d,
+          ListDirectory(provider_, d, stop_token),
+          /*use_dash_player=*/!GetItemPathPrefix(request.headers).empty(),
+          stop_token)};
 }
 
 Generator<std::string> CloudProviderHandler::GetDirectoryContent(
-    std::string host, std::string path_prefix,
-    Generator<AbstractCloudProvider::PageData> page_data,
-    std::string path) const {
+    std::string host, std::string path, AbstractCloudProvider::Directory parent,
+    Generator<AbstractCloudProvider::PageData> page_data, bool use_dash_player,
+    stdx::stop_token stop_token) const {
   co_yield "<!DOCTYPE html>"
       "<html lang='en-us'>"
       "<head>"
@@ -322,6 +339,10 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
       "</head>"
       "<body class='root-container'>"
       "<table class='content-table'>";
+  constexpr const char* kHtmlSuffix =
+      "</table>"
+      "</body>"
+      "</html>";
   std::string parent_entry = fmt::format(
       fmt::runtime(kItemEntryHtml), fmt::arg("name", ".."),
       fmt::arg("size", ""), fmt::arg("timestamp", ""),
@@ -331,27 +352,27 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
                    host, StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
                                 "?thumbnail=true"))));
   co_yield std::move(parent_entry);
+  auto cached_items = co_await cache_manager_.Get(parent, stop_token);
+  if (cached_items) {
+    for (const auto& item : *cached_items) {
+      co_yield GetItemEntry(host, item, path, use_dash_player);
+    }
+    co_yield kHtmlSuffix;
+  }
+  std::vector<AbstractCloudProvider::Item> updated_items;
   FOR_CO_AWAIT(const auto& page, page_data) {
-    for (const auto& item : page.items) {
-      co_yield std::visit(
-          [&]<typename Item>(const Item& item) {
-            bool use_dash_player = [&] {
-              if constexpr (std::is_same_v<Item, AbstractCloudProvider::File>) {
-                return item.name.ends_with(".mpd") ||
-                       (!path_prefix.empty() &&
-                        item.mime_type.starts_with("video"));
-              } else {
-                return false;
-              }
-            }();
-            return GetItemEntry(host, item, path, use_dash_player);
-          },
-          item);
+    for (auto item : page.items) {
+      if (!cached_items) {
+        co_yield GetItemEntry(host, item, path, use_dash_player);
+      }
+      updated_items.emplace_back(std::move(item));
     }
   }
-  co_yield "</table>"
-      "</body>"
-      "</html>";
+  if (!cached_items) {
+    co_yield kHtmlSuffix;
+  }
+  co_await cache_manager_.Put(std::move(parent), std::move(updated_items),
+                              std::move(stop_token));
 }
 
 }  // namespace coro::cloudstorage::util

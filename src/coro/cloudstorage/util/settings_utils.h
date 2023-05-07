@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 
+#include "coro/cloudstorage/util/file_utils.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/exception.h"
 
@@ -14,10 +15,8 @@ namespace coro::cloudstorage::util {
 std::string GetConfigFilePath(std::string_view app_name = "coro-cloudstorage",
                               std::string_view file_name = "config.json");
 
-std::string GetDirectoryPath(std::string_view path);
-
-void CreateDirectory(std::string_view path);
-void RemoveDirectory(std::string_view path);
+std::string GetCacheFilePath(std::string_view app_name = "coro-cloudstorage",
+                             std::string_view file_name = "cache.sqlite");
 
 nlohmann::json ReadSettings(std::string_view path);
 
@@ -27,9 +26,9 @@ void EditSettings(std::string_view path, const F& edit) {
   json = edit(std::move(json));
   if (json.is_null()) {
     remove(std::string(path).c_str());
-    RemoveDirectory(GetDirectoryPath(path));
+    RemoveDirectory(GetDirectoryPath(std::string(path)));
   } else {
-    CreateDirectory(GetDirectoryPath(path));
+    CreateDirectory(GetDirectoryPath(std::string(path)));
     try {
       std::ofstream stream{std::string(path)};
       stream.exceptions(std::ofstream::failbit | std::ofstream::badbit);

@@ -75,7 +75,8 @@ class AccountManagerHandler::Impl {
 
   Impl(const AbstractCloudFactory* factory,
        const ThumbnailGenerator* thumbnail_generator, const Muxer* muxer,
-       AccountListener account_listener, SettingsManager* settings_manager);
+       AccountListener account_listener, SettingsManager* settings_manager,
+       CacheManager* cache_manager);
 
   ~Impl() { Quit(); }
 
@@ -139,6 +140,7 @@ class AccountManagerHandler::Impl {
   const Muxer* muxer_;
   AccountListener account_listener_;
   SettingsManager* settings_manager_;
+  CacheManager* cache_manager_;
   std::vector<std::shared_ptr<CloudProviderAccount>> accounts_;
   int64_t version_ = 0;
 };
@@ -147,12 +149,14 @@ AccountManagerHandler::Impl::Impl(const AbstractCloudFactory* factory,
                                   const ThumbnailGenerator* thumbnail_generator,
                                   const Muxer* muxer,
                                   AccountListener account_listener,
-                                  SettingsManager* settings_manager)
+                                  SettingsManager* settings_manager,
+                                  CacheManager* cache_manager)
     : factory_(factory),
       thumbnail_generator_(thumbnail_generator),
       muxer_(muxer),
       account_listener_(std::move(account_listener)),
-      settings_manager_(settings_manager) {
+      settings_manager_(settings_manager),
+      cache_manager_(cache_manager) {
   for (auto auth_token : settings_manager_->LoadTokenData()) {
     auto id = std::move(auth_token.id);
     auto account =
@@ -306,7 +310,8 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
         .prefix = StrCat("/list/", account->type(), '/',
                          http::EncodeUri(account->username())),
         .handler = CloudProviderHandler(
-            &*account->provider(), thumbnail_generator_, settings_manager_)});
+            &*account->provider(), thumbnail_generator_, settings_manager_,
+            CloudProviderCacheManager(*account, cache_manager_))});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/remove/", account->type(), '/',
@@ -439,10 +444,11 @@ auto AccountManagerHandler::Impl::OnRemoveHandler::operator()(
 AccountManagerHandler::AccountManagerHandler(
     const AbstractCloudFactory* factory,
     const ThumbnailGenerator* thumbnail_generator, const Muxer* muxer,
-    AccountListener account_listener, SettingsManager* settings_manager)
+    AccountListener account_listener, SettingsManager* settings_manager,
+    CacheManager* cache_manager)
     : impl_(std::make_unique<Impl>(factory, thumbnail_generator, muxer,
                                    std::move(account_listener),
-                                   settings_manager)) {}
+                                   settings_manager, cache_manager)) {}
 
 AccountManagerHandler::AccountManagerHandler(AccountManagerHandler&&) noexcept =
     default;
