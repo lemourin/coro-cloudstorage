@@ -165,7 +165,7 @@ auto Box::ListDirectoryPage(Directory directory,
                                                std::move(stop_token));
   PageData result;
   for (const auto& entry : json["entries"]) {
-    result.items.emplace_back(ToItem(entry));
+    result.items.emplace_back(coro::cloudstorage::ToItem(entry));
   }
   int64_t offset = json["offset"];
   int64_t limit = json["limit"];
@@ -310,6 +310,14 @@ auto Box::GetItemThumbnail(File file, http::Range range,
   }
   result.data = std::move(response.body);
   co_return result;
+}
+
+auto Box::ToItem(std::string_view serialized) -> Item {
+  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+}
+
+std::string Box::ToString(const Item&) {
+  throw std::runtime_error("not implemented");
 }
 
 namespace util {

@@ -99,6 +99,9 @@ class OpenStack {
     return auth_manager_.GetAuthToken();
   }
 
+  static Item ToItem(std::string_view serialized);
+  static std::string ToString(const Item&);
+
  private:
   Task<> RemoveItemImpl(std::string_view id, stdx::stop_token stop_token);
 

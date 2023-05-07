@@ -160,7 +160,7 @@ auto GoogleDrive::ListDirectoryPage(Directory directory,
                                                std::move(stop_token));
   std::vector<Item> result;
   for (const json& item : data["files"]) {
-    result.emplace_back(std::move(ToItem(item)));
+    result.emplace_back(std::move(coro::cloudstorage::ToItem(item)));
   }
   co_return PageData{
       .items = std::move(result),
@@ -192,7 +192,7 @@ auto GoogleDrive::GetItem(std::string id, stdx::stop_token stop_token)
                      http::FormDataToString({{"fields", kFileProperties}})};
   json json = co_await auth_manager_.FetchJson(std::move(request),
                                                std::move(stop_token));
-  co_return ToItem(json);
+  co_return coro::cloudstorage::ToItem(json);
 }
 
 Generator<std::string> GoogleDrive::GetFileContent(
@@ -219,7 +219,7 @@ auto GoogleDrive::CreateDirectory(Directory parent, std::string name,
   request.body = json.dump();
   auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                    std::move(stop_token));
-  co_return std::get<Directory>(ToItem(response));
+  co_return ToItemImpl<Directory>(response);
 }
 
 Task<> GoogleDrive::RemoveItem(Item item, stdx::stop_token stop_token) {
@@ -369,6 +369,14 @@ auto GoogleDrive::UploadFile(std::optional<std::string_view> id,
         co_await FetchJson(*http_, std::move(request), std::move(stop_token));
     co_return ToItemImpl<File>(response);
   }
+}
+
+auto GoogleDrive::ToItem(std::string_view serialized) -> Item {
+  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+}
+
+std::string GoogleDrive::ToString(const Item&) {
+  throw std::runtime_error("not implemented");
 }
 
 namespace util {

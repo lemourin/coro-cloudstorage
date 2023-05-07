@@ -137,7 +137,7 @@ auto PCloud::ListDirectoryPage(Directory directory,
                                      std::move(request), std::move(stop_token));
   PageData result;
   for (const auto& entry : response["metadata"]["contents"]) {
-    result.items.emplace_back(ToItem(entry));
+    result.items.emplace_back(coro::cloudstorage::ToItem(entry));
   }
   co_return result;
 }
@@ -297,6 +297,14 @@ Task<PCloud::Auth::AuthToken> PCloud::Auth::AuthHandler::operator()(
   } else {
     throw http::HttpException(http::HttpException::kBadRequest);
   }
+}
+
+auto PCloud::ToItem(std::string_view serialized) -> Item {
+  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+}
+
+std::string PCloud::ToString(const Item&) {
+  throw std::runtime_error("not implemented");
 }
 
 namespace util {

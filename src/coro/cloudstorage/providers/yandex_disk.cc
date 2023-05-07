@@ -110,7 +110,7 @@ auto YandexDisk::ListDirectoryPage(Directory directory,
   auto response = co_await FetchJson(std::move(request), std::move(stop_token));
   PageData page_data;
   for (const auto& v : response["_embedded"]["items"]) {
-    page_data.items.emplace_back(ToItem(v));
+    page_data.items.emplace_back(coro::cloudstorage::ToItem(v));
   }
   int64_t offset = response["_embedded"]["offset"];
   int64_t limit = response["_embedded"]["limit"];
@@ -274,6 +274,14 @@ Task<nlohmann::json> YandexDisk::FetchJson(Request request,
   request.headers.emplace_back("Authorization",
                                "OAuth " + auth_token_.access_token);
   return util::FetchJson(*http_, std::move(request), std::move(stop_token));
+}
+
+auto YandexDisk::ToItem(std::string_view serialized) -> Item {
+  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+}
+
+std::string YandexDisk::ToString(const Item&) {
+  throw std::runtime_error("not implemented");
 }
 
 namespace util {

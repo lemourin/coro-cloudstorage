@@ -149,7 +149,7 @@ auto OneDrive::ListDirectoryPage(Directory directory,
                                                std::move(stop_token));
   std::vector<Item> result;
   for (const json& item : data["value"]) {
-    result.emplace_back(ToItem(item));
+    result.emplace_back(coro::cloudstorage::ToItem(item));
   }
   co_return PageData{
       .items = std::move(result),
@@ -202,7 +202,7 @@ auto OneDrive::CreateDirectory(Directory parent, std::string name,
   request.body = json.dump();
   auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                    std::move(stop_token));
-  co_return std::get<Directory>(ToItem(response));
+  co_return ToItemImpl<Directory>(response);
 }
 
 Task<> OneDrive::RemoveItem(Item item, stdx::stop_token stop_token) {
@@ -305,6 +305,35 @@ auto OneDrive::CreateUploadSession(Directory parent, std::string_view name,
   auto response =
       co_await auth_manager_.FetchJson(std::move(request), stop_token);
   co_return UploadSession{.upload_url = std::string(response["uploadUrl"])};
+}
+
+auto OneDrive::ToItem(std::string_view serialized) -> Item {
+  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+}
+
+std::string OneDrive::ToString(const Item& item) {
+  nlohmann::json json;
+  std::visit(
+      [&]<typename ItemT>(const ItemT& i) {
+        json["id"] = i.id;
+        json["name"] = i.name;
+        json["lastModifiedDateTime"] = http::ToTimeString(i.timestamp);
+        if (i.thumbnail_url) {
+          nlohmann::json thumbnail;
+          thumbnail["small"]["url"] = *i.thumbnail_url;
+          json["thumbnails"].push_back(std::move(thumbnail));
+        }
+        if constexpr (std::is_same_v<ItemT, File>) {
+          json["size"] = i.size;
+          if (i.mime_type) {
+            json["mimeType"] = *i.mime_type;
+          }
+        } else {
+          json["folder"] = true;
+        }
+      },
+      item);
+  return json.dump();
 }
 
 namespace util {

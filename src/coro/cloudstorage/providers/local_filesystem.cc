@@ -115,11 +115,10 @@ Task<std::variant<http::Response<>, LocalFileSystem::Auth::AuthToken>>
 LocalFileSystem::Auth::AuthHandler::operator()(http::Request<> request,
                                                stdx::stop_token) const {
   if (request.method == http::Method::kGet) {
-    co_return http::Response<>{
-        .status = 200,
-        .body = http::CreateBody(
-            fmt::format(fmt::runtime(util::kLocalDriveLoginHtml),
-                        fmt::arg("root", GetHomeDirectory())))};
+    co_return http::Response<>{.status = 200,
+                               .body = http::CreateBody(fmt::format(
+                                   fmt::runtime(util::kLocalDriveLoginHtml),
+                                   fmt::arg("root", GetHomeDirectory())))};
   } else if (request.method == http::Method::kPost) {
     auto query =
         http::ParseQuery(co_await http::GetBody(std::move(*request.body)));
@@ -152,9 +151,9 @@ auto LocalFileSystem::ListDirectoryPage(Directory directory,
         continue;
       }
       if (std::filesystem::is_directory(e)) {
-        page_data.items.emplace_back(ToItem<Directory>(e));
+        page_data.items.emplace_back(coro::cloudstorage::ToItem<Directory>(e));
       } else {
-        page_data.items.emplace_back(ToItem<File>(e));
+        page_data.items.emplace_back(coro::cloudstorage::ToItem<File>(e));
       }
     }
     return page_data;
@@ -226,6 +225,14 @@ auto LocalFileSystem::CreateFile(Directory parent, std::string_view name,
                                  FileContent content,
                                  stdx::stop_token stop_token) -> Task<File> {
   throw RuntimeError("unimplemented");
+}
+
+auto LocalFileSystem::ToItem(std::string_view serialized) -> Item {
+  throw std::runtime_error("not implemented");
+}
+
+std::string LocalFileSystem::ToString(const Item&) {
+  throw std::runtime_error("not implemented");
 }
 
 namespace util {

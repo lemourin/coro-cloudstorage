@@ -85,6 +85,9 @@ class LocalFileSystem {
   Task<File> CreateFile(Directory parent, std::string_view name,
                         FileContent content, stdx::stop_token stop_token);
 
+  static Item ToItem(std::string_view serialized);
+  static std::string ToString(const Item&);
+
  private:
   coro::util::ThreadPool* thread_pool_;
   Auth::AuthToken auth_token_;

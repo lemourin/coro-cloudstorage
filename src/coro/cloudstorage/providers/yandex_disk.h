@@ -116,6 +116,9 @@ class YandexDisk {
   Task<Thumbnail> GetItemThumbnail(File item, http::Range range,
                                    stdx::stop_token stop_token);
 
+  static Item ToItem(std::string_view serialized);
+  static std::string ToString(const Item&);
+
  private:
   template <typename ItemT>
   Task<ItemT> MoveItem(std::string_view from, std::string_view path,

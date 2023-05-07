@@ -97,11 +97,12 @@ Task<> CacheManager::Put(CloudProviderAccount account,
   int32_t order = 0;
   for (size_t i = 0; i < items.size(); i++) {
     db_items[i + 1] = std::visit(
-        [&](const auto& i) {
+        [&](const auto& e) {
           return DbItem{.account_type = account_id.type,
                         .account_username = account_id.username,
-                        .id = i.id,
-                        .timestamp = i.timestamp};
+                        .id = e.id,
+                        .timestamp = e.timestamp,
+                        .content = account.provider()->ToString(items[i])};
         },
         items[i]);
     db_directory_content[i] = std::visit(

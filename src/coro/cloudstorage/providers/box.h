@@ -123,6 +123,9 @@ class Box {
   Task<Thumbnail> GetItemThumbnail(File file, http::Range range,
                                    stdx::stop_token stop_token);
 
+  static Item ToItem(std::string_view serialized);
+  static std::string ToString(const Item&);
+
  private:
   coro::cloudstorage::util::AuthManager<Auth> auth_manager_;
   const coro::http::Http* http_;

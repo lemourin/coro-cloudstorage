@@ -217,7 +217,7 @@ auto Dropbox::ListDirectoryPage(Directory directory,
 
   PageData page_data;
   for (const json& entry : response["entries"]) {
-    page_data.items.emplace_back(ToItem(entry));
+    page_data.items.emplace_back(coro::cloudstorage::ToItem(entry));
   }
   if (response["has_more"]) {
     page_data.next_page_token = response["cursor"];
@@ -377,6 +377,14 @@ auto Dropbox::GetItemThumbnail(File file, http::Range range,
       std::stoll(http::GetHeader(response.headers, "Content-Length").value());
   result.data = std::move(response.body);
   co_return result;
+}
+
+auto Dropbox::ToItem(std::string_view serialized) -> Item {
+  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+}
+
+std::string Dropbox::ToString(const Item&) {
+  throw std::runtime_error("not implemented");
 }
 
 namespace util {

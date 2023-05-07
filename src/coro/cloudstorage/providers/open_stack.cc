@@ -46,7 +46,7 @@ auto OpenStack::ListDirectoryPage(Directory directory,
   PageData page_data;
   for (const auto& item : response) {
     if (!item.contains("subdir")) {
-      page_data.items.emplace_back(ToItem(item));
+      page_data.items.emplace_back(coro::cloudstorage::ToItem(item));
       page_data.next_page_token = item["name"];
     }
   }
@@ -197,6 +197,14 @@ Task<> OpenStack::Visit(ItemT item, const F& func,
 std::string OpenStack::GetEndpoint(std::string_view endpoint) const {
   return util::StrCat(auth_token().endpoint, "/", auth_token().bucket,
                       endpoint);
+}
+
+auto OpenStack::ToItem(std::string_view serialized) -> Item {
+  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+}
+
+std::string OpenStack::ToString(const Item&) {
+  throw std::runtime_error("not implemented");
 }
 
 namespace util {

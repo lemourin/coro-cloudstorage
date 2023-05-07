@@ -130,6 +130,9 @@ class GoogleDrive {
   Task<Item> RenameItem(Item item, std::string new_name,
                         stdx::stop_token stop_token);
 
+  static Item ToItem(std::string_view serialized);
+  static std::string ToString(const Item&);
+
  private:
   Task<File> UploadFile(std::optional<std::string_view> id,
                         nlohmann::json metadata, FileContent content,

@@ -218,6 +218,14 @@ std::unique_ptr<OpenStack> HubiC::CreateOpenStackProvider() {
       http_);
 }
 
+auto HubiC::ToItem(std::string_view serialized) -> Item {
+  return OpenStack::ToItem(serialized);
+}
+
+std::string HubiC::ToString(const Item& item) {
+  return OpenStack::ToString(item);
+}
+
 namespace util {
 
 template <>

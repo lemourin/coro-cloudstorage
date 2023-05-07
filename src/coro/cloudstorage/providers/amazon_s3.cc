@@ -24,18 +24,14 @@ Generator<std::string> GenerateLoginPage() {
 }
 
 std::string GetDate(std::chrono::system_clock::time_point now) {
-  auto time = http::gmtime(
-      std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch())
-          .count());
+  auto time = http::gmtime(std::chrono::system_clock::to_time_t(now));
   std::stringstream ss;
   ss << std::put_time(&time, "%Y%m%d");
   return ss.str();
 }
 
 std::string GetDateAndTime(std::chrono::system_clock::time_point now) {
-  auto time = http::gmtime(
-      std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch())
-          .count());
+  auto time = http::gmtime(std::chrono::system_clock::to_time_t(now));
   std::stringstream ss;
   ss << std::put_time(&time, "%Y%m%dT%H%M%SZ");
   return ss.str();
@@ -433,6 +429,14 @@ Task<pugi::xml_document> AmazonS3::FetchXml(RequestT request,
   request.headers.emplace_back("Accept", "application/xml");
   auto response = co_await Fetch(std::move(request), std::move(stop_token));
   co_return GetXmlDocument(co_await http::GetBody(std::move(response.body)));
+}
+
+auto AmazonS3::ToItem(std::string_view serialized) -> Item {
+  throw std::runtime_error("not implemented");
+}
+
+std::string AmazonS3::ToString(const Item&) {
+  throw std::runtime_error("not implemented");
 }
 
 namespace util {

@@ -660,7 +660,7 @@ auto Mega::CreateDirectory(DirectoryT parent, std::string name,
   command["n"].emplace_back(std::move(entry));
 
   auto response = co_await DoCommand(std::move(command), std::move(stop_token));
-  auto item = ToItem(response["f"].at(0), auth_token_.pkey);
+  auto item = coro::cloudstorage::ToItem(response["f"].at(0), auth_token_.pkey);
   AddItem(item);
   co_return std::get<Directory>(item);
 }
@@ -736,7 +736,8 @@ auto Mega::CreateFile(DirectoryT parent, std::string_view name,
   std::optional<File> previous_file = FindByName(parent.id, name);
   nlohmann::json commit_command_response =
       co_await DoCommand(std::move(commit_command), stop_token);
-  auto new_item = ToItem(commit_command_response["f"][0], auth_token_.pkey);
+  auto new_item = coro::cloudstorage::ToItem(commit_command_response["f"][0],
+                                             auth_token_.pkey);
   AddItem(new_item);
   if (previous_file) {
     co_await RemoveItem(std::move(*previous_file), stop_token);
@@ -1114,7 +1115,7 @@ auto Mega::HandleAttributeUpdateEvent(std::string_view attr, uint64_t handle)
 
 void Mega::HandleAddItemEvent(const nlohmann::json& json) {
   for (const nlohmann::json& item : json["t"]["f"]) {
-    AddItem(ToItem(item, auth_token_.pkey));
+    AddItem(coro::cloudstorage::ToItem(item, auth_token_.pkey));
   }
 }
 
@@ -1170,7 +1171,7 @@ Task<> Mega::DoInit::operator()() const {
     p->skmap_[entry["h"]] = entry["k"];
   }
   for (const auto& entry : json["f"]) {
-    p->AddItem(ToItem(entry, p->auth_token_.pkey));
+    p->AddItem(coro::cloudstorage::ToItem(entry, p->auth_token_.pkey));
   }
   RunTask(p->PollEvents(json["sn"], std::move(stop_token)));
 }
@@ -1200,6 +1201,14 @@ auto Mega::Auth::AuthHandler::operator()(http::Request<> request,
         .status = 200,
         .body = http::CreateBody(std::string(util::kMegaLoginHtml))};
   }
+}
+
+auto Mega::ToItem(std::string_view serialized) -> Item {
+  throw std::runtime_error("not implemented");
+}
+
+std::string Mega::ToString(const Item&) {
+  throw std::runtime_error("not implemented");
 }
 
 namespace util {

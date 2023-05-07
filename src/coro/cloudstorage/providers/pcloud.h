@@ -117,6 +117,9 @@ class PCloud {
   Task<Thumbnail> GetItemThumbnail(File file, http::Range range,
                                    stdx::stop_token stop_token);
 
+  static Item ToItem(std::string_view serialized);
+  static std::string ToString(const Item&);
+
  private:
   std::string GetEndpoint(std::string_view path) const;
 

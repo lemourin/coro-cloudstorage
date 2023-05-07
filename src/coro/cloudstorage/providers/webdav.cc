@@ -287,8 +287,8 @@ auto WebDAV::ListDirectoryPage(Directory directory,
   PageData page;
   for (auto node = root.first_child().next_sibling(); node;
        node = node.next_sibling()) {
-    page.items.emplace_back(
-        ToItem(XmlNode<pugi::xml_node>(node, response.ns())));
+    page.items.emplace_back(coro::cloudstorage::ToItem(
+        XmlNode<pugi::xml_node>(node, response.ns())));
   }
   co_return page;
 }
@@ -338,8 +338,9 @@ auto WebDAV::CreateDirectory(Directory parent, std::string name,
              .headers = {{"Depth", "0"}}};
   auto response = co_await FetchXml(*http_, auth_token_.credential,
                                     std::move(request), std::move(stop_token));
-  co_return std::get<Directory>(ToItem(XmlNode<pugi::xml_node>(
-      response.document_element().first_child(), response.ns())));
+  co_return std::get<Directory>(
+      coro::cloudstorage::ToItem(XmlNode<pugi::xml_node>(
+          response.document_element().first_child(), response.ns())));
 }
 
 template <typename ItemT>
@@ -377,7 +378,7 @@ auto WebDAV::CreateFile(Directory parent, std::string_view name,
                   .headers = {{"Depth", "0"}}};
   auto response = co_await FetchXml(*http_, auth_token_.credential,
                                     std::move(request), std::move(stop_token));
-  co_return std::get<File>(ToItem(XmlNode<pugi::xml_node>(
+  co_return std::get<File>(coro::cloudstorage::ToItem(XmlNode<pugi::xml_node>(
       response.document_element().first_child(), response.ns())));
 }
 
@@ -394,7 +395,7 @@ Task<T> WebDAV::Move(T item, std::string destination,
              .headers = {{"Depth", "0"}}};
   auto response = co_await FetchXml(*http_, auth_token_.credential,
                                     std::move(request), std::move(stop_token));
-  co_return std::get<T>(ToItem(XmlNode<pugi::xml_node>(
+  co_return std::get<T>(coro::cloudstorage::ToItem(XmlNode<pugi::xml_node>(
       response.document_element().first_child(), response.ns())));
 }
 
@@ -415,6 +416,14 @@ std::string WebDAV::GetEndpoint(std::string_view href) const {
     uri += std::string(href);
     return uri;
   }
+}
+
+auto WebDAV::ToItem(std::string_view serialized) -> Item {
+  throw std::runtime_error("not implemented");
+}
+
+std::string WebDAV::ToString(const Item&) {
+  throw std::runtime_error("not implemented");
 }
 
 namespace util {
