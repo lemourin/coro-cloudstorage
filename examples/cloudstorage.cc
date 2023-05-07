@@ -19,11 +19,11 @@ EventLoop gEventLoop;
 Promise<void> gQuit;
 
 struct AccountListener {
-  void OnCreate(std::shared_ptr<CloudProviderAccount> d) {
-    std::cerr << "CREATE [" << d->type() << "] " << d->username() << '\n';
+  void OnCreate(CloudProviderAccount d) {
+    std::cerr << "CREATE [" << d.type() << "] " << d.username() << '\n';
   }
-  void OnDestroy(std::shared_ptr<CloudProviderAccount> d) {
-    std::cerr << "REMOVED [" << d->type() << "] " << d->username() << '\n';
+  void OnDestroy(CloudProviderAccount d) {
+    std::cerr << "REMOVED [" << d.type() << "] " << d.username() << '\n';
   }
 };
 

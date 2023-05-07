@@ -17,13 +17,13 @@ auto GetSizeHandler::operator()(Request request,
   if (account_type == query.end() || account_username == query.end()) {
     co_return Response{.status = 400};
   }
-  for (const std::shared_ptr<CloudProviderAccount>& account : accounts) {
-    if (account->id() ==
+  for (const auto& account : accounts) {
+    if (account.id() ==
         CloudProviderAccount::Id{.type = account_type->second,
                                  .username = account_username->second}) {
       auto stop_token_or =
-          MakeStopTokenOr(std::move(stop_token), account->stop_token());
-      auto volume_data = co_await account->provider()->GetGeneralData(
+          MakeStopTokenOr(std::move(stop_token), account.stop_token());
+      auto volume_data = co_await account.provider()->GetGeneralData(
           stop_token_or.GetToken());
       nlohmann::json json;
       if (volume_data.space_total) {

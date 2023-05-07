@@ -10,8 +10,7 @@ namespace coro::cloudstorage::util {
 
 class MuxHandler {
  public:
-  MuxHandler(const Muxer* muxer,
-             std::span<const std::shared_ptr<CloudProviderAccount>> accounts)
+  MuxHandler(const Muxer* muxer, std::span<const CloudProviderAccount> accounts)
       : muxer_(muxer), accounts_(accounts) {}
 
   Task<http::Response<>> operator()(http::Request<> request,
@@ -19,7 +18,7 @@ class MuxHandler {
 
  private:
   const Muxer* muxer_;
-  std::span<const std::shared_ptr<CloudProviderAccount>> accounts_;
+  std::span<const CloudProviderAccount> accounts_;
 };
 
 }  // namespace coro::cloudstorage::util

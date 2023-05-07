@@ -30,11 +30,10 @@ std::vector<std::string> GetPathComponents(const std::string& encoded_path) {
   return components;
 }
 
-std::shared_ptr<CloudProviderAccount> FindAccount(
-    std::span<const std::shared_ptr<CloudProviderAccount>> accounts,
-    const CloudProviderAccount::Id& account_id) {
+CloudProviderAccount FindAccount(std::span<const CloudProviderAccount> accounts,
+                                 const CloudProviderAccount::Id& account_id) {
   for (const auto& account : accounts) {
-    if (account->id() == account_id) {
+    if (account.id() == account_id) {
       return account;
     }
   }
@@ -91,13 +90,13 @@ Task<http::Response<>> MuxHandler::operator()(
   auto audio_path_components = GetPathComponents(audio_path->second);
 
   auto stop_token_or =
-      MakeUniqueStopTokenOr(video_account->stop_token(),
-                            audio_account->stop_token(), std::move(stop_token));
+      MakeUniqueStopTokenOr(video_account.stop_token(),
+                            audio_account.stop_token(), std::move(stop_token));
 
   auto [video_item, audio_item] = co_await WhenAll(
-      GetItemByPathComponents(video_account->provider().get(),
+      GetItemByPathComponents(video_account.provider().get(),
                               video_path_components, stop_token_or->GetToken()),
-      GetItemByPathComponents(audio_account->provider().get(),
+      GetItemByPathComponents(audio_account.provider().get(),
                               audio_path_components,
                               stop_token_or->GetToken()));
 
@@ -107,8 +106,8 @@ Task<http::Response<>> MuxHandler::operator()(
   bool is_seekable =
       seekable != query.end() ? seekable->second == "true" : false;
   Generator<std::string> content =
-      (*muxer_)(video_account->provider().get(), video_file,
-                audio_account->provider().get(), audio_file,
+      (*muxer_)(video_account.provider().get(), video_file,
+                audio_account.provider().get(), audio_file,
                 {.container = format->second == "mp4" ? MediaContainer::kMp4
                                                       : MediaContainer::kWebm,
                  .buffered = is_seekable},

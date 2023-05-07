@@ -20,11 +20,11 @@ class AccountListener {
   AccountListener(T impl)
       : d_(std::make_unique<AccountListenerImpl<T>>(std::move(impl))) {}
 
-  void OnCreate(std::shared_ptr<CloudProviderAccount> account) {
+  void OnCreate(CloudProviderAccount account) {
     d_->OnCreate(std::move(account));
   }
 
-  void OnDestroy(std::shared_ptr<CloudProviderAccount> account) {
+  void OnDestroy(CloudProviderAccount account) {
     d_->OnDestroy(std::move(account));
   }
 
@@ -32,8 +32,8 @@ class AccountListener {
   class Interface {
    public:
     virtual ~Interface() = default;
-    virtual void OnCreate(std::shared_ptr<CloudProviderAccount>) = 0;
-    virtual void OnDestroy(std::shared_ptr<CloudProviderAccount>) = 0;
+    virtual void OnCreate(CloudProviderAccount) = 0;
+    virtual void OnDestroy(CloudProviderAccount) = 0;
   };
 
   template <typename T>
@@ -41,11 +41,11 @@ class AccountListener {
    public:
     explicit AccountListenerImpl(T impl) : impl_(std::move(impl)) {}
 
-    void OnCreate(std::shared_ptr<CloudProviderAccount> account) override {
+    void OnCreate(CloudProviderAccount account) override {
       impl_.OnCreate(std::move(account));
     }
 
-    void OnDestroy(std::shared_ptr<CloudProviderAccount> account) override {
+    void OnDestroy(CloudProviderAccount account) override {
       impl_.OnDestroy(std::move(account));
     }
 
@@ -61,7 +61,8 @@ class AccountManagerHandler {
   AccountManagerHandler(const AbstractCloudFactory* factory,
                         const ThumbnailGenerator* thumbnail_generator,
                         const Muxer* muxer, AccountListener account_listener,
-                        SettingsManager* settings_manager, CacheManager* cache_manager);
+                        SettingsManager* settings_manager,
+                        CacheManager* cache_manager);
   AccountManagerHandler(AccountManagerHandler&&) noexcept;
 
   ~AccountManagerHandler();
