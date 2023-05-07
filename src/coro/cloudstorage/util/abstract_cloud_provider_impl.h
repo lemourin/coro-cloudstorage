@@ -157,6 +157,15 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider,
     co_return Convert(co_await provider()->GetRoot(std::move(stop_token)));
   }
 
+  std::string ToString(const AbstractCloudProvider::Item&) const override {
+    throw std::runtime_error("not implemented");
+  }
+
+  AbstractCloudProvider::Item ToItem(
+      std::string_view serialized) const override {
+    throw std::runtime_error("not implemented");
+  }
+
   bool IsFileContentSizeRequired(const Directory& d) const override {
     return std::visit(IsFileContentSizeRequiredF{provider()},
                       std::any_cast<const ItemT&>(d.impl));

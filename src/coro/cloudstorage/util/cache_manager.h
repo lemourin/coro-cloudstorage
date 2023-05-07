@@ -23,7 +23,7 @@ class CacheManager {
 
  private:
   coro::util::ThreadPool* thread_pool_;
-  std::any db_;
+  mutable std::any db_;
 };
 
 class CloudProviderCacheManager {
