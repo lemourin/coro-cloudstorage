@@ -166,6 +166,25 @@ auto FetchXml(const coro::http::Http& http,
   co_return XmlDocument(co_await http::GetBody(std::move(response.body)));
 }
 
+template <typename T>
+T ToItemImpl(const nlohmann::json& json) {
+  T item;
+  item.id = json["id"];
+  item.name = json["name"];
+  if (json.contains("timestamp")) {
+    item.timestamp = json["timestamp"];
+  }
+  if constexpr (std::is_same_v<T, WebDAV::File>) {
+    if (json.contains("size")) {
+      item.size = json["size"];
+    }
+    if (json.contains("mime_type")) {
+      item.mime_type = json["mime_type"];
+    }
+  }
+  return item;
+}
+
 }  // namespace
 
 namespace util {
@@ -419,11 +438,37 @@ std::string WebDAV::GetEndpoint(std::string_view href) const {
 }
 
 auto WebDAV::ToItem(std::string_view serialized) -> Item {
-  throw std::runtime_error("not implemented");
+  auto json = nlohmann::json::parse(serialized);
+  if (json["type"] == "file") {
+    return ToItemImpl<File>(json);
+  } else {
+    return ToItemImpl<Directory>(json);
+  }
 }
 
-std::string WebDAV::ToString(const Item&) {
-  throw std::runtime_error("not implemented");
+std::string WebDAV::ToString(const Item& item) {
+  return std::visit(
+      []<typename T>(const T& item) {
+        nlohmann::json json;
+        json["id"] = item.id;
+        json["name"] = item.name;
+        if (item.timestamp) {
+          json["timestamp"] = *item.timestamp;
+        }
+        if constexpr (std::is_same_v<T, File>) {
+          json["type"] = "file";
+          if (item.size) {
+            json["size"] = *item.size;
+          }
+          if (item.mime_type) {
+            json["mime_type"] = *item.mime_type;
+          }
+        } else {
+          json["type"] = "directory";
+        }
+        return json.dump();
+      },
+      item);
 }
 
 namespace util {

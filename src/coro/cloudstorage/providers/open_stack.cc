@@ -203,8 +203,25 @@ auto OpenStack::ToItem(std::string_view serialized) -> Item {
   return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
 }
 
-std::string OpenStack::ToString(const Item&) {
-  throw std::runtime_error("not implemented");
+std::string OpenStack::ToString(const Item& item) {
+  return std::visit(
+      []<typename T>(const T& item) {
+        nlohmann::json json;
+        json["name"] = item.id;
+        json["last_modified"] = [&] {
+          std::string timestamp = http::ToTimeString(item.timestamp);
+          timestamp.pop_back();
+          return timestamp;
+        }();
+        if constexpr (std::is_same_v<T, File>) {
+          json["content_type"] = item.mime_type;
+          json["bytes"] = item.size;
+        } else {
+          json["content_type"] = "application/directory";
+        }
+        return json.dump();
+      },
+      item);
 }
 
 namespace util {

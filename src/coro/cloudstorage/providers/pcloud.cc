@@ -303,8 +303,23 @@ auto PCloud::ToItem(std::string_view serialized) -> Item {
   return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
 }
 
-std::string PCloud::ToString(const Item&) {
-  throw std::runtime_error("not implemented");
+std::string PCloud::ToString(const Item& item) {
+  return std::visit(
+      []<typename T>(const T& item) {
+        nlohmann::json json;
+        json["name"] = item.name;
+        if constexpr (std::is_same_v<T, File>) {
+          json["fileid"] = item.id;
+          json["isfolder"] = false;
+          json["size"] = item.size;
+          json["modified"] = item.timestamp;
+        } else {
+          json["isfolder"] = true;
+          json["folderid"] = item.id;
+        }
+        return json.dump();
+      },
+      item);
 }
 
 namespace util {

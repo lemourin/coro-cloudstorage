@@ -375,8 +375,30 @@ auto GoogleDrive::ToItem(std::string_view serialized) -> Item {
   return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
 }
 
-std::string GoogleDrive::ToString(const Item&) {
-  throw std::runtime_error("not implemented");
+std::string GoogleDrive::ToString(const Item& item) {
+  return std::visit(
+      []<typename T>(const T& item) {
+        nlohmann::json json;
+        json["id"] = item.id;
+        json["name"] = item.name;
+        json["modifiedTime"] = http::ToTimeString(item.timestamp);
+        json["thumbnailLink"] = item.thumbnail_url;
+        for (std::string parent : item.parents) {
+          json["parents"].push_back(std::move(parent));
+        }
+        if constexpr (std::is_same_v<T, File>) {
+          if (item.size) {
+            json["size"] = std::to_string(*item.size);
+          }
+          if (item.mime_type) {
+            json["mimeType"] = *item.mime_type;
+          }
+        } else {
+          json["mimeType"] = "application/vnd.google-apps.folder";
+        }
+        return json.dump();
+      },
+      item);
 }
 
 namespace util {

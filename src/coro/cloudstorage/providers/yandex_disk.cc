@@ -280,8 +280,25 @@ auto YandexDisk::ToItem(std::string_view serialized) -> Item {
   return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
 }
 
-std::string YandexDisk::ToString(const Item&) {
-  throw std::runtime_error("not implemented");
+std::string YandexDisk::ToString(const Item& item) {
+  return std::visit(
+      []<typename T>(const T& item) {
+        nlohmann::json json;
+        json["type"] = "file";
+        json["path"] = item.id;
+        json["name"] = item.name;
+        json["modified"] = http::ToTimeString(item.timestamp);
+        if constexpr (std::is_same_v<T, File>) {
+          json["size"] = item.size;
+          if (item.thumbnail_url) {
+            json["preview"] = *item.thumbnail_url;
+          }
+        } else {
+          json["type"] = "dir";
+        }
+        return json.dump();
+      },
+      item);
 }
 
 namespace util {

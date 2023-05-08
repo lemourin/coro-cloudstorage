@@ -89,6 +89,18 @@ T ToItem(const std::filesystem::directory_entry& entry) {
   return item;
 }
 
+template <typename T>
+T ToItemImpl(const nlohmann::json& json) {
+  T item;
+  item.id = json["id"];
+  item.name = json["name"];
+  item.timestamp = json["timestamp"];
+  if constexpr (std::is_same_v<T, LocalFileSystem::File>) {
+    item.size = json["size"];
+  }
+  return item;
+}
+
 }  // namespace
 
 namespace util {
@@ -228,11 +240,27 @@ auto LocalFileSystem::CreateFile(Directory parent, std::string_view name,
 }
 
 auto LocalFileSystem::ToItem(std::string_view serialized) -> Item {
-  throw std::runtime_error("not implemented");
+  auto json = nlohmann::json::parse(serialized);
+  if (json.contains("size")) {
+    return ToItemImpl<File>(json);
+  } else {
+    return ToItemImpl<Directory>(json);
+  }
 }
 
-std::string LocalFileSystem::ToString(const Item&) {
-  throw std::runtime_error("not implemented");
+std::string LocalFileSystem::ToString(const Item& item) {
+  return std::visit(
+      []<typename T>(const T& item) {
+        nlohmann::json json;
+        json["id"] = item.id;
+        json["name"] = item.name;
+        json["timestamp"] = item.timestamp;
+        if constexpr (std::is_same_v<T, File>) {
+          json["size"] = item.size;
+        }
+        return json.dump();
+      },
+      item);
 }
 
 namespace util {

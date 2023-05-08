@@ -539,6 +539,29 @@ CloudException ToException(
   }
 }
 
+template <typename T>
+T ToItemImpl(const nlohmann::json& json) {
+  T item;
+  item.id = json["id"];
+  item.timestamp = json["timestamp"];
+  if constexpr (std::is_same_v<T, Mega::Directory>) {
+    item.parent = json["parent"];
+    item.name = json["name"];
+    item.attr = json["attr"];
+    item.compkey = json["compkey"];
+  } else if constexpr (std::is_same_v<T, Mega::File>) {
+    item.parent = json["parent"];
+    item.size = json["size"];
+    item.name = json["name"];
+    item.attr = json["attr"];
+    item.compkey = json["compkey"];
+    if (json.contains("thumbnail_id")) {
+      item.thumbnail_id = json["thumbnail_id"];
+    }
+  }
+  return item;
+}
+
 }  // namespace
 
 auto Mega::GetRoot(stdx::stop_token stop_token) -> Task<Root> {
@@ -1204,11 +1227,55 @@ auto Mega::Auth::AuthHandler::operator()(http::Request<> request,
 }
 
 auto Mega::ToItem(std::string_view serialized) -> Item {
-  throw std::runtime_error("not implemented");
+  auto json = nlohmann::json::parse(serialized);
+  if (json["type"] == "directory") {
+    return ToItemImpl<Directory>(json);
+  } else if (json["type"] == "file") {
+    return ToItemImpl<File>(json);
+  } else if (json["type"] == "root") {
+    return ToItemImpl<Root>(json);
+  } else if (json["type"] == "trash") {
+    return ToItemImpl<Trash>(json);
+  } else if (json["type"] == "inbox") {
+    return ToItemImpl<Inbox>(json);
+  } else {
+    throw RuntimeError("Invalid json type.");
+  }
 }
 
-std::string Mega::ToString(const Item&) {
-  throw std::runtime_error("not implemented");
+std::string Mega::ToString(const Item& item) {
+  return std::visit(
+      []<typename T>(const T& item) {
+        nlohmann::json json;
+        json["id"] = item.id;
+        json["timestamp"] = item.timestamp;
+        if constexpr (std::is_same_v<T, Directory>) {
+          json["type"] = "directory";
+          json["parent"] = item.parent;
+          json["name"] = item.name;
+          json["attr"] = item.attr;
+          json["compkey"] = item.compkey;
+        } else if constexpr (std::is_same_v<T, File>) {
+          json["type"] = "file";
+          json["parent"] = item.parent;
+          json["size"] = item.size;
+          json["name"] = item.name;
+          json["attr"] = item.attr;
+          json["compkey"] = item.compkey;
+          if (item.thumbnail_id) {
+            json["thumbnail_id"] = *item.thumbnail_id;
+          }
+        } else if constexpr (std::is_same_v<T, Root>) {
+          json["type"] == "root";
+        } else if constexpr (std::is_same_v<T, Trash>) {
+          json["type"] = "trash";
+        } else {
+          static_assert(std::is_same_v<T, Inbox>);
+          json["type"] = "inbox";
+        }
+        return json.dump();
+      },
+      item);
 }
 
 namespace util {

@@ -316,8 +316,24 @@ auto Box::ToItem(std::string_view serialized) -> Item {
   return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
 }
 
-std::string Box::ToString(const Item&) {
-  throw std::runtime_error("not implemented");
+std::string Box::ToString(const Item& item) {
+  return std::visit(
+      []<typename T>(const T& item) {
+        nlohmann::json json;
+        json["id"] = item.id;
+        json["name"] = item.name;
+        json["size"] = item.size;
+        json["modified_at"] = http::ToTimeString(item.timestamp);
+        json["type"] = [] {
+          if constexpr (std::is_same_v<T, File>) {
+            return "file";
+          } else {
+            return "folder";
+          }
+        }();
+        return json.dump();
+      },
+      item);
 }
 
 namespace util {

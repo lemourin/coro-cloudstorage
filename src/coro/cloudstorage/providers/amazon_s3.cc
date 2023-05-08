@@ -210,6 +210,18 @@ Task<AmazonS3::Auth::AuthToken> GetAuthToken(const coro::http::Http& http,
   co_return auth_token;
 }
 
+template <typename T>
+T ToItemImpl(const nlohmann::json& json) {
+  T item;
+  item.id = json["id"];
+  item.name = json["name"];
+  if constexpr (std::is_same_v<T, AmazonS3::File>) {
+    item.timestamp = json["timestamp"];
+    item.size = json["size"];
+  }
+  return item;
+}
+
 }  // namespace
 
 auto AmazonS3::GetRoot(stdx::stop_token) const -> Task<Directory> {
@@ -432,11 +444,27 @@ Task<pugi::xml_document> AmazonS3::FetchXml(RequestT request,
 }
 
 auto AmazonS3::ToItem(std::string_view serialized) -> Item {
-  throw std::runtime_error("not implemented");
+  auto json = nlohmann::json::parse(serialized);
+  if (json.contains("size")) {
+    return ToItemImpl<File>(json);
+  } else {
+    return ToItemImpl<Directory>(json);
+  }
 }
 
-std::string AmazonS3::ToString(const Item&) {
-  throw std::runtime_error("not implemented");
+std::string AmazonS3::ToString(const Item& item) {
+  return std::visit(
+      []<typename T>(const T& item) {
+        nlohmann::json json;
+        json["id"] = item.id;
+        json["name"] = item.name;
+        if constexpr (std::is_same_v<T, File>) {
+          json["timestamp"] = item.timestamp;
+          json["size"] = item.size;
+        }
+        return json.dump();
+      },
+      item);
 }
 
 namespace util {

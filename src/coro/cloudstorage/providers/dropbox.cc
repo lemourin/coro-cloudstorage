@@ -383,8 +383,22 @@ auto Dropbox::ToItem(std::string_view serialized) -> Item {
   return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
 }
 
-std::string Dropbox::ToString(const Item&) {
-  throw std::runtime_error("not implemented");
+std::string Dropbox::ToString(const Item& item) {
+  return std::visit(
+      []<typename T>(const T& item) {
+        nlohmann::json json;
+        json["path_display"] = item.id;
+        json["name"] = item.name;
+        if constexpr (std::is_same_v<T, File>) {
+          json[".tag"] = "file";
+          json["size"] = item.size;
+          json["client_modified"] = http::ToTimeString(item.timestamp);
+        } else {
+          json[".tag"] = "folder";
+        }
+        return json.dump();
+      },
+      item);
 }
 
 namespace util {
