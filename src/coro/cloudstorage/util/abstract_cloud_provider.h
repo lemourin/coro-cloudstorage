@@ -111,10 +111,9 @@ class AbstractCloudProvider {
 
   virtual Task<Directory> GetRoot(stdx::stop_token) const = 0;
 
-  virtual std::string ToString(const AbstractCloudProvider::Item&) const = 0;
+  virtual nlohmann::json ToJson(const AbstractCloudProvider::Item&) const = 0;
 
-  virtual AbstractCloudProvider::Item ToItem(
-      std::string_view serialized) const = 0;
+  virtual AbstractCloudProvider::Item ToItem(const nlohmann::json&) const = 0;
 
   virtual bool IsFileContentSizeRequired(const Directory&) const = 0;
 

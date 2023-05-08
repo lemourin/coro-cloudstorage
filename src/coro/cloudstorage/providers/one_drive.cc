@@ -29,14 +29,6 @@ T ToItemImpl(const nlohmann::json& json) {
   return result;
 }
 
-OneDrive::Item ToItem(const nlohmann::json& json) {
-  if (json.contains("folder")) {
-    return ToItemImpl<OneDrive::Directory>(json);
-  } else {
-    return ToItemImpl<OneDrive::File>(json);
-  }
-}
-
 Task<nlohmann::json> WriteChunk(const coro::http::Http& http,
                                 OneDrive::UploadSession session,
                                 OneDrive::FileContent content, int64_t offset,
@@ -149,7 +141,7 @@ auto OneDrive::ListDirectoryPage(Directory directory,
                                                std::move(stop_token));
   std::vector<Item> result;
   for (const json& item : data["value"]) {
-    result.emplace_back(coro::cloudstorage::ToItem(item));
+    result.emplace_back(ToItem(item));
   }
   co_return PageData{
       .items = std::move(result),
@@ -307,14 +299,18 @@ auto OneDrive::CreateUploadSession(Directory parent, std::string_view name,
   co_return UploadSession{.upload_url = std::string(response["uploadUrl"])};
 }
 
-auto OneDrive::ToItem(std::string_view serialized) -> Item {
-  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+auto OneDrive::ToItem(const nlohmann::json& json) -> Item {
+  if (json.contains("folder")) {
+    return ToItemImpl<OneDrive::Directory>(json);
+  } else {
+    return ToItemImpl<OneDrive::File>(json);
+  }
 }
 
-std::string OneDrive::ToString(const Item& item) {
-  nlohmann::json json;
-  std::visit(
-      [&]<typename ItemT>(const ItemT& i) {
+nlohmann::json OneDrive::ToJson(const Item& item) {
+  return std::visit(
+      []<typename ItemT>(const ItemT& i) {
+        nlohmann::json json;
         json["id"] = i.id;
         json["name"] = i.name;
         json["lastModifiedDateTime"] = http::ToTimeString(i.timestamp);
@@ -331,9 +327,9 @@ std::string OneDrive::ToString(const Item& item) {
         } else {
           json["folder"] = true;
         }
+        return json;
       },
       item);
-  return json.dump();
 }
 
 namespace util {

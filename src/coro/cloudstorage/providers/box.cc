@@ -34,14 +34,6 @@ Item ToItemImpl(const nlohmann::json& json) {
   return item;
 }
 
-Box::Item ToItem(const nlohmann::json& json) {
-  if (json["type"] == "folder") {
-    return ToItemImpl<Box::Directory>(json);
-  } else {
-    return ToItemImpl<Box::File>(json);
-  }
-}
-
 Generator<std::string> GetUploadStream(Box::Directory parent,
                                        std::string_view name,
                                        Box::FileContent content) {
@@ -165,7 +157,7 @@ auto Box::ListDirectoryPage(Directory directory,
                                                std::move(stop_token));
   PageData result;
   for (const auto& entry : json["entries"]) {
-    result.items.emplace_back(coro::cloudstorage::ToItem(entry));
+    result.items.emplace_back(ToItem(entry));
   }
   int64_t offset = json["offset"];
   int64_t limit = json["limit"];
@@ -312,11 +304,15 @@ auto Box::GetItemThumbnail(File file, http::Range range,
   co_return result;
 }
 
-auto Box::ToItem(std::string_view serialized) -> Item {
-  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+auto Box::ToItem(const nlohmann::json& json) -> Item {
+  if (json["type"] == "folder") {
+    return ToItemImpl<Directory>(json);
+  } else {
+    return ToItemImpl<File>(json);
+  }
 }
 
-std::string Box::ToString(const Item& item) {
+nlohmann::json Box::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& item) {
         nlohmann::json json;
@@ -331,7 +327,7 @@ std::string Box::ToString(const Item& item) {
             return "folder";
           }
         }();
-        return json.dump();
+        return json;
       },
       item);
 }

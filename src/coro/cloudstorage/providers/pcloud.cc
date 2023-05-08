@@ -45,14 +45,6 @@ T ToItemImpl(const nlohmann::json& json) {
   return result;
 }
 
-PCloud::Item ToItem(const nlohmann::json& json) {
-  if (json["isfolder"]) {
-    return ToItemImpl<PCloud::Directory>(json);
-  } else {
-    return ToItemImpl<PCloud::File>(json);
-  }
-}
-
 template <typename Request>
 Task<http::Response<>> Fetch(const coro::http::Http& http,
                              std::string access_token, Request request,
@@ -137,7 +129,7 @@ auto PCloud::ListDirectoryPage(Directory directory,
                                      std::move(request), std::move(stop_token));
   PageData result;
   for (const auto& entry : response["metadata"]["contents"]) {
-    result.items.emplace_back(coro::cloudstorage::ToItem(entry));
+    result.items.emplace_back(ToItem(entry));
   }
   co_return result;
 }
@@ -299,11 +291,15 @@ Task<PCloud::Auth::AuthToken> PCloud::Auth::AuthHandler::operator()(
   }
 }
 
-auto PCloud::ToItem(std::string_view serialized) -> Item {
-  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+auto PCloud::ToItem(const nlohmann::json& json) -> Item {
+  if (json["isfolder"]) {
+    return ToItemImpl<Directory>(json);
+  } else {
+    return ToItemImpl<File>(json);
+  }
 }
 
-std::string PCloud::ToString(const Item& item) {
+nlohmann::json PCloud::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& item) {
         nlohmann::json json;
@@ -317,7 +313,7 @@ std::string PCloud::ToString(const Item& item) {
           json["isfolder"] = true;
           json["folderid"] = item.id;
         }
-        return json.dump();
+        return json;
       },
       item);
 }

@@ -2,6 +2,8 @@
 
 #include <sqlite_orm/sqlite_orm.h>
 
+#include <nlohmann/json.hpp>
+
 namespace coro::cloudstorage::util {
 
 namespace {
@@ -23,8 +25,7 @@ struct DbItem {
   std::string account_type;
   std::string account_username;
   std::string id;
-  std::optional<int64_t> timestamp;
-  std::string content;
+  std::vector<char> content;
 };
 
 struct DbDirectoryContent {
@@ -41,7 +42,6 @@ auto CreateStorage(std::string path) {
       make_table("item", make_column("account_type", &DbItem::account_type),
                  make_column("account_username", &DbItem::account_username),
                  make_column("id", &DbItem::id),
-                 make_column("timestamp", &DbItem::timestamp),
                  make_column("content", &DbItem::content),
                  primary_key(&DbItem::account_type, &DbItem::account_username,
                              &DbItem::id)),
@@ -75,6 +75,12 @@ auto& GetDb(std::any& any) {
   return std::any_cast<decltype(CreateStorage(""))&>(any);
 }
 
+std::vector<char> ToCbor(const nlohmann::json& json) {
+  std::vector<char> output;
+  nlohmann::json::to_cbor(json, output);
+  return output;
+}
+
 }  // namespace
 
 CacheManager::CacheManager(coro::util::ThreadPool* thread_pool,
@@ -89,20 +95,20 @@ Task<> CacheManager::Put(CloudProviderAccount account,
   auto account_id = account.id();
   std::vector<DbItem> db_items(items.size() + 1);
   std::vector<DbDirectoryContent> db_directory_content(items.size());
-  db_items[0] = DbItem{.account_type = account_id.type,
-                       .account_username = account_id.username,
-                       .id = directory.id,
-                       .timestamp = directory.timestamp,
-                       .content = account.provider()->ToString(directory)};
+  db_items[0] =
+      DbItem{.account_type = account_id.type,
+             .account_username = account_id.username,
+             .id = directory.id,
+             .content = ToCbor(account.provider()->ToJson(directory))};
   int32_t order = 0;
   for (size_t i = 0; i < items.size(); i++) {
     db_items[i + 1] = std::visit(
         [&](const auto& e) {
-          return DbItem{.account_type = account_id.type,
-                        .account_username = account_id.username,
-                        .id = e.id,
-                        .timestamp = e.timestamp,
-                        .content = account.provider()->ToString(items[i])};
+          return DbItem{
+              .account_type = account_id.type,
+              .account_username = account_id.username,
+              .id = e.id,
+              .content = ToCbor(account.provider()->ToJson(items[i]))};
         },
         items[i]);
     db_directory_content[i] = std::visit(
@@ -154,7 +160,7 @@ Task<std::optional<std::vector<AbstractCloudProvider::Item>>> CacheManager::Get(
 
   std::vector<AbstractCloudProvider::Item> items{result.size()};
   for (size_t i = 0; i < items.size(); i++) {
-    items[i] = account.provider()->ToItem(result[i]);
+    items[i] = account.provider()->ToItem(nlohmann::json::from_cbor(result[i]));
   }
   co_return items;
 }

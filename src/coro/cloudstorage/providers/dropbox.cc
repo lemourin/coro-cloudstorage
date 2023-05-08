@@ -28,14 +28,6 @@ T ToItemImpl(const nlohmann::json& json) {
   return result;
 }
 
-Dropbox::Item ToItem(const nlohmann::json& json) {
-  if (json[".tag"] == "folder") {
-    return ToItemImpl<Dropbox::Directory>(json);
-  } else {
-    return ToItemImpl<Dropbox::File>(json);
-  }
-}
-
 Task<Dropbox::UploadSession> CreateUploadSession(
     util::AuthManager<Dropbox::Auth>* auth_manager, Dropbox::Directory parent,
     std::string_view name, Dropbox::FileContent content,
@@ -217,7 +209,7 @@ auto Dropbox::ListDirectoryPage(Directory directory,
 
   PageData page_data;
   for (const json& entry : response["entries"]) {
-    page_data.items.emplace_back(coro::cloudstorage::ToItem(entry));
+    page_data.items.emplace_back(ToItem(entry));
   }
   if (response["has_more"]) {
     page_data.next_page_token = response["cursor"];
@@ -379,11 +371,15 @@ auto Dropbox::GetItemThumbnail(File file, http::Range range,
   co_return result;
 }
 
-auto Dropbox::ToItem(std::string_view serialized) -> Item {
-  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+auto Dropbox::ToItem(const nlohmann::json& json) -> Item {
+  if (json[".tag"] == "folder") {
+    return ToItemImpl<Directory>(json);
+  } else {
+    return ToItemImpl<File>(json);
+  }
 }
 
-std::string Dropbox::ToString(const Item& item) {
+nlohmann::json Dropbox::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& item) {
         nlohmann::json json;
@@ -396,7 +392,7 @@ std::string Dropbox::ToString(const Item& item) {
         } else {
           json[".tag"] = "folder";
         }
-        return json.dump();
+        return json;
       },
       item);
 }

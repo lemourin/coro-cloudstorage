@@ -85,8 +85,8 @@ class HubiC {
 
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token);
 
-  static Item ToItem(std::string_view serialized);
-  static std::string ToString(const Item&);
+  static Item ToItem(const nlohmann::json&);
+  static nlohmann::json ToJson(const Item&);
 
  private:
   std::unique_ptr<OpenStack> CreateOpenStackProvider();

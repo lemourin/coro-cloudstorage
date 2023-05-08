@@ -1226,8 +1226,7 @@ auto Mega::Auth::AuthHandler::operator()(http::Request<> request,
   }
 }
 
-auto Mega::ToItem(std::string_view serialized) -> Item {
-  auto json = nlohmann::json::parse(serialized);
+auto Mega::ToItem(const nlohmann::json& json) -> Item {
   if (json["type"] == "directory") {
     return ToItemImpl<Directory>(json);
   } else if (json["type"] == "file") {
@@ -1243,7 +1242,7 @@ auto Mega::ToItem(std::string_view serialized) -> Item {
   }
 }
 
-std::string Mega::ToString(const Item& item) {
+nlohmann::json Mega::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& item) {
         nlohmann::json json;
@@ -1273,7 +1272,7 @@ std::string Mega::ToString(const Item& item) {
           static_assert(std::is_same_v<T, Inbox>);
           json["type"] = "inbox";
         }
-        return json.dump();
+        return json;
       },
       item);
 }

@@ -55,14 +55,6 @@ T ToItemImpl(const nlohmann::json& json) {
   return result;
 }
 
-auto ToItem(const nlohmann::json& json) -> GoogleDrive::Item {
-  if (json["mimeType"] == "application/vnd.google-apps.folder") {
-    return ToItemImpl<GoogleDrive::Directory>(json);
-  } else {
-    return ToItemImpl<GoogleDrive::File>(json);
-  }
-}
-
 Generator<std::string> GetUploadForm(nlohmann::json metadata,
                                      GoogleDrive::FileContent content) {
   co_yield "--";
@@ -160,7 +152,7 @@ auto GoogleDrive::ListDirectoryPage(Directory directory,
                                                std::move(stop_token));
   std::vector<Item> result;
   for (const json& item : data["files"]) {
-    result.emplace_back(std::move(coro::cloudstorage::ToItem(item)));
+    result.emplace_back(std::move(ToItem(item)));
   }
   co_return PageData{
       .items = std::move(result),
@@ -192,7 +184,7 @@ auto GoogleDrive::GetItem(std::string id, stdx::stop_token stop_token)
                      http::FormDataToString({{"fields", kFileProperties}})};
   json json = co_await auth_manager_.FetchJson(std::move(request),
                                                std::move(stop_token));
-  co_return coro::cloudstorage::ToItem(json);
+  co_return ToItem(json);
 }
 
 Generator<std::string> GoogleDrive::GetFileContent(
@@ -371,11 +363,15 @@ auto GoogleDrive::UploadFile(std::optional<std::string_view> id,
   }
 }
 
-auto GoogleDrive::ToItem(std::string_view serialized) -> Item {
-  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+auto GoogleDrive::ToItem(const nlohmann::json& json) -> Item {
+  if (json["mimeType"] == "application/vnd.google-apps.folder") {
+    return ToItemImpl<Directory>(json);
+  } else {
+    return ToItemImpl<File>(json);
+  }
 }
 
-std::string GoogleDrive::ToString(const Item& item) {
+nlohmann::json GoogleDrive::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& item) {
         nlohmann::json json;
@@ -396,7 +392,7 @@ std::string GoogleDrive::ToString(const Item& item) {
         } else {
           json["mimeType"] = "application/vnd.google-apps.folder";
         }
-        return json.dump();
+        return json;
       },
       item);
 }

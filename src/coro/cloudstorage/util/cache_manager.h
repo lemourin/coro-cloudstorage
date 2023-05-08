@@ -13,6 +13,9 @@ class CacheManager {
  public:
   CacheManager(coro::util::ThreadPool* thread_pool, std::string cache_path);
 
+  Task<> Put(CloudProviderAccount, std::string path,
+             AbstractCloudProvider::Item);
+
   Task<> Put(CloudProviderAccount, AbstractCloudProvider::Directory directory,
              std::vector<AbstractCloudProvider::Item> items,
              stdx::stop_token stop_token);

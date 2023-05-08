@@ -443,8 +443,7 @@ Task<pugi::xml_document> AmazonS3::FetchXml(RequestT request,
   co_return GetXmlDocument(co_await http::GetBody(std::move(response.body)));
 }
 
-auto AmazonS3::ToItem(std::string_view serialized) -> Item {
-  auto json = nlohmann::json::parse(serialized);
+auto AmazonS3::ToItem(const nlohmann::json& json) -> Item {
   if (json.contains("size")) {
     return ToItemImpl<File>(json);
   } else {
@@ -452,7 +451,7 @@ auto AmazonS3::ToItem(std::string_view serialized) -> Item {
   }
 }
 
-std::string AmazonS3::ToString(const Item& item) {
+nlohmann::json AmazonS3::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& item) {
         nlohmann::json json;
@@ -462,7 +461,7 @@ std::string AmazonS3::ToString(const Item& item) {
           json["timestamp"] = item.timestamp;
           json["size"] = item.size;
         }
-        return json.dump();
+        return json;
       },
       item);
 }

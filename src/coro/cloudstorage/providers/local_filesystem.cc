@@ -239,8 +239,7 @@ auto LocalFileSystem::CreateFile(Directory parent, std::string_view name,
   throw RuntimeError("unimplemented");
 }
 
-auto LocalFileSystem::ToItem(std::string_view serialized) -> Item {
-  auto json = nlohmann::json::parse(serialized);
+auto LocalFileSystem::ToItem(const nlohmann::json& json) -> Item {
   if (json.contains("size")) {
     return ToItemImpl<File>(json);
   } else {
@@ -248,7 +247,7 @@ auto LocalFileSystem::ToItem(std::string_view serialized) -> Item {
   }
 }
 
-std::string LocalFileSystem::ToString(const Item& item) {
+nlohmann::json LocalFileSystem::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& item) {
         nlohmann::json json;
@@ -258,7 +257,7 @@ std::string LocalFileSystem::ToString(const Item& item) {
         if constexpr (std::is_same_v<T, File>) {
           json["size"] = item.size;
         }
-        return json.dump();
+        return json;
       },
       item);
 }

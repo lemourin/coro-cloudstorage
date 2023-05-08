@@ -218,12 +218,12 @@ std::unique_ptr<OpenStack> HubiC::CreateOpenStackProvider() {
       http_);
 }
 
-auto HubiC::ToItem(std::string_view serialized) -> Item {
+auto HubiC::ToItem(const nlohmann::json& serialized) -> Item {
   return OpenStack::ToItem(serialized);
 }
 
-std::string HubiC::ToString(const Item& item) {
-  return OpenStack::ToString(item);
+nlohmann::json HubiC::ToJson(const Item& item) {
+  return OpenStack::ToJson(item);
 }
 
 namespace util {

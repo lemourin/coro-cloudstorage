@@ -157,21 +157,22 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider,
     co_return Convert(co_await provider()->GetRoot(std::move(stop_token)));
   }
 
-  std::string ToString(const AbstractCloudProvider::Item& item) const override {
+  nlohmann::json ToJson(
+      const AbstractCloudProvider::Item& item) const override {
     return std::visit(
         [](const auto& d) {
-          return CloudProviderT::ToString(std::any_cast<const ItemT&>(d.impl));
+          return CloudProviderT::ToJson(std::any_cast<const ItemT&>(d.impl));
         },
         item);
   }
 
   AbstractCloudProvider::Item ToItem(
-      std::string_view serialized) const override {
+      const nlohmann::json& json) const override {
     return std::visit(
         [](auto d) {
           return AbstractCloudProvider::Item(Convert(std::move(d)));
         },
-        CloudProviderT::ToItem(serialized));
+        CloudProviderT::ToItem(json));
   }
 
   bool IsFileContentSizeRequired(const Directory& d) const override {

@@ -179,8 +179,8 @@ class Mega {
   Task<Auth::AuthToken> GetSession(Auth::UserCredential credential,
                                    stdx::stop_token stop_token);
 
-  static Item ToItem(std::string_view serialized);
-  static std::string ToString(const Item&);
+  static Item ToItem(const nlohmann::json& serialized);
+  static nlohmann::json ToJson(const Item&);
 
  private:
   struct PreloginData {

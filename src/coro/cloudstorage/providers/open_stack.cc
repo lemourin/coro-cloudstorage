@@ -18,14 +18,6 @@ ItemT ToItemImpl(const nlohmann::json& json) {
   return result;
 }
 
-OpenStack::Item ToItem(const nlohmann::json& json) {
-  if (json["content_type"] == "application/directory") {
-    return ToItemImpl<OpenStack::Directory>(json);
-  } else {
-    return ToItemImpl<OpenStack::File>(json);
-  }
-}
-
 }  // namespace
 
 auto OpenStack::GetRoot(stdx::stop_token) const -> Task<Directory> {
@@ -46,7 +38,7 @@ auto OpenStack::ListDirectoryPage(Directory directory,
   PageData page_data;
   for (const auto& item : response) {
     if (!item.contains("subdir")) {
-      page_data.items.emplace_back(coro::cloudstorage::ToItem(item));
+      page_data.items.emplace_back(ToItem(item));
       page_data.next_page_token = item["name"];
     }
   }
@@ -199,11 +191,15 @@ std::string OpenStack::GetEndpoint(std::string_view endpoint) const {
                       endpoint);
 }
 
-auto OpenStack::ToItem(std::string_view serialized) -> Item {
-  return coro::cloudstorage::ToItem(nlohmann::json::parse(serialized));
+auto OpenStack::ToItem(const nlohmann::json& json) -> Item {
+  if (json["content_type"] == "application/directory") {
+    return ToItemImpl<Directory>(json);
+  } else {
+    return ToItemImpl<File>(json);
+  }
 }
 
-std::string OpenStack::ToString(const Item& item) {
+nlohmann::json OpenStack::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& item) {
         nlohmann::json json;
@@ -219,7 +215,7 @@ std::string OpenStack::ToString(const Item& item) {
         } else {
           json["content_type"] = "application/directory";
         }
-        return json.dump();
+        return json;
       },
       item);
 }

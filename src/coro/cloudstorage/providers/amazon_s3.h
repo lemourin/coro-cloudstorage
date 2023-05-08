@@ -101,8 +101,8 @@ class AmazonS3 {
   template <typename Item>
   Task<Item> GetItem(std::string_view id, stdx::stop_token stop_token) const;
 
-  static Item ToItem(std::string_view serialized);
-  static std::string ToString(const Item&);
+  static Item ToItem(const nlohmann::json&);
+  static nlohmann::json ToJson(const Item&);
 
  private:
   std::string GetEndpoint(std::string_view href) const;

@@ -437,8 +437,7 @@ std::string WebDAV::GetEndpoint(std::string_view href) const {
   }
 }
 
-auto WebDAV::ToItem(std::string_view serialized) -> Item {
-  auto json = nlohmann::json::parse(serialized);
+auto WebDAV::ToItem(const nlohmann::json& json) -> Item {
   if (json["type"] == "file") {
     return ToItemImpl<File>(json);
   } else {
@@ -446,7 +445,7 @@ auto WebDAV::ToItem(std::string_view serialized) -> Item {
   }
 }
 
-std::string WebDAV::ToString(const Item& item) {
+nlohmann::json WebDAV::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& item) {
         nlohmann::json json;
@@ -466,7 +465,7 @@ std::string WebDAV::ToString(const Item& item) {
         } else {
           json["type"] = "directory";
         }
-        return json.dump();
+        return json;
       },
       item);
 }
