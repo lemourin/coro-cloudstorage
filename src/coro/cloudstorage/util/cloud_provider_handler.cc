@@ -164,6 +164,14 @@ auto CloudProviderHandler::operator()(Request request,
     }
     auto uri = http::ParseUri(request.url);
     auto path = GetEffectivePath(uri.path.value());
+    auto current_item = co_await [&]() -> Task<AbstractCloudProvider::Item> {
+      auto item = co_await cache_manager_.Get(path, stop_token);
+      if (!item) {
+        item = co_await GetItemByPathComponents(provider_, path, stop_token);
+        co_await cache_manager_.Put(path, *item, stop_token);
+      }
+      co_return *item;
+    }();
     if (request.method == http::Method::kGet && uri.query) {
       auto query = http::ParseQuery(*uri.query);
       if (auto it = query.find("thumbnail");
@@ -173,7 +181,7 @@ auto CloudProviderHandler::operator()(Request request,
               return GetItemThumbnail(std::forward<T>(d),
                                       ThumbnailQuality::kLow, stop_token);
             },
-            co_await GetItemByPathComponents(provider_, path, stop_token));
+            std::move(current_item));
       }
       if (auto it = query.find("hq_thumbnail");
           it != query.end() && it->second == "true") {
@@ -182,7 +190,7 @@ auto CloudProviderHandler::operator()(Request request,
               return GetItemThumbnail(std::forward<T>(d),
                                       ThumbnailQuality::kHigh, stop_token);
             },
-            co_await GetItemByPathComponents(provider_, path, stop_token));
+            std::move(current_item));
       }
       if (auto it = query.find("dash_player");
           it != query.end() && it->second == "true") {
@@ -199,7 +207,7 @@ auto CloudProviderHandler::operator()(Request request,
           return HandleExistingItem(std::move(request), std::forward<T>(d),
                                     stop_token);
         },
-        co_await GetItemByPathComponents(provider_, path, stop_token));
+        std::move(current_item));
   } catch (const CloudException& e) {
     switch (e.type()) {
       case CloudException::Type::kNotFound:
@@ -371,8 +379,8 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
   if (!cached_items) {
     co_yield kHtmlSuffix;
   }
-  co_await cache_manager_.Put(std::move(parent), std::move(updated_items),
-                              std::move(stop_token));
+  RunTask(cache_manager_.Put(std::move(parent), std::move(updated_items),
+                             std::move(stop_token)));
 }
 
 }  // namespace coro::cloudstorage::util

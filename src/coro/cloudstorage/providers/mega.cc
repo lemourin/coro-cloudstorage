@@ -26,6 +26,7 @@ constexpr int kRetryCount = 7;
 using ::coro::cloudstorage::util::CreateAbstractCloudProviderImpl;
 using ::coro::cloudstorage::util::FileType;
 using ::coro::cloudstorage::util::GetFileType;
+using ::coro::cloudstorage::util::StrCat;
 using ::coro::cloudstorage::util::ThumbnailOptions;
 
 enum ItemType { kFile = 0, kFolder, kRoot, kInbox, kTrash };
@@ -781,7 +782,7 @@ auto Mega::TrySetThumbnail(File file, stdx::stop_token stop_token)
             ThumbnailOptions{.size = 120,
                              .codec = ThumbnailOptions::Codec::JPEG},
             stop_token);
-        co_return co_await SetThumbnail(std::move(file), std::move(thumbnail),
+        co_return co_await SetThumbnail(file, std::move(thumbnail),
                                         std::move(stop_token));
       } catch (const std::exception& e) {
         std::cerr << "FAILED TO SET THUMBNAIL: " << e.what() << '\n';
@@ -1238,7 +1239,7 @@ auto Mega::ToItem(const nlohmann::json& json) -> Item {
   } else if (json["type"] == "inbox") {
     return ToItemImpl<Inbox>(json);
   } else {
-    throw RuntimeError("Invalid json type.");
+    throw RuntimeError(StrCat("Invalid json type: ", json["type"], '.'));
   }
 }
 
@@ -1265,7 +1266,7 @@ nlohmann::json Mega::ToJson(const Item& item) {
             json["thumbnail_id"] = *item.thumbnail_id;
           }
         } else if constexpr (std::is_same_v<T, Root>) {
-          json["type"] == "root";
+          json["type"] = "root";
         } else if constexpr (std::is_same_v<T, Trash>) {
           json["type"] = "trash";
         } else {

@@ -13,8 +13,8 @@ class CacheManager {
  public:
   CacheManager(coro::util::ThreadPool* thread_pool, std::string cache_path);
 
-  Task<> Put(CloudProviderAccount, std::string path,
-             AbstractCloudProvider::Item);
+  Task<> Put(CloudProviderAccount, std::vector<std::string> path,
+             AbstractCloudProvider::Item, stdx::stop_token);
 
   Task<> Put(CloudProviderAccount, AbstractCloudProvider::Directory directory,
              std::vector<AbstractCloudProvider::Item> items,
@@ -22,6 +22,10 @@ class CacheManager {
 
   Task<std::optional<std::vector<AbstractCloudProvider::Item>>> Get(
       CloudProviderAccount, AbstractCloudProvider::Directory directory,
+      stdx::stop_token stop_token) const;
+
+  Task<std::optional<AbstractCloudProvider::Item>> Get(
+      CloudProviderAccount, std::vector<std::string> path,
       stdx::stop_token stop_token) const;
 
  private:
@@ -35,6 +39,12 @@ class CloudProviderCacheManager {
                             CacheManager* cache_manager)
       : account_(std::move(account)), cache_manager_(cache_manager) {}
 
+  Task<> Put(std::vector<std::string> path, AbstractCloudProvider::Item item,
+             stdx::stop_token stop_token) {
+    return cache_manager_->Put(account_, std::move(path), std::move(item),
+                               std::move(stop_token));
+  }
+
   Task<> Put(AbstractCloudProvider::Directory directory,
              std::vector<AbstractCloudProvider::Item> items,
              stdx::stop_token stop_token) {
@@ -46,6 +56,12 @@ class CloudProviderCacheManager {
       AbstractCloudProvider::Directory directory,
       stdx::stop_token stop_token) const {
     return cache_manager_->Get(account_, std::move(directory),
+                               std::move(stop_token));
+  }
+
+  Task<std::optional<AbstractCloudProvider::Item>> Get(
+      std::vector<std::string> path, stdx::stop_token stop_token) const {
+    return cache_manager_->Get(account_, std::move(path),
                                std::move(stop_token));
   }
 

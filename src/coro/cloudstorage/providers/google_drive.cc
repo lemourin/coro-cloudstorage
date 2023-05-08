@@ -379,6 +379,7 @@ nlohmann::json GoogleDrive::ToJson(const Item& item) {
         json["name"] = item.name;
         json["modifiedTime"] = http::ToTimeString(item.timestamp);
         json["thumbnailLink"] = item.thumbnail_url;
+        json["parents"] = json::array();
         for (std::string parent : item.parents) {
           json["parents"].push_back(std::move(parent));
         }
