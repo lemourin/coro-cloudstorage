@@ -110,9 +110,10 @@ std::string EncodePath(const std::vector<std::string>& components) {
 
 }  // namespace
 
-CacheManager::CacheManager(coro::util::ThreadPool* thread_pool,
+CacheManager::CacheManager(const coro::util::EventLoop* event_loop,
                            std::string cache_path)
-    : thread_pool_(thread_pool), db_(CreateStorage(std::move(cache_path))) {}
+    : worker_(event_loop, /*thread_count=*/1),
+      db_(CreateStorage(std::move(cache_path))) {}
 
 Task<> CacheManager::Put(CloudProviderAccount account,
                          AbstractCloudProvider::Directory directory,
@@ -148,7 +149,7 @@ Task<> CacheManager::Put(CloudProviderAccount account,
         },
         items[i]);
   }
-  co_return co_await thread_pool_->Do(std::move(stop_token), [&] {
+  co_return co_await worker_.Do(std::move(stop_token), [&] {
     db.transaction([&] {
       for (const auto& d : db_items) {
         db.replace(d);
@@ -177,7 +178,7 @@ Task<> CacheManager::Put(CloudProviderAccount account,
       .account_type = std::move(account_id.type),
       .account_username = std::move(account_id.username),
       .id = std::visit([](const auto& item) { return item.id; }, item)};
-  co_await thread_pool_->Do(std::move(stop_token), [&] {
+  co_await worker_.Do(std::move(stop_token), [&] {
     db.transaction([&] {
       db.replace(std::move(db_item));
       db.replace(std::move(db_item_by_path));
@@ -191,7 +192,7 @@ Task<std::optional<std::vector<AbstractCloudProvider::Item>>> CacheManager::Get(
     stdx::stop_token stop_token) const {
   auto& db = GetDb(db_);
   auto account_id = account.id();
-  auto result = co_await thread_pool_->Do(std::move(stop_token), [&] {
+  auto result = co_await worker_.Do(std::move(stop_token), [&] {
     return db.select(
         &DbItem::content,
         join<DbDirectoryContent>(on(and_(
@@ -222,7 +223,7 @@ Task<std::optional<AbstractCloudProvider::Item>> CacheManager::Get(
     stdx::stop_token stop_token) const {
   auto& db = GetDb(db_);
   auto account_id = account.id();
-  auto content = co_await thread_pool_->Do(
+  auto content = co_await worker_.Do(
       std::move(stop_token), [&]() -> std::optional<std::vector<char>> {
         auto result = db.select(
             &DbItem::content,

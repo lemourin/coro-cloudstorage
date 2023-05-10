@@ -5,13 +5,14 @@
 
 #include "coro/cloudstorage/util/cloud_provider_account.h"
 #include "coro/task.h"
+#include "coro/util/event_loop.h"
 #include "coro/util/thread_pool.h"
 
 namespace coro::cloudstorage::util {
 
 class CacheManager {
  public:
-  CacheManager(coro::util::ThreadPool* thread_pool, std::string cache_path);
+  CacheManager(const coro::util::EventLoop* event_loop, std::string cache_path);
 
   Task<> Put(CloudProviderAccount, std::vector<std::string> path,
              AbstractCloudProvider::Item, stdx::stop_token);
@@ -29,7 +30,7 @@ class CacheManager {
       stdx::stop_token stop_token) const;
 
  private:
-  coro::util::ThreadPool* thread_pool_;
+  mutable coro::util::ThreadPool worker_;
   mutable std::any db_;
 };
 
