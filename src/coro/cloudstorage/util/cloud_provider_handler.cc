@@ -168,7 +168,15 @@ auto CloudProviderHandler::operator()(Request request,
       auto item = co_await cache_manager_.Get(path, stop_token);
       if (!item) {
         item = co_await GetItemByPathComponents(provider_, path, stop_token);
-        co_await cache_manager_.Put(path, *item, stop_token);
+        RunTask(cache_manager_.Put(path, *item, stop_token));
+      } else {
+        RunTask([provider = provider_, cache_manager = cache_manager_, path,
+                 stop_token]() mutable -> Task<> {
+          auto item =
+              co_await GetItemByPathComponents(provider, path, stop_token);
+          RunTask(
+              cache_manager.Put(path, std::move(item), std::move(stop_token)));
+        });
       }
       co_return *item;
     }();
@@ -372,20 +380,31 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
     }
     co_yield kHtmlSuffix;
   }
-  std::vector<AbstractCloudProvider::Item> updated_items;
-  FOR_CO_AWAIT(const auto& page, page_data) {
-    for (auto item : page.items) {
-      if (!cached_items) {
-        co_yield GetItemEntry(host, item, path, use_dash_player);
-      }
-      updated_items.emplace_back(std::move(item));
-    }
-  }
   if (!cached_items) {
+    std::vector<AbstractCloudProvider::Item> updated_items;
+    FOR_CO_AWAIT(const auto& page, page_data) {
+      for (auto item : page.items) {
+        co_yield GetItemEntry(host, item, path, use_dash_player);
+        updated_items.emplace_back(std::move(item));
+      }
+    }
+    RunTask(cache_manager_.Put(std::move(parent), std::move(updated_items),
+                               std::move(stop_token)));
     co_yield kHtmlSuffix;
+  } else {
+    RunTask([page_data = std::move(page_data), parent = std::move(parent),
+             stop_token = std::move(stop_token),
+             cache_manager = cache_manager_]() mutable -> Task<> {
+      std::vector<AbstractCloudProvider::Item> updated_items;
+      FOR_CO_AWAIT(const auto& page, page_data) {
+        for (auto item : page.items) {
+          updated_items.emplace_back(std::move(item));
+        }
+      }
+      co_await cache_manager.Put(std::move(parent), std::move(updated_items),
+                                 std::move(stop_token));
+    });
   }
-  RunTask(cache_manager_.Put(std::move(parent), std::move(updated_items),
-                             std::move(stop_token)));
 }
 
 }  // namespace coro::cloudstorage::util
