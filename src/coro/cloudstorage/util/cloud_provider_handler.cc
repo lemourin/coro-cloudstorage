@@ -15,6 +15,8 @@ namespace coro::cloudstorage::util {
 
 namespace {
 
+class ThumbnailGeneratorException : public std::exception {};
+
 std::string GetItemPathPrefix(
     std::span<const std::pair<std::string, std::string>> headers) {
   namespace re = coro::util::re;
@@ -249,7 +251,7 @@ Task<std::string> CloudProviderHandler::GenerateThumbnail(
             std::move(stop_token));
       } catch (const std::exception& e) {
         std::cerr << "FAILED TO GENERATE THUMBNAIL: " << e.what() << '\n';
-        throw;
+        throw ThumbnailGeneratorException();
       }
     default:
       throw CloudException(CloudException::Type::kNotFound);
@@ -283,6 +285,13 @@ auto CloudProviderHandler::GetIcon(const Item& item,
                       {"Content-Type", "image/png"},
                       {"Content-Length", std::to_string(content.size())}},
           .body = http::CreateBody(std::move(content))};
+    } catch (const ThumbnailGeneratorException&) {
+      co_return GetStaticIcon(item, 302);
+    } catch (const CloudException& e) {
+      co_return GetStaticIcon(
+          item, /*http_code=*/e.type() == CloudException::Type::kNotFound
+                    ? 301
+                    : 302);
     } catch (...) {
       co_return GetStaticIcon(item, /*http_code=*/302);
     }
