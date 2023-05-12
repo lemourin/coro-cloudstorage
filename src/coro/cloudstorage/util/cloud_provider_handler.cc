@@ -169,10 +169,14 @@ auto CloudProviderHandler::operator()(Request request,
       } else {
         RunTask([provider = provider_, cache_manager = cache_manager_, path,
                  stop_token]() mutable -> Task<> {
-          auto item =
-              co_await GetItemByPathComponents(provider, path, stop_token);
-          RunTask(
-              cache_manager.Put(path, std::move(item), std::move(stop_token)));
+          try {
+            auto item =
+                co_await GetItemByPathComponents(provider, path, stop_token);
+            co_await cache_manager.Put(path, std::move(item),
+                                       std::move(stop_token));
+          } catch (const std::exception& e) {
+            std::cerr << "FAILED TO REFRESH ITEM: " << e.what() << '\n';
+          }
         });
       }
       co_return *item;
@@ -399,14 +403,18 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
     RunTask([page_data = std::move(page_data), parent = std::move(parent),
              stop_token = std::move(stop_token),
              cache_manager = cache_manager_]() mutable -> Task<> {
-      std::vector<AbstractCloudProvider::Item> updated_items;
-      FOR_CO_AWAIT(const auto& page, page_data) {
-        for (auto item : page.items) {
-          updated_items.emplace_back(std::move(item));
+      try {
+        std::vector<AbstractCloudProvider::Item> updated_items;
+        FOR_CO_AWAIT(const auto& page, page_data) {
+          for (auto item : page.items) {
+            updated_items.emplace_back(std::move(item));
+          }
         }
+        co_await cache_manager.Put(std::move(parent), std::move(updated_items),
+                                   std::move(stop_token));
+      } catch (const std::exception& e) {
+        std::cerr << "FAILED TO REFRESH DIRECTORY LIST: " << e.what() << '\n';
       }
-      co_await cache_manager.Put(std::move(parent), std::move(updated_items),
-                                 std::move(stop_token));
     });
   }
 }
