@@ -249,10 +249,15 @@ Task<std::string> CloudProviderHandler::GenerateThumbnail(
 }
 
 template <typename Item>
-auto CloudProviderHandler::GetStaticIcon(const Item& item) const -> Response {
-  return Response{
-      .status = 302,
-      .headers = {{"Location", StrCat("/static/", GetIconName(item), ".svg")}}};
+auto CloudProviderHandler::GetStaticIcon(const Item& item, int http_code) const
+    -> Response {
+  std::vector<std::pair<std::string, std::string>> headers = {
+      {"Location", StrCat("/static/", GetIconName(item), ".svg")}};
+  if (http_code == 301) {
+    headers.push_back({"Cache-Control", "private"});
+    headers.push_back({"Cache-Control", "max-age=604800"});
+  }
+  return Response{.status = http_code, .headers = std::move(headers)};
 }
 
 template <typename Item>
@@ -271,10 +276,10 @@ auto CloudProviderHandler::GetIcon(const Item& item,
                       {"Content-Length", std::to_string(content.size())}},
           .body = http::CreateBody(std::move(content))};
     } catch (...) {
-      co_return GetStaticIcon(item);
+      co_return GetStaticIcon(item, /*http_code=*/302);
     }
   } else {
-    co_return GetStaticIcon(item);
+    co_return GetStaticIcon(item, /*http_code=*/301);
   }
 }
 

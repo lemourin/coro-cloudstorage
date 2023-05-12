@@ -39,7 +39,7 @@ class CloudProviderHandler {
                                       stdx::stop_token stop_token) const;
 
   template <typename Item>
-  Response GetStaticIcon(const Item& item) const;
+  Response GetStaticIcon(const Item& item, int http_code) const;
 
   template <typename Item>
   Task<Response> GetIcon(const Item& item, stdx::stop_token stop_token) const;
