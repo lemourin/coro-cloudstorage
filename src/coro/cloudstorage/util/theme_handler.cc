@@ -33,15 +33,20 @@ Theme GetTheme(std::span<const std::pair<std::string, std::string>> headers) {
 auto ThemeHandler::operator()(Request request, stdx::stop_token) const
     -> Task<Response> {
   Theme current_theme = GetTheme(request.headers);
+  std::string cookie = StrCat(
+      "theme=",
+      ToString(current_theme == Theme::kLight ? Theme::kDark : Theme::kLight),
+      ";path=/;Expires=Mon, 01 Jan 9999 00:00:00 GMT");
+  if (std::optional<std::string> host =
+          http::GetHeader(request.headers, "Host")) {
+    auto uri = http::ParseUri(StrCat("//", *host));
+    if (uri.host.value().ends_with(".localhost")) {
+      cookie += StrCat(";domain=.", *uri.host);
+    }
+  }
   co_return Response{
       .status = 302,
-      .headers = {{"Location", "/settings"},
-                  {"Set-Cookie",
-                   StrCat(
-                       "theme=",
-                       ToString(current_theme == Theme::kLight ? Theme::kDark
-                                                               : Theme::kLight),
-                       ";path=/;Expires=Mon, 01 Jan 9999 00:00:00 GMT")}},
+      .headers = {{"Location", "/settings"}, {"Set-Cookie", std::move(cookie)}},
   };
 }
 
