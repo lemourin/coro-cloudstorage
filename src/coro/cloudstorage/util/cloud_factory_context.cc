@@ -21,11 +21,7 @@ CloudFactoryContext::CloudFactoryContext(
       cache_(event_loop, config.cache_path),
       factory_(event_loop_, &thread_pool_, &http_, &thumbnail_generator_,
                &muxer_, &random_number_generator_, config.auth_data),
-      settings_manager_([&] {
-        AuthTokenManager auth_token_manager(&factory_, config.config_path);
-        return SettingsManager(std::move(auth_token_manager),
-                               std::move(config));
-      }()) {}
+      settings_manager_(&factory_, std::move(config)) {}
 
 AccountManagerHandler CloudFactoryContext::CreateAccountManagerHandler(
     AccountListener listener) {

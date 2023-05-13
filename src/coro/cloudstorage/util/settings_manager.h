@@ -1,9 +1,11 @@
 #ifndef CORO_CLOUDSTORAGE_UTIL_SETTINGS_MANAGER_H
 #define CORO_CLOUDSTORAGE_UTIL_SETTINGS_MANAGER_H
 
+#include <any>
 #include <functional>
 
-#include "coro/cloudstorage/util/auth_token_manager.h"
+#include "coro/cloudstorage/util/abstract_cloud_factory.h"
+#include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/cloudstorage/util/cloud_factory_config.h"
 #include "coro/cloudstorage/util/settings_utils.h"
 #include "coro/http/http_server.h"
@@ -12,19 +14,18 @@ namespace coro::cloudstorage::util {
 
 class SettingsManager {
  public:
-  SettingsManager(AuthTokenManager auth_token_manager,
-                  CloudFactoryConfig config);
+  struct AuthToken : AbstractCloudProvider::Auth::AuthToken {
+    std::string id;
+  };
 
-  auto LoadTokenData() const { return auth_token_manager_.LoadTokenData(); }
+  SettingsManager(AbstractCloudFactory* factory, CloudFactoryConfig config);
+
+  std::vector<AuthToken> LoadTokenData() const;
 
   void SaveToken(AbstractCloudProvider::Auth::AuthToken token,
-                 std::string_view id) const {
-    auth_token_manager_.SaveToken(std::move(token), id);
-  }
+                 std::string_view id) const;
 
-  void RemoveToken(std::string_view type, std::string_view id) const {
-    auth_token_manager_.RemoveToken(type, id);
-  }
+  void RemoveToken(std::string_view id, std::string_view type) const;
 
   void SetEnablePublicNetwork(bool enable) const;
   bool IsPublicNetworkEnabled() const;
@@ -39,8 +40,9 @@ class SettingsManager {
                                      std::string_view username) const;
 
  private:
-  AuthTokenManager auth_token_manager_;
+  AbstractCloudFactory* factory_;
   CloudFactoryConfig config_;
+  mutable std::any db_;
   bool effective_is_public_network_enabled_;
   uint16_t port_;
 };

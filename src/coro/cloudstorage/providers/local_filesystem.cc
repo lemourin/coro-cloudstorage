@@ -21,6 +21,7 @@
 #include <fmt/format.h>
 
 #include <cstdlib>
+#include <fstream>
 
 namespace coro::cloudstorage {
 

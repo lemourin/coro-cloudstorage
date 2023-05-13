@@ -33,14 +33,4 @@ std::string GetCacheFilePath(std::string_view app_name,
   return Append(GetCacheDirectory(), app_name, file_name);
 }
 
-nlohmann::json ReadSettings(std::string_view path) {
-  std::ifstream file{std::string(path)};
-  if (!file) {
-    return {};
-  }
-  nlohmann::json json;
-  file >> json;
-  return json;
-}
-
 }  // namespace coro::cloudstorage::util

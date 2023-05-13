@@ -59,7 +59,6 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/merged_cloud_provider.cc
     coro/cloudstorage/util/account_manager_handler.cc
     coro/cloudstorage/util/crypto_utils.cc
-    coro/cloudstorage/util/auth_token_manager.cc
     coro/cloudstorage/util/file_utils.cc
     coro/cloudstorage/util/string_utils.cc
     coro/cloudstorage/util/cloud_provider_utils.cc
@@ -130,7 +129,6 @@ target_sources(coro-cloudstorage
         coro/cloudstorage/util/static_file_handler.h
         coro/cloudstorage/util/abstract_cloud_factory.h
         coro/cloudstorage/util/recursive_visit.h
-        coro/cloudstorage/util/auth_token_manager.h
         coro/cloudstorage/util/webdav_handler.h
         coro/cloudstorage/util/random_number_generator.h
         coro/cloudstorage/util/cloud_provider_handler.h

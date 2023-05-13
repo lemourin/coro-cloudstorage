@@ -8,6 +8,7 @@
 
 #include "coro/cloudstorage/util/cloud_provider_utils.h"
 #include "coro/cloudstorage/util/net_utils.h"
+#include "coro/cloudstorage/util/serialize_utils.h"
 #include "coro/cloudstorage/util/thumbnail_quality.h"
 #include "coro/util/regex.h"
 
