@@ -10,6 +10,7 @@ namespace {
 
 using ::sqlite_orm::and_;
 using ::sqlite_orm::c;
+using ::sqlite_orm::columns;
 using ::sqlite_orm::foreign_key;
 using ::sqlite_orm::join;
 using ::sqlite_orm::make_column;
@@ -34,6 +35,15 @@ struct DbDirectoryContent {
   std::string parent_item_id;
   std::string child_item_id;
   int32_t order;
+};
+
+struct DbImage {
+  std::string account_type;
+  std::string account_username;
+  std::string item_id;
+  int quality;
+  std::string mime_type;
+  std::vector<char> image_bytes;
 };
 
 auto CreateStorage(std::string path) {
@@ -66,7 +76,15 @@ auto CreateStorage(std::string path) {
                       &DbDirectoryContent::account_username,
                       &DbDirectoryContent::child_item_id)
               .references(&DbItem::account_type, &DbItem::account_username,
-                          &DbItem::id)));
+                          &DbItem::id)),
+      make_table("image", make_column("account_type", &DbImage::account_type),
+                 make_column("account_username", &DbImage::account_username),
+                 make_column("item_id", &DbImage::item_id),
+                 make_column("quality", &DbImage::quality),
+                 make_column("mime_type", &DbImage::mime_type),
+                 make_column("image_bytes", &DbImage::image_bytes),
+                 primary_key(&DbImage::account_type, &DbImage::account_username,
+                             &DbImage::item_id)));
   storage.sync_schema();
   return storage;
 }
@@ -81,21 +99,12 @@ std::vector<char> ToCbor(const nlohmann::json& json) {
   return output;
 }
 
-std::string EncodePath(const std::vector<std::string>& components) {
-  std::string encoded;
-  for (const auto& component : components) {
-    encoded += '/';
-    encoded += http::EncodeUri(component);
-  }
-  return encoded;
-}
-
 }  // namespace
 
 CacheManager::CacheManager(const coro::util::EventLoop* event_loop,
                            std::string cache_path)
-    : worker_(event_loop, /*thread_count=*/1),
-      db_(CreateStorage(std::move(cache_path))) {}
+    : db_(CreateStorage(std::move(cache_path))),
+      worker_(event_loop, /*thread_count=*/1) {}
 
 Task<> CacheManager::Put(CloudProviderAccount account,
                          AbstractCloudProvider::Directory directory,
@@ -173,6 +182,48 @@ Task<std::optional<std::vector<AbstractCloudProvider::Item>>> CacheManager::Get(
     items[i] = account.provider()->ToItem(nlohmann::json::from_cbor(result[i]));
   }
   co_return items;
+}
+
+Task<> CacheManager::Put(CloudProviderAccount account,
+                         AbstractCloudProvider::Item item,
+                         ThumbnailQuality quality,
+                         std::vector<char> image_bytes, std::string mime_type,
+                         stdx::stop_token stop_token) {
+  auto account_id = account.id();
+  co_await worker_.Do(
+      std::move(stop_token),
+      [db = GetDb(db_),
+       entry = DbImage{
+           .account_type = std::move(account_id.type),
+           .account_username = std::move(account_id.username),
+           .item_id = std::visit([](auto&& i) { return std::move(i.id); },
+                                 std::move(item)),
+           .quality = static_cast<int>(quality),
+           .mime_type = std::move(mime_type),
+           .image_bytes = std::move(image_bytes)}]() mutable {
+        db.replace(std::move(entry));
+      });
+}
+
+auto CacheManager::Get(CloudProviderAccount account,
+                       AbstractCloudProvider::Item item, ThumbnailQuality,
+                       stdx::stop_token stop_token)
+    -> Task<std::optional<ImageData>> {
+  auto& db = GetDb(db_);
+  auto account_id = account.id();
+  auto item_id = std::visit([](auto i) { return i.id; }, std::move(item));
+  auto result = co_await worker_.Do(std::move(stop_token), [&] {
+    return db.select(
+        columns(&DbImage::image_bytes, &DbImage::mime_type),
+        where(and_(c(&DbImage::account_type) == account_id.type,
+                   and_(c(&DbImage::account_username) == account_id.username,
+                        c(&DbImage::item_id) == item_id))));
+  });
+  if (result.empty()) {
+    co_return std::nullopt;
+  }
+  co_return ImageData{.image_bytes = std::get<0>(std::move(result[0])),
+                      .mime_type = std::get<1>(std::move(result[0]))};
 }
 
 }  // namespace coro::cloudstorage::util

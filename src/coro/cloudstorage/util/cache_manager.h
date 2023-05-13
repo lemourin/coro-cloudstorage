@@ -12,19 +12,33 @@ namespace coro::cloudstorage::util {
 
 class CacheManager {
  public:
+  struct ImageData {
+    std::vector<char> image_bytes;
+    std::string mime_type;
+  };
+
   CacheManager(const coro::util::EventLoop* event_loop, std::string cache_path);
 
   Task<> Put(CloudProviderAccount, AbstractCloudProvider::Directory directory,
              std::vector<AbstractCloudProvider::Item> items,
              stdx::stop_token stop_token);
 
+  Task<> Put(CloudProviderAccount, AbstractCloudProvider::Item,
+             ThumbnailQuality, std::vector<char> image_bytes,
+             std::string mime_type, stdx::stop_token stop_token);
+
   Task<std::optional<std::vector<AbstractCloudProvider::Item>>> Get(
       CloudProviderAccount, AbstractCloudProvider::Directory directory,
       stdx::stop_token stop_token) const;
 
+  Task<std::optional<ImageData>> Get(CloudProviderAccount,
+                                     AbstractCloudProvider::Item,
+                                     ThumbnailQuality,
+                                     stdx::stop_token stop_token);
+
  private:
-  mutable coro::util::ThreadPool worker_;
   mutable std::any db_;
+  mutable coro::util::ThreadPool worker_;
 };
 
 class CloudProviderCacheManager {
@@ -33,18 +47,14 @@ class CloudProviderCacheManager {
                             CacheManager* cache_manager)
       : account_(std::move(account)), cache_manager_(cache_manager) {}
 
-  Task<> Put(AbstractCloudProvider::Directory directory,
-             std::vector<AbstractCloudProvider::Item> items,
-             stdx::stop_token stop_token) {
-    return cache_manager_->Put(account_, std::move(directory), std::move(items),
-                               std::move(stop_token));
+  template <typename... Args>
+  auto Put(Args&&... args) {
+    return cache_manager_->Put(account_, std::forward<Args>(args)...);
   }
 
-  Task<std::optional<std::vector<AbstractCloudProvider::Item>>> Get(
-      AbstractCloudProvider::Directory directory,
-      stdx::stop_token stop_token) const {
-    return cache_manager_->Get(account_, std::move(directory),
-                               std::move(stop_token));
+  template <typename... Args>
+  auto Get(Args&&... args) const {
+    return cache_manager_->Get(account_, std::forward<Args>(args)...);
   }
 
  private:
