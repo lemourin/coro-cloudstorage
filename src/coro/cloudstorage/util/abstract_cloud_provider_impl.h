@@ -508,7 +508,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider,
             .mime_type = std::string(std::move(provider_thumbnail.mime_type))};
         co_return thumbnail;
       } else {
-        throw CloudException("thumbnail not available");
+        throw CloudException(CloudException::Type::kNotFound);
       }
     }
     CloudProviderT* provider;

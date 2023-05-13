@@ -384,9 +384,10 @@ CloudProviderAccount AccountManagerHandler::Impl::CreateAccount(
   AbstractCloudProvider* provider_ptr = provider.get();
   CloudProviderAccount account(username, version, std::move(provider));
   CloudProviderCacheManager cache_manager(std::move(account), cache_manager_);
-  return CloudProviderAccount(username, version,
-                              std::make_unique<StaleCloudProvider>(
-                                  provider_ptr, std::move(cache_manager)));
+  return CloudProviderAccount(
+      username, version,
+      std::make_unique<StaleCloudProvider>(
+          provider_ptr, std::move(cache_manager), thumbnail_generator_));
 }
 
 Task<CloudProviderAccount> AccountManagerHandler::Impl::Create(

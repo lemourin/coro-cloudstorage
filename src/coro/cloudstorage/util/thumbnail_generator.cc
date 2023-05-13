@@ -488,9 +488,13 @@ Task<std::string> ThumbnailGenerator::operator()(
   std::atomic_bool interrupted = false;
   stdx::stop_callback cb(stop_token, [&] { interrupted = true; });
   co_return co_await thread_pool_->Do(stop_token, [&] {
-    io_context = CreateIOContext(event_loop_, provider, std::move(file),
-                                 std::move(stop_token));
-    return GenerateThumbnail(io_context.get(), options, &interrupted);
+    try {
+      io_context = CreateIOContext(event_loop_, provider, std::move(file),
+                                   std::move(stop_token));
+      return GenerateThumbnail(io_context.get(), options, &interrupted);
+    } catch (const std::exception& e) {
+      throw ThumbnailGeneratorException(e.what());
+    }
   });
 }
 

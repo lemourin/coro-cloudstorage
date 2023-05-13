@@ -33,14 +33,8 @@ class CloudProviderHandler {
   std::string GetItemPathPrefix(
       std::span<const std::pair<std::string, std::string>> headers) const;
 
-  Task<std::string> GenerateThumbnail(const AbstractCloudProvider::File& item,
-                                      stdx::stop_token stop_token) const;
-
   template <typename Item>
   Response GetStaticIcon(const Item& item, int http_code) const;
-
-  template <typename Item>
-  Task<Response> GetIcon(const Item& item, stdx::stop_token stop_token) const;
 
   template <typename Item>
   Task<Response> GetItemThumbnail(Item d, ThumbnailQuality,

@@ -8,6 +8,11 @@
 
 namespace coro::cloudstorage::util {
 
+class ThumbnailGeneratorException : public std::exception {
+ public:
+  using std::exception::exception;
+};
+
 class ThumbnailGenerator {
  public:
   ThumbnailGenerator(coro::util::ThreadPool* thread_pool,

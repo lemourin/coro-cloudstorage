@@ -2,11 +2,28 @@
 
 #include <iostream>
 
+#include "coro/cloudstorage/util/cloud_provider_utils.h"
 #include "coro/cloudstorage/util/generator_utils.h"
 
 namespace coro::cloudstorage::util {
 
 namespace {
+
+Task<std::string> GenerateThumbnail(
+    AbstractCloudProvider* provider,
+    const ThumbnailGenerator* thumbnail_generator,
+    AbstractCloudProvider::File item, stdx::stop_token stop_token) {
+  switch (GetFileType(item.mime_type)) {
+    case FileType::kImage:
+    case FileType::kVideo:
+      return (*thumbnail_generator)(
+          provider, std::move(item),
+          ThumbnailOptions{.codec = ThumbnailOptions::Codec::PNG},
+          std::move(stop_token));
+    default:
+      throw CloudException(CloudException::Type::kNotFound);
+  }
+}
 
 Task<> UpdateCache(AbstractCloudProvider* provider,
                    CloudProviderCacheManager cache_manager,
@@ -29,8 +46,10 @@ Task<> UpdateCache(AbstractCloudProvider* provider,
 
 template <typename Item>
 Task<AbstractCloudProvider::Thumbnail> GetThumbnail(
-    AbstractCloudProvider* provider, CloudProviderCacheManager cache_manager,
-    Item item, ThumbnailQuality quality, stdx::stop_token stop_token) {
+    AbstractCloudProvider* provider,
+    const ThumbnailGenerator* thumbnail_generator,
+    CloudProviderCacheManager cache_manager, Item item,
+    ThumbnailQuality quality, stdx::stop_token stop_token) {
   std::optional<CacheManager::ImageData> image_data =
       co_await cache_manager.Get(item, quality, stop_token);
   if (image_data) {
@@ -42,8 +61,25 @@ Task<AbstractCloudProvider::Thumbnail> GetThumbnail(
         .size = size,
         .mime_type = std::move(image_data->mime_type)};
   } else {
-    auto image_data = co_await provider->GetItemThumbnail(
-        item, quality, http::Range{}, std::move(stop_token));
+    auto image_data = co_await [&]() -> Task<AbstractCloudProvider::Thumbnail> {
+      if constexpr (std::is_same_v<Item, AbstractCloudProvider::File>) {
+        try {
+          co_return co_await provider->GetItemThumbnail(
+              item, quality, http::Range{}, stop_token);
+        } catch (const CloudException&) {
+        }
+        std::string image_bytes = co_await GenerateThumbnail(
+            provider, thumbnail_generator, item, std::move(stop_token));
+        int64_t size = image_bytes.size();
+        co_return AbstractCloudProvider::Thumbnail{
+            .data = ToGenerator(std::move(image_bytes)),
+            .size = size,
+            .mime_type = "image/png"};
+      } else {
+        co_return co_await provider->GetItemThumbnail(
+            item, quality, http::Range{}, std::move(stop_token));
+      }
+    }();
     auto image_bytes = co_await http::GetBody(std::move(image_data.data));
     RunTask([cache_manager, item = std::move(item), quality,
              image_bytes =
@@ -61,12 +97,13 @@ Task<AbstractCloudProvider::Thumbnail> GetThumbnail(
 
 template <typename Item>
 Task<AbstractCloudProvider::Thumbnail> GetThumbnail(
-    AbstractCloudProvider* provider, CloudProviderCacheManager cache_manager,
-    Item item, ThumbnailQuality quality, http::Range range,
-    stdx::stop_token stop_token) {
-  auto thumbnail =
-      co_await GetThumbnail(provider, std::move(cache_manager), std::move(item),
-                            quality, std::move(stop_token));
+    AbstractCloudProvider* provider,
+    const ThumbnailGenerator* thumbnail_generator,
+    CloudProviderCacheManager cache_manager, Item item,
+    ThumbnailQuality quality, http::Range range, stdx::stop_token stop_token) {
+  auto thumbnail = co_await GetThumbnail(
+      provider, thumbnail_generator, std::move(cache_manager), std::move(item),
+      quality, std::move(stop_token));
   std::string image_bytes = co_await http::GetBody(std::move(thumbnail.data));
   thumbnail.data = ToGenerator(
       std::move(image_bytes)
@@ -111,8 +148,8 @@ auto StaleCloudProvider::GetItemThumbnail(File item, ThumbnailQuality quality,
                                           http::Range range,
                                           stdx::stop_token stop_token) const
     -> Task<Thumbnail> {
-  return GetThumbnail(provider_, cache_manager_, std::move(item), quality,
-                      range, std::move(stop_token));
+  return GetThumbnail(provider_, thumbnail_generator_, cache_manager_,
+                      std::move(item), quality, range, std::move(stop_token));
 }
 
 auto StaleCloudProvider::GetItemThumbnail(Directory item,
@@ -120,8 +157,8 @@ auto StaleCloudProvider::GetItemThumbnail(Directory item,
                                           http::Range range,
                                           stdx::stop_token stop_token) const
     -> Task<Thumbnail> {
-  return GetThumbnail(provider_, cache_manager_, std::move(item), quality,
-                      range, std::move(stop_token));
+  return GetThumbnail(provider_, thumbnail_generator_, cache_manager_,
+                      std::move(item), quality, range, std::move(stop_token));
 }
 
 }  // namespace coro::cloudstorage::util

@@ -5,14 +5,18 @@
 
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/cloudstorage/util/cache_manager.h"
+#include "coro/cloudstorage/util/thumbnail_generator.h"
 
 namespace coro::cloudstorage::util {
 
 class StaleCloudProvider : public AbstractCloudProvider {
  public:
   StaleCloudProvider(AbstractCloudProvider* provider,
-                     CloudProviderCacheManager cache_manager)
-      : provider_(provider), cache_manager_(std::move(cache_manager)) {}
+                     CloudProviderCacheManager cache_manager,
+                     const ThumbnailGenerator* thumbnail_generator)
+      : provider_(provider),
+        cache_manager_(std::move(cache_manager)),
+        thumbnail_generator_(thumbnail_generator) {}
 
   std::string_view GetId() const override { return provider_->GetId(); }
 
@@ -118,6 +122,7 @@ class StaleCloudProvider : public AbstractCloudProvider {
  private:
   AbstractCloudProvider* provider_;
   CloudProviderCacheManager cache_manager_;
+  const ThumbnailGenerator* thumbnail_generator_;
 };
 
 }  // namespace coro::cloudstorage::util

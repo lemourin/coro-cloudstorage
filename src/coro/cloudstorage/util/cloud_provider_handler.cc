@@ -16,8 +16,6 @@ namespace coro::cloudstorage::util {
 
 namespace {
 
-class ThumbnailGeneratorException : public std::exception {};
-
 std::string GetItemPathPrefix(
     std::span<const std::pair<std::string, std::string>> headers) {
   namespace re = coro::util::re;
@@ -218,26 +216,6 @@ std::string CloudProviderHandler::GetItemPathPrefix(
   return ::coro::cloudstorage::util::GetItemPathPrefix(headers);
 }
 
-Task<std::string> CloudProviderHandler::GenerateThumbnail(
-    const AbstractCloudProvider::File& item,
-    stdx::stop_token stop_token) const {
-  switch (GetFileType(item.mime_type)) {
-    case FileType::kImage:
-    case FileType::kVideo:
-      try {
-        co_return co_await (*thumbnail_generator_)(
-            provider_, item,
-            ThumbnailOptions{.codec = ThumbnailOptions::Codec::PNG},
-            std::move(stop_token));
-      } catch (const std::exception& e) {
-        std::cerr << "FAILED TO GENERATE THUMBNAIL: " << e.what() << '\n';
-        throw ThumbnailGeneratorException();
-      }
-    default:
-      throw CloudException(CloudException::Type::kNotFound);
-  }
-}
-
 template <typename Item>
 auto CloudProviderHandler::GetStaticIcon(const Item& item, int http_code) const
     -> Response {
@@ -248,36 +226,6 @@ auto CloudProviderHandler::GetStaticIcon(const Item& item, int http_code) const
     headers.push_back({"Cache-Control", "max-age=604800"});
   }
   return Response{.status = http_code, .headers = std::move(headers)};
-}
-
-template <typename Item>
-auto CloudProviderHandler::GetIcon(const Item& item,
-                                   stdx::stop_token stop_token) const
-    -> Task<Response> {
-  if constexpr (std::is_same_v<Item, AbstractCloudProvider::File>) {
-    try {
-      std::string content =
-          co_await GenerateThumbnail(item, std::move(stop_token));
-      co_return Response{
-          .status = 200,
-          .headers = {{"Cache-Control", "private"},
-                      {"Cache-Control", "max-age=604800"},
-                      {"Content-Type", "image/png"},
-                      {"Content-Length", std::to_string(content.size())}},
-          .body = http::CreateBody(std::move(content))};
-    } catch (const ThumbnailGeneratorException&) {
-      co_return GetStaticIcon(item, 302);
-    } catch (const CloudException& e) {
-      co_return GetStaticIcon(
-          item, /*http_code=*/e.type() == CloudException::Type::kNotFound
-                    ? 301
-                    : 302);
-    } catch (...) {
-      co_return GetStaticIcon(item, /*http_code=*/302);
-    }
-  } else {
-    co_return GetStaticIcon(item, /*http_code=*/301);
-  }
 }
 
 template <typename Item>
@@ -294,9 +242,16 @@ auto CloudProviderHandler::GetItemThumbnail(Item d, ThumbnailQuality quality,
                     {"Content-Type", std::string(thumbnail.mime_type)},
                     {"Content-Length", std::to_string(thumbnail.size)}},
         .body = std::move(thumbnail.data)};
+  } catch (const ThumbnailGeneratorException& e) {
+    std::cerr << "FAILED TO GENERATE THUMBNAIL " << e.what() << '\n';
+    co_return GetStaticIcon(d, 302);
+  } catch (const CloudException& e) {
+    co_return GetStaticIcon(
+        d,
+        /*http_code=*/e.type() == CloudException::Type::kNotFound ? 301 : 302);
   } catch (...) {
+    co_return GetStaticIcon(d, /*http_code=*/302);
   }
-  co_return co_await GetIcon(d, std::move(stop_token));
 }
 
 auto CloudProviderHandler::HandleExistingItem(Request request,
