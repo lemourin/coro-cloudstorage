@@ -9,6 +9,7 @@
 #include "coro/cloudstorage/util/get_size_handler.h"
 #include "coro/cloudstorage/util/mux_handler.h"
 #include "coro/cloudstorage/util/settings_handler.h"
+#include "coro/cloudstorage/util/stale_cloud_provider.h"
 #include "coro/cloudstorage/util/static_file_handler.h"
 #include "coro/cloudstorage/util/theme_handler.h"
 #include "coro/cloudstorage/util/webdav_utils.h"
@@ -124,8 +125,8 @@ class AccountManagerHandler::Impl {
   void OnCloudProviderCreated(CloudProviderAccount account);
 
   CloudProviderAccount CreateAccount(
-      AbstractCloudProvider::Auth::AuthToken auth_token,
-      std::shared_ptr<std::optional<std::string>> username);
+      std::unique_ptr<AbstractCloudProvider> provider, std::string username,
+      int64_t version);
 
   Task<CloudProviderAccount> Create(
       AbstractCloudProvider::Auth::AuthToken auth_token,
@@ -159,10 +160,12 @@ AccountManagerHandler::Impl::Impl(const AbstractCloudFactory* factory,
       cache_manager_(cache_manager) {
   for (auto auth_token : settings_manager_->LoadTokenData()) {
     auto id = std::move(auth_token.id);
-    auto account = accounts_.emplace_back(
-        CreateAccount(std::move(auth_token),
-                      std::make_shared<std::optional<std::string>>(id)));
-    OnCloudProviderCreated(account);
+    OnCloudProviderCreated(accounts_.emplace_back(CreateAccount(
+        factory_->Create(auth_token,
+                         OnAuthTokenChanged{
+                             settings_manager_,
+                             std::make_shared<std::optional<std::string>>(id)}),
+        id, version_++)));
   }
 }
 
@@ -307,9 +310,9 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
         .account = account,
         .prefix = StrCat("/list/", account.type(), '/',
                          http::EncodeUri(account.username())),
-        .handler = CloudProviderHandler(
-            &*account.provider(), thumbnail_generator_, settings_manager_,
-            CloudProviderCacheManager(account, cache_manager_))});
+        .handler =
+            CloudProviderHandler(account.provider().get(), thumbnail_generator_,
+                                 settings_manager_)});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/remove/", account.type(), '/',
@@ -368,7 +371,6 @@ void AccountManagerHandler::Impl::RemoveCloudProvider(const F& predicate) {
       it->stop_source_.request_stop();
       account_listener_.OnDestroy(*it);
       settings_manager_->RemoveToken(it->username(), it->type());
-      *it->username_ = std::nullopt;
       it = accounts_.erase(it);
     } else {
       it++;
@@ -377,40 +379,36 @@ void AccountManagerHandler::Impl::RemoveCloudProvider(const F& predicate) {
 }
 
 CloudProviderAccount AccountManagerHandler::Impl::CreateAccount(
-    AbstractCloudProvider::Auth::AuthToken auth_token,
-    std::shared_ptr<std::optional<std::string>> username) {
-  return CloudProviderAccount(
-      username, version_++,
-      factory_->Create(std::move(auth_token),
-                       OnAuthTokenChanged{settings_manager_, username}));
+    std::unique_ptr<AbstractCloudProvider> provider, std::string username,
+    int64_t version) {
+  AbstractCloudProvider* provider_ptr = provider.get();
+  CloudProviderAccount account(username, version, std::move(provider));
+  CloudProviderCacheManager cache_manager(std::move(account), cache_manager_);
+  return CloudProviderAccount(username, version,
+                              std::make_unique<StaleCloudProvider>(
+                                  provider_ptr, std::move(cache_manager)));
 }
 
 Task<CloudProviderAccount> AccountManagerHandler::Impl::Create(
     AbstractCloudProvider::Auth::AuthToken auth_token,
     stdx::stop_token stop_token) {
+  int version = ++version_;
   auto username = std::make_shared<std::optional<std::string>>(std::nullopt);
-  auto account = CreateAccount(auth_token, username);
-  auto version = account.version_;
-  auto& provider = account.provider();
-  std::exception_ptr exception;
-  try {
-    auto general_data =
-        co_await provider->GetGeneralData(std::move(stop_token));
-    *username = std::move(general_data.username);
-    RemoveCloudProvider(
-        [version, account_id = account.id()](const auto& entry) {
-          return entry.version_ < version && entry.id() == account_id;
-        });
-    auto d = accounts_.emplace_back(std::move(account));
-    OnCloudProviderCreated(d);
-    settings_manager_->SaveToken(std::move(auth_token), **username);
-    co_return d;
-  } catch (...) {
-    exception = std::current_exception();
-  }
-  RemoveCloudProvider(
-      [version](const auto& entry) { return entry.version_ == version; });
-  std::rethrow_exception(exception);
+  auto provider = factory_->Create(
+      auth_token, OnAuthTokenChanged{settings_manager_, username});
+  auto general_data = co_await provider->GetGeneralData(std::move(stop_token));
+  RemoveCloudProvider([&](const auto& entry) {
+    return entry.version_ < version &&
+           entry.id() ==
+               CloudProviderAccount::Id{.type = std::string(provider->GetId()),
+                                        .username = general_data.username};
+  });
+  auto d = accounts_.emplace_back(
+      CreateAccount(std::move(provider), general_data.username, version));
+  OnCloudProviderCreated(d);
+  settings_manager_->SaveToken(std::move(auth_token), general_data.username);
+  *username = std::move(general_data.username);
+  co_return d;
 }
 
 auto AccountManagerHandler::Impl::AuthHandler::operator()(

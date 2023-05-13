@@ -1,6 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_CLOUD_PROVIDER_ACCOUNT_H
 #define CORO_CLOUDSTORAGE_CLOUD_PROVIDER_ACCOUNT_H
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -26,16 +27,13 @@ class CloudProviderAccount {
 
   std::string_view type() const { return type_; }
   Id id() const { return {type_, std::string(username())}; }
-  std::string_view username() const {
-    return *username_ ? std::string_view(**username_) : std::string_view("");
-  }
+  std::string_view username() const { return username_; }
   auto& provider() { return provider_; }
   const auto& provider() const { return provider_; }
   stdx::stop_token stop_token() const { return stop_source_.get_token(); }
 
  private:
-  CloudProviderAccount(std::shared_ptr<std::optional<std::string>> username,
-                       int64_t version,
+  CloudProviderAccount(std::string username, int64_t version,
                        std::unique_ptr<AbstractCloudProvider> account)
       : username_(std::move(username)),
         version_(version),
@@ -44,7 +42,7 @@ class CloudProviderAccount {
 
   friend class AccountManagerHandler;
 
-  std::shared_ptr<std::optional<std::string>> username_;
+  std::string username_;
   int64_t version_;
   std::string type_;
   std::shared_ptr<AbstractCloudProvider> provider_;

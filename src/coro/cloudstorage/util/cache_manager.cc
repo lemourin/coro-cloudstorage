@@ -21,13 +21,6 @@ using ::sqlite_orm::primary_key;
 using ::sqlite_orm::select;
 using ::sqlite_orm::where;
 
-struct DbItemByPath {
-  std::string path;
-  std::string account_type;
-  std::string account_username;
-  std::string id;
-};
-
 struct DbItem {
   std::string account_type;
   std::string account_username;
@@ -72,17 +65,6 @@ auto CreateStorage(std::string path) {
           foreign_key(&DbDirectoryContent::account_type,
                       &DbDirectoryContent::account_username,
                       &DbDirectoryContent::child_item_id)
-              .references(&DbItem::account_type, &DbItem::account_username,
-                          &DbItem::id)),
-      make_table(
-          "item_by_path", make_column("path", &DbItemByPath::path),
-          make_column("account_type", &DbItemByPath::account_type),
-          make_column("account_username", &DbItemByPath::account_username),
-          make_column("id", &DbItemByPath::id),
-          primary_key(&DbItemByPath::path, &DbItemByPath::account_type,
-                      &DbItemByPath::account_username),
-          foreign_key(&DbItemByPath::account_type,
-                      &DbItemByPath::account_username, &DbItemByPath::id)
               .references(&DbItem::account_type, &DbItem::account_username,
                           &DbItem::id)));
   storage.sync_schema();
@@ -162,31 +144,6 @@ Task<> CacheManager::Put(CloudProviderAccount account,
   });
 }
 
-Task<> CacheManager::Put(CloudProviderAccount account,
-                         std::vector<std::string> path,
-                         AbstractCloudProvider::Item item,
-                         stdx::stop_token stop_token) {
-  auto& db = GetDb(db_);
-  auto account_id = account.id();
-  DbItem db_item = {
-      .account_type = account_id.type,
-      .account_username = account_id.username,
-      .id = std::visit([](const auto& item) { return item.id; }, item),
-      .content = ToCbor(account.provider()->ToJson(item))};
-  DbItemByPath db_item_by_path = {
-      .path = EncodePath(path),
-      .account_type = std::move(account_id.type),
-      .account_username = std::move(account_id.username),
-      .id = std::visit([](const auto& item) { return item.id; }, item)};
-  co_await worker_.Do(std::move(stop_token), [&] {
-    db.transaction([&] {
-      db.replace(std::move(db_item));
-      db.replace(std::move(db_item_by_path));
-      return true;
-    });
-  });
-}
-
 Task<std::optional<std::vector<AbstractCloudProvider::Item>>> CacheManager::Get(
     CloudProviderAccount account, AbstractCloudProvider::Directory directory,
     stdx::stop_token stop_token) const {
@@ -216,36 +173,6 @@ Task<std::optional<std::vector<AbstractCloudProvider::Item>>> CacheManager::Get(
     items[i] = account.provider()->ToItem(nlohmann::json::from_cbor(result[i]));
   }
   co_return items;
-}
-
-Task<std::optional<AbstractCloudProvider::Item>> CacheManager::Get(
-    CloudProviderAccount account, std::vector<std::string> path,
-    stdx::stop_token stop_token) const {
-  auto& db = GetDb(db_);
-  auto account_id = account.id();
-  auto content = co_await worker_.Do(
-      std::move(stop_token), [&]() -> std::optional<std::vector<char>> {
-        auto result = db.select(
-            &DbItem::content,
-            join<DbItemByPath>(on(and_(
-                and_(c(&DbItem::account_type) == &DbItemByPath::account_type,
-                     c(&DbItem::account_username) ==
-                         &DbItemByPath::account_username),
-                c(&DbItem::id) == &DbItemByPath::id))),
-            where(and_(and_(c(&DbItemByPath::path) == EncodePath(path),
-                            c(&DbItem::account_type) == account_id.type),
-                       c(&DbItem::account_username) == account_id.username)));
-        if (result.empty()) {
-          return std::nullopt;
-        } else {
-          return result[0];
-        }
-      });
-  if (content) {
-    co_return account.provider()->ToItem(nlohmann::json::from_cbor(*content));
-  } else {
-    co_return std::nullopt;
-  }
 }
 
 }  // namespace coro::cloudstorage::util

@@ -161,26 +161,6 @@ auto CloudProviderHandler::operator()(Request request,
     }
     auto uri = http::ParseUri(request.url);
     auto path = GetEffectivePath(uri.path.value());
-    auto current_item = co_await [&]() -> Task<AbstractCloudProvider::Item> {
-      auto item = co_await cache_manager_.Get(path, stop_token);
-      if (!item) {
-        item = co_await GetItemByPathComponents(provider_, path, stop_token);
-        RunTask(cache_manager_.Put(path, *item, stop_token));
-      } else {
-        RunTask([provider = provider_, cache_manager = cache_manager_, path,
-                 stop_token]() mutable -> Task<> {
-          try {
-            auto item =
-                co_await GetItemByPathComponents(provider, path, stop_token);
-            co_await cache_manager.Put(path, std::move(item),
-                                       std::move(stop_token));
-          } catch (const std::exception& e) {
-            std::cerr << "FAILED TO REFRESH ITEM: " << e.what() << '\n';
-          }
-        });
-      }
-      co_return *item;
-    }();
     if (request.method == http::Method::kGet && uri.query) {
       auto query = http::ParseQuery(*uri.query);
       if (auto it = query.find("thumbnail");
@@ -190,7 +170,7 @@ auto CloudProviderHandler::operator()(Request request,
               return GetItemThumbnail(std::forward<T>(d),
                                       ThumbnailQuality::kLow, stop_token);
             },
-            std::move(current_item));
+            co_await GetItemByPathComponents(provider_, path, stop_token));
       }
       if (auto it = query.find("hq_thumbnail");
           it != query.end() && it->second == "true") {
@@ -199,7 +179,7 @@ auto CloudProviderHandler::operator()(Request request,
               return GetItemThumbnail(std::forward<T>(d),
                                       ThumbnailQuality::kHigh, stop_token);
             },
-            std::move(current_item));
+            co_await GetItemByPathComponents(provider_, path, stop_token));
       }
       if (auto it = query.find("dash_player");
           it != query.end() && it->second == "true") {
@@ -216,7 +196,7 @@ auto CloudProviderHandler::operator()(Request request,
           return HandleExistingItem(std::move(request), std::forward<T>(d),
                                     stop_token);
         },
-        std::move(current_item));
+        co_await GetItemByPathComponents(provider_, path, stop_token));
   } catch (const CloudException& e) {
     switch (e.type()) {
       case CloudException::Type::kNotFound:
@@ -368,10 +348,6 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
       "</head>"
       "<body class='root-container'>"
       "<table class='content-table'>";
-  constexpr const char* kHtmlSuffix =
-      "</table>"
-      "</body>"
-      "</html>";
   std::string parent_entry = fmt::format(
       fmt::runtime(kItemEntryHtml), fmt::arg("name", ".."),
       fmt::arg("size", ""), fmt::arg("timestamp", ""),
@@ -381,42 +357,14 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
                    host, StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
                                 "?thumbnail=true"))));
   co_yield std::move(parent_entry);
-  auto cached_items = co_await cache_manager_.Get(parent, stop_token);
-  if (cached_items) {
-    for (const auto& item : *cached_items) {
+  FOR_CO_AWAIT(const auto& page, page_data) {
+    for (const auto& item : page.items) {
       co_yield GetItemEntry(host, item, path, use_dash_player);
     }
-    co_yield kHtmlSuffix;
   }
-  if (!cached_items) {
-    std::vector<AbstractCloudProvider::Item> updated_items;
-    FOR_CO_AWAIT(const auto& page, page_data) {
-      for (auto item : page.items) {
-        co_yield GetItemEntry(host, item, path, use_dash_player);
-        updated_items.emplace_back(std::move(item));
-      }
-    }
-    RunTask(cache_manager_.Put(std::move(parent), std::move(updated_items),
-                               std::move(stop_token)));
-    co_yield kHtmlSuffix;
-  } else {
-    RunTask([page_data = std::move(page_data), parent = std::move(parent),
-             stop_token = std::move(stop_token),
-             cache_manager = cache_manager_]() mutable -> Task<> {
-      try {
-        std::vector<AbstractCloudProvider::Item> updated_items;
-        FOR_CO_AWAIT(const auto& page, page_data) {
-          for (auto item : page.items) {
-            updated_items.emplace_back(std::move(item));
-          }
-        }
-        co_await cache_manager.Put(std::move(parent), std::move(updated_items),
-                                   std::move(stop_token));
-      } catch (const std::exception& e) {
-        std::cerr << "FAILED TO REFRESH DIRECTORY LIST: " << e.what() << '\n';
-      }
-    });
-  }
+  co_yield "</table>"
+      "</body>"
+      "</html>";
 }
 
 }  // namespace coro::cloudstorage::util

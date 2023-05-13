@@ -87,6 +87,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/cloud_provider_handler.cc
     coro/cloudstorage/util/mux_handler.cc
     coro/cloudstorage/util/cache_manager.cc
+    coro/cloudstorage/util/stale_cloud_provider.cc
     coro/cloudstorage/cloud_factory.cc
 )
 
@@ -148,13 +149,12 @@ target_sources(coro-cloudstorage
         coro/cloudstorage/util/merged_cloud_provider.h
         coro/cloudstorage/util/mux_handler.h
         coro/cloudstorage/util/cache_manager.h
+        coro/cloudstorage/util/stale_cloud_provider.h
         coro/cloudstorage/cloud_exception.h
         coro/cloudstorage/cloud_factory.h
 )
 
-target_include_directories(coro-cloudstorage PRIVATE . ${CMAKE_CURRENT_BINARY_DIR} ../contrib/ ${FFMPEG_INCLUDE_DIRS})
-
-target_link_directories(coro-cloudstorage PRIVATE ${FFMPEG_LIBRARY_DIRS})
+target_include_directories(coro-cloudstorage PRIVATE . ${CMAKE_CURRENT_BINARY_DIR} ../contrib/)
 
 target_link_libraries(coro-cloudstorage PUBLIC
     coro::coro-http
@@ -170,6 +170,8 @@ target_link_libraries(coro-cloudstorage PRIVATE
 )
 
 if(FFMPEG_LIBRARIES)
+    target_include_directories(coro-cloudstorage PRIVATE ${FFMPEG_INCLUDE_DIRS})
+    target_link_directories(coro-cloudstorage PRIVATE ${FFMPEG_LIBRARY_DIRS})
     target_link_libraries(coro-cloudstorage PRIVATE ${FFMPEG_LIBRARIES})
 else()
     target_link_libraries(coro-cloudstorage PRIVATE
