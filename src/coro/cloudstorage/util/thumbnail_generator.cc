@@ -482,7 +482,7 @@ std::string GenerateThumbnail(AVIOContext* io_context, ThumbnailOptions options,
 }  // namespace
 
 Task<std::string> ThumbnailGenerator::operator()(
-    AbstractCloudProvider* provider, AbstractCloudProvider::File file,
+    const AbstractCloudProvider* provider, AbstractCloudProvider::File file,
     ThumbnailOptions options, stdx::stop_token stop_token) const {
   std::unique_ptr<AVIOContext, AVIOContextDeleter> io_context;
   std::atomic_bool interrupted = false;
