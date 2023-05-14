@@ -23,6 +23,9 @@ class CacheManager {
              std::vector<AbstractCloudProvider::Item> items,
              stdx::stop_token stop_token);
 
+  Task<> Put(CloudProviderAccount, std::vector<std::string> path,
+             AbstractCloudProvider::Item, stdx::stop_token);
+
   Task<> Put(CloudProviderAccount, AbstractCloudProvider::Item,
              ThumbnailQuality, std::vector<char> image_bytes,
              std::string mime_type, stdx::stop_token stop_token);
@@ -35,6 +38,10 @@ class CacheManager {
                                      AbstractCloudProvider::Item,
                                      ThumbnailQuality,
                                      stdx::stop_token stop_token);
+
+  Task<std::optional<AbstractCloudProvider::Item>> Get(
+      CloudProviderAccount, std::vector<std::string> path,
+      stdx::stop_token stop_token) const;
 
  private:
   mutable std::any db_;
