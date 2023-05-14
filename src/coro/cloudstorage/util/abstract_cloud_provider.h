@@ -144,7 +144,7 @@ class AbstractCloudProvider {
   virtual Task<Directory> MoveItem(Directory source, Directory destination,
                                    stdx::stop_token stop_token) const = 0;
 
-  virtual Task<File> CreateFile(Directory parent, std::string_view name,
+  virtual Task<File> CreateFile(Directory parent, std::string name,
                                 FileContent content,
                                 stdx::stop_token stop_token) const = 0;
 

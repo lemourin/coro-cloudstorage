@@ -104,7 +104,7 @@ Task<AbstractCloudProvider::Directory> TimingOutCloudProvider::MoveItem(
 }
 
 Task<AbstractCloudProvider::File> TimingOutCloudProvider::CreateFile(
-    AbstractCloudProvider::Directory parent, std::string_view name,
+    AbstractCloudProvider::Directory parent, std::string name,
     AbstractCloudProvider::FileContent content,
     stdx::stop_token stop_token) const {
   stdx::stop_source stop_source;
@@ -119,8 +119,8 @@ Task<AbstractCloudProvider::File> TimingOutCloudProvider::CreateFile(
 
   RunTask(InstallTimer(&chunk_index, &stop_source));
 
-  co_return co_await provider_->CreateFile(parent, name, std::move(content),
-                                           stop_source.get_token());
+  co_return co_await provider_->CreateFile(
+      parent, std::move(name), std::move(content), stop_source.get_token());
 }
 
 Task<AbstractCloudProvider::Thumbnail> TimingOutCloudProvider::GetItemThumbnail(

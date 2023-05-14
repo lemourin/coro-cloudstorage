@@ -280,11 +280,10 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider,
         std::any_cast<ItemT&&>(std::move(destination.impl)));
   }
 
-  Task<File> CreateFile(Directory parent, std::string_view name,
-                        FileContent content,
+  Task<File> CreateFile(Directory parent, std::string name, FileContent content,
                         stdx::stop_token stop_token) const override {
     co_return co_await std::visit(
-        CreateFileF{provider(), std::string(name), std::move(content),
+        CreateFileF{provider(), std::move(name), std::move(content),
                     std::move(stop_token)},
         std::any_cast<ItemT&&>(std::move(parent.impl)));
   }

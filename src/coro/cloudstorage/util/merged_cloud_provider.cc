@@ -200,8 +200,8 @@ Task<ItemT> MergedCloudProvider::MoveItem(ItemT source, Directory destination,
   } else {
     auto *account = GetAccount(source.account_id);
     auto p = account->provider;
-    auto stop_token_or =
-        MakeStopTokenOr(account->stop_source.get_token(), std::move(stop_token));
+    auto stop_token_or = MakeStopTokenOr(account->stop_source.get_token(),
+                                         std::move(stop_token));
     co_return ToItem<ItemT>(source.account_id,
                             co_await p->MoveItem(std::move(source.item),
                                                  std::move(destination.item),
@@ -209,7 +209,7 @@ Task<ItemT> MergedCloudProvider::MoveItem(ItemT source, Directory destination,
   }
 }
 
-auto MergedCloudProvider::CreateFile(Directory parent, std::string_view name,
+auto MergedCloudProvider::CreateFile(Directory parent, std::string name,
                                      FileContent content,
                                      stdx::stop_token stop_token)
     -> Task<File> {
@@ -221,8 +221,8 @@ auto MergedCloudProvider::CreateFile(Directory parent, std::string_view name,
                                               .size = content.size};
   co_return ToItem<File>(
       parent.account_id,
-      co_await p->CreateFile(std::move(parent.item), name, std::move(ncontent),
-                             stop_token_or.GetToken()));
+      co_await p->CreateFile(std::move(parent.item), std::move(name),
+                             std::move(ncontent), stop_token_or.GetToken()));
 }
 
 auto MergedCloudProvider::GetAccount(const AccountId &account_id) -> Account * {

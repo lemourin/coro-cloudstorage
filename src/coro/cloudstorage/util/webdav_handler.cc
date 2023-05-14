@@ -155,7 +155,10 @@ Task<Response> HandleExistingItem(CloudProvider* provider, Request request,
     ItemT new_item = d;
     if (!Equal(GetDirectoryPath(path), destination_path)) {
       auto destination_directory = co_await GetItemByPathComponents(
-          provider, destination_path, stop_token);
+          provider,
+          std::vector<std::string>(destination_path.begin(),
+                                   destination_path.end()),
+          stop_token);
       auto item = co_await std::visit(
           MoveItemF<Item>{provider, std::move(d), std::move(stop_token)},
           std::move(destination_directory));
@@ -211,18 +214,24 @@ auto WebDAVHandler::operator()(Request request,
     if (path.empty()) {
       throw CloudException("invalid path");
     }
+    auto parent_path = GetDirectoryPath(path);
     co_return co_await std::visit(
         CreateDirectoryF{provider_, path.back(), stop_token},
-        co_await GetItemByPathComponents(provider_, GetDirectoryPath(path),
-                                         stop_token));
+        co_await GetItemByPathComponents(
+            provider_,
+            std::vector<std::string>(parent_path.begin(), parent_path.end()),
+            stop_token));
   } else if (request.method == http::Method::kPut) {
     if (path.empty()) {
       throw CloudException("invalid path");
     }
+    auto parent_path = GetDirectoryPath(path);
     co_return co_await std::visit(
         CreateFileF{provider_, path.back(), std::move(request), stop_token},
-        co_await GetItemByPathComponents(provider_, GetDirectoryPath(path),
-                                         stop_token));
+        co_await GetItemByPathComponents(
+            provider_,
+            std::vector<std::string>(parent_path.begin(), parent_path.end()),
+            stop_token));
   } else {
     co_return co_await std::visit(
         [&](const auto& d) {

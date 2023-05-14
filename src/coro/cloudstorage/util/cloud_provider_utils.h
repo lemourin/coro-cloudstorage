@@ -33,7 +33,7 @@ Generator<AbstractCloudProvider::PageData> ListDirectory(
     AbstractCloudProvider::Directory, stdx::stop_token);
 
 Task<AbstractCloudProvider::Item> GetItemByPathComponents(
-    const AbstractCloudProvider*, std::span<const std::string> components,
+    const AbstractCloudProvider*, std::vector<std::string> components,
     stdx::stop_token stop_token);
 
 Task<AbstractCloudProvider::Item> GetItemByPathComponents(

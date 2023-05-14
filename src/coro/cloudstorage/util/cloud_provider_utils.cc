@@ -132,10 +132,10 @@ FileType GetFileType(std::string_view mime_type) {
 }
 
 Task<Item> GetItemByPathComponents(const AbstractCloudProvider* d,
-                                   std::span<const std::string> components,
+                                   std::vector<std::string> components,
                                    stdx::stop_token stop_token) {
   co_return co_await GetItemByPathComponents(d, co_await d->GetRoot(stop_token),
-                                             components, stop_token);
+                                             std::move(components), stop_token);
 }
 
 Task<AbstractCloudProvider::Item> GetItemByPathComponents(

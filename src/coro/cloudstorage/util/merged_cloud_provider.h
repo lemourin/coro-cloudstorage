@@ -109,8 +109,8 @@ class MergedCloudProvider {
   Task<ItemT> MoveItem(ItemT source, Directory destination,
                        stdx::stop_token stop_token);
 
-  Task<File> CreateFile(Directory parent, std::string_view name,
-                        FileContent content, stdx::stop_token stop_token);
+  Task<File> CreateFile(Directory parent, std::string name, FileContent content,
+                        stdx::stop_token stop_token);
 
  private:
   struct Account {

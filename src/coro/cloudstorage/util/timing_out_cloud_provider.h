@@ -65,7 +65,7 @@ class TimingOutCloudProvider : public AbstractCloudProvider {
       stdx::stop_token stop_token) const override;
 
   Task<AbstractCloudProvider::File> CreateFile(
-      AbstractCloudProvider::Directory parent, std::string_view name,
+      AbstractCloudProvider::Directory parent, std::string name,
       AbstractCloudProvider::FileContent content,
       stdx::stop_token stop_token) const override;
 
