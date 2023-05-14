@@ -148,10 +148,14 @@ Task<AbstractCloudProvider::Item> GetItemByPathComponents(
     RunTask([cache_manager, provider,
              components = std::vector<std::string>(
                  components.begin(), components.end())]() mutable -> Task<> {
-      auto item = co_await GetItemByPathComponents(provider, components,
-                                                   stdx::stop_token());
-      co_await cache_manager.Put(std::move(components), std::move(item),
-                                 stdx::stop_token());
+      try {
+        auto item = co_await GetItemByPathComponents(provider, components,
+                                                     stdx::stop_token());
+        co_await cache_manager.Put(std::move(components), std::move(item),
+                                   stdx::stop_token());
+      } catch (const std::exception& e) {
+        std::cerr << "CAN'T RELOAD ITEM: " << e.what() << '\n';
+      }
     });
     co_return *item;
   } else {
