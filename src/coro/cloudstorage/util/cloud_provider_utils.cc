@@ -87,7 +87,7 @@ Task<AbstractCloudProvider::Thumbnail> GetThumbnail(
   try {
     co_return co_await provider->GetItemThumbnail(file, quality, range,
                                                   stop_token);
-  } catch (const CloudException&) {
+  } catch (...) {
   }
   std::string image_bytes = co_await GenerateThumbnail(
       thumbnail_generator, provider, file, std::move(stop_token));
