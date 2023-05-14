@@ -169,7 +169,8 @@ auto CloudProviderHandler::operator()(Request request,
               return GetItemThumbnail(std::forward<T>(d),
                                       ThumbnailQuality::kLow, stop_token);
             },
-            co_await GetItemByPathComponents(provider_, path, stop_token));
+            co_await GetItemByPathComponents(cache_manager_, provider_, path,
+                                             stop_token));
       }
       if (auto it = query.find("hq_thumbnail");
           it != query.end() && it->second == "true") {
@@ -178,7 +179,8 @@ auto CloudProviderHandler::operator()(Request request,
               return GetItemThumbnail(std::forward<T>(d),
                                       ThumbnailQuality::kHigh, stop_token);
             },
-            co_await GetItemByPathComponents(provider_, path, stop_token));
+            co_await GetItemByPathComponents(cache_manager_, provider_, path,
+                                             stop_token));
       }
       if (auto it = query.find("dash_player");
           it != query.end() && it->second == "true") {
@@ -195,7 +197,8 @@ auto CloudProviderHandler::operator()(Request request,
           return HandleExistingItem(std::move(request), std::forward<T>(d),
                                     stop_token);
         },
-        co_await GetItemByPathComponents(provider_, path, stop_token));
+        co_await GetItemByPathComponents(cache_manager_, provider_, path,
+                                         stop_token));
   } catch (const CloudException& e) {
     switch (e.type()) {
       case CloudException::Type::kNotFound:
@@ -233,8 +236,9 @@ auto CloudProviderHandler::GetItemThumbnail(Item d, ThumbnailQuality quality,
                                             stdx::stop_token stop_token) const
     -> Task<Response> {
   try {
-    auto thumbnail = co_await provider_->GetItemThumbnail(
-        d, quality, http::Range{}, stop_token);
+    auto thumbnail = co_await GetItemThumbnailWithFallback(
+        thumbnail_generator_, cache_manager_, provider_, d, quality,
+        http::Range{}, stop_token);
     co_return Response{
         .status = 200,
         .headers = {{"Cache-Control", "private"},
@@ -282,7 +286,7 @@ auto CloudProviderHandler::HandleExistingItem(
       .headers = {{"Content-Type", "text/html"}},
       .body = GetDirectoryContent(
           http::GetHeader(request.headers, "Host").value(), directory_path, d,
-          ListDirectory(provider_, d, stop_token),
+          ListDirectory(cache_manager_, provider_, d, stop_token),
           /*use_dash_player=*/!GetItemPathPrefix(request.headers).empty(),
           stop_token)};
 }

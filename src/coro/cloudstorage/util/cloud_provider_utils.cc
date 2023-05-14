@@ -1,5 +1,7 @@
 #include "coro/cloudstorage/util/cloud_provider_utils.h"
 
+#include <iostream>
+
 #include "coro/cloudstorage/util/generator_utils.h"
 #include "coro/cloudstorage/util/string_utils.h"
 
@@ -96,6 +98,25 @@ Task<AbstractCloudProvider::Thumbnail> GetThumbnail(
       .mime_type = "image/png"};
 }
 
+Task<> UpdateDirectoryListCache(const AbstractCloudProvider* provider,
+                                CloudProviderCacheManager cache_manager,
+                                AbstractCloudProvider::Directory directory) {
+  try {
+    std::vector<AbstractCloudProvider::Item> items;
+    std::optional<std::string> page_token;
+    do {
+      auto page_data = co_await provider->ListDirectoryPage(
+          directory, page_token, stdx::stop_token());
+      std::copy(page_data.items.begin(), page_data.items.end(),
+                std::back_inserter(items));
+      page_token = std::move(page_data.next_page_token);
+    } while (page_token);
+    co_await cache_manager.Put(directory, std::move(items), stdx::stop_token());
+  } catch (const std::exception& e) {
+    std::cerr << "COULDN'T RELOAD DIRECTORY PAGE: " << e.what() << '\n';
+  }
+}
+
 }  // namespace
 
 FileType GetFileType(std::string_view mime_type) {
@@ -117,10 +138,68 @@ Task<Item> GetItemByPathComponents(const AbstractCloudProvider* d,
                                              components, stop_token);
 }
 
+Task<AbstractCloudProvider::Item> GetItemByPathComponents(
+    CloudProviderCacheManager cache_manager,
+    const AbstractCloudProvider* provider, std::vector<std::string> components,
+    stdx::stop_token stop_token) {
+  std::optional<AbstractCloudProvider::Item> item =
+      co_await cache_manager.Get(components, stop_token);
+  if (item) {
+    RunTask([cache_manager, provider,
+             components = std::vector<std::string>(
+                 components.begin(), components.end())]() mutable -> Task<> {
+      auto item = co_await GetItemByPathComponents(provider, components,
+                                                   stdx::stop_token());
+      co_await cache_manager.Put(std::move(components), std::move(item),
+                                 stdx::stop_token());
+    });
+    co_return *item;
+  } else {
+    auto new_item =
+        co_await GetItemByPathComponents(provider, components, stop_token);
+    RunTask([cache_manager, provider,
+             components =
+                 std::vector<std::string>(components.begin(), components.end()),
+             new_item]() mutable -> Task<> {
+      return cache_manager.Put(std::move(components), std::move(new_item),
+                               stdx::stop_token());
+    });
+    co_return new_item;
+  }
+}
+
 Task<Item> GetItemByPath(const AbstractCloudProvider* d, std::string path,
                          stdx::stop_token stop_token) {
   co_return co_await GetItemByPath(d, co_await d->GetRoot(stop_token),
                                    std::move(path), stop_token);
+}
+
+Generator<AbstractCloudProvider::PageData> ListDirectory(
+    CloudProviderCacheManager cache_manager,
+    const AbstractCloudProvider* provider,
+    AbstractCloudProvider::Directory directory, stdx::stop_token stop_token) {
+  auto cached = co_await cache_manager.Get(directory, stop_token);
+  if (!cached) {
+    std::optional<std::string> page_token;
+    std::vector<AbstractCloudProvider::Item> items;
+    do {
+      auto page_data = co_await provider->ListDirectoryPage(
+          directory, page_token, stop_token);
+      std::copy(page_data.items.begin(), page_data.items.end(),
+                std::back_inserter(items));
+      co_yield page_data;
+      page_token = std::move(page_data.next_page_token);
+    } while (page_token);
+    RunTask([directory = std::move(directory), items = std::move(items),
+             cache_manager = cache_manager]() mutable -> Task<> {
+      return cache_manager.Put(std::move(directory), std::move(items),
+                               stdx::stop_token());
+    });
+  } else {
+    RunTask(UpdateDirectoryListCache, provider, cache_manager,
+            std::move(directory));
+    co_yield AbstractCloudProvider::PageData{.items = std::move(*cached)};
+  }
 }
 
 template <>

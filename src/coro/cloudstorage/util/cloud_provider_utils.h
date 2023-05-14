@@ -28,9 +28,17 @@ auto ListDirectory(CloudProviderT* d, DirectoryT directory,
   } while (current_page_token);
 }
 
+Generator<AbstractCloudProvider::PageData> ListDirectory(
+    CloudProviderCacheManager, const AbstractCloudProvider*,
+    AbstractCloudProvider::Directory, stdx::stop_token);
+
 Task<AbstractCloudProvider::Item> GetItemByPathComponents(
     const AbstractCloudProvider*, std::span<const std::string> components,
     stdx::stop_token stop_token);
+
+Task<AbstractCloudProvider::Item> GetItemByPathComponents(
+    CloudProviderCacheManager, const AbstractCloudProvider*,
+    std::vector<std::string> components, stdx::stop_token stop_token);
 
 Task<AbstractCloudProvider::Item> GetItemByPath(const AbstractCloudProvider*,
                                                 std::string path,

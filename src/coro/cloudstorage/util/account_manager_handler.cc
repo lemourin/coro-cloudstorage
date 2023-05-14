@@ -9,7 +9,6 @@
 #include "coro/cloudstorage/util/get_size_handler.h"
 #include "coro/cloudstorage/util/mux_handler.h"
 #include "coro/cloudstorage/util/settings_handler.h"
-#include "coro/cloudstorage/util/stale_cloud_provider.h"
 #include "coro/cloudstorage/util/static_file_handler.h"
 #include "coro/cloudstorage/util/theme_handler.h"
 #include "coro/cloudstorage/util/webdav_utils.h"
@@ -310,9 +309,9 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
         .account = account,
         .prefix = StrCat("/list/", account.type(), '/',
                          http::EncodeUri(account.username())),
-        .handler =
-            CloudProviderHandler(account.provider().get(), thumbnail_generator_,
-                                 settings_manager_)});
+        .handler = CloudProviderHandler(
+            account.provider().get(), thumbnail_generator_, settings_manager_,
+            CloudProviderCacheManager(account, cache_manager_))});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/remove/", account.type(), '/',
@@ -381,13 +380,7 @@ void AccountManagerHandler::Impl::RemoveCloudProvider(const F& predicate) {
 CloudProviderAccount AccountManagerHandler::Impl::CreateAccount(
     std::unique_ptr<AbstractCloudProvider> provider, std::string username,
     int64_t version) {
-  AbstractCloudProvider* provider_ptr = provider.get();
-  CloudProviderAccount account(username, version, std::move(provider));
-  CloudProviderCacheManager cache_manager(std::move(account), cache_manager_);
-  return CloudProviderAccount(
-      username, version,
-      std::make_unique<StaleCloudProvider>(
-          provider_ptr, std::move(cache_manager), thumbnail_generator_));
+  return CloudProviderAccount(username, version, std::move(provider));
 }
 
 Task<CloudProviderAccount> AccountManagerHandler::Impl::Create(

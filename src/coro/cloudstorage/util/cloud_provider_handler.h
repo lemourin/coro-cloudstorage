@@ -22,10 +22,12 @@ class CloudProviderHandler {
 
   CloudProviderHandler(AbstractCloudProvider* provider,
                        const ThumbnailGenerator* thumbnail_generator,
-                       const SettingsManager* settings_manager)
+                       const SettingsManager* settings_manager,
+                       CloudProviderCacheManager cache_manager)
       : provider_(provider),
         thumbnail_generator_(thumbnail_generator),
-        settings_manager_(settings_manager) {}
+        settings_manager_(settings_manager),
+        cache_manager_(std::move(cache_manager)) {}
 
   Task<Response> operator()(Request request, stdx::stop_token stop_token);
 
@@ -57,6 +59,7 @@ class CloudProviderHandler {
   AbstractCloudProvider* provider_;
   const ThumbnailGenerator* thumbnail_generator_;
   const SettingsManager* settings_manager_;
+  CloudProviderCacheManager cache_manager_;
 };
 
 }  // namespace coro::cloudstorage::util
