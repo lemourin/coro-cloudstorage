@@ -5,6 +5,7 @@
 #include <string>
 
 #include "coro/cloudstorage/util/auth_data.h"
+#include "coro/cloudstorage/util/file_utils.h"
 #include "coro/cloudstorage/util/settings_utils.h"
 #include "coro/http/cache_http.h"
 
@@ -12,8 +13,16 @@ namespace coro::cloudstorage::util {
 
 struct CloudFactoryConfig {
   coro::http::CacheHttpConfig http_cache_config = {};
-  std::string config_path = GetConfigFilePath();
-  std::string cache_path = GetCacheFilePath();
+  std::string config_path = [] {
+    std::string path = GetConfigFilePath();
+    CreateDirectory(GetDirectoryPath(path));
+    return path;
+  }();
+  std::string cache_path = [] {
+    std::string path = GetCacheFilePath();
+    CreateDirectory(GetDirectoryPath(path));
+    return path;
+  }();
   std::function<std::string(std::string_view account_type,
                             std::string_view username)>
       post_auth_redirect_uri = GetDefaultPostAuthRedirectUri;
