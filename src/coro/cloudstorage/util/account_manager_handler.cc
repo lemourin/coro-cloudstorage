@@ -66,6 +66,33 @@ http::Response<> GetErrorResponse(ErrorMetadata error) {
       .body = ToGenerator(std::move(content))};
 }
 
+template <typename... Args>
+Generator<std::string> Validate(Generator<std::string> body, Args...) {
+  std::optional<ErrorMetadata> error_metadata;
+  try {
+    FOR_CO_AWAIT(std::string & chunk, body) { co_yield std::move(chunk); }
+  } catch (...) {
+    error_metadata = GetErrorMetadata();
+  }
+  if (error_metadata) {
+    std::stringstream stream;
+    stream << "\n\n";
+    if (error_metadata->status) {
+      stream << "STATUS = " << *error_metadata->status << "\n\n";
+    }
+    stream << "WHAT = " << error_metadata->what << "\n\n";
+    if (error_metadata->source_location) {
+      stream << "SOURCE LOCATION = "
+             << coro::ToString(*error_metadata->source_location) << "\n\n";
+    }
+    if (error_metadata->stacktrace) {
+      stream << "STACKTRACE = " << coro::ToString(*error_metadata->stacktrace)
+             << "\n\n";
+    }
+    co_yield std::move(stream).str();
+  }
+}
+
 }  // namespace
 
 class AccountManagerHandler::Impl {
@@ -216,13 +243,13 @@ auto AccountManagerHandler::Impl::HandleRequest(
                                                  std::move(stop_token));
       auto response = co_await handler->handler(std::move(request),
                                                 stop_token_or->GetToken());
-      response.body = Forward(std::move(response.body),
-                              std::move(stop_token_or), std::move(handler));
+      response.body = Validate(std::move(response.body),
+                               std::move(stop_token_or), std::move(handler));
       co_return response;
     } else {
       auto response =
           co_await handler->handler(std::move(request), std::move(stop_token));
-      response.body = Forward(std::move(response.body), std::move(handler));
+      response.body = Validate(std::move(response.body), std::move(handler));
       co_return response;
     }
   } else if (*path == "/" || *path == "") {
