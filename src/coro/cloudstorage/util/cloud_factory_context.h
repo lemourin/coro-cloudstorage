@@ -42,6 +42,7 @@ class CloudFactoryContext {
 
  private:
   const coro::util::EventLoop* event_loop_;
+  std::unique_ptr<CacheDatabase, CacheDatabaseDeleter> cache_db_;
   coro::util::ThreadPool thread_pool_;
   http::HttpImpl<http::CurlHttp> curl_http_;
   http::HttpImpl<http::CacheHttp> http_;

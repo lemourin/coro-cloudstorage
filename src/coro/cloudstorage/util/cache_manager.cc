@@ -104,11 +104,14 @@ auto CreateStorage(std::string path) {
                  primary_key(&DbImage::account_type, &DbImage::account_username,
                              &DbImage::item_id)));
   storage.sync_schema();
+  storage.open_forever();
   return storage;
 }
 
-auto& GetDb(std::any& any) {
-  return std::any_cast<decltype(CreateStorage(""))&>(any);
+using CacheDatabaseT = decltype(CreateStorage(""));
+
+auto* GetDb(CacheDatabase* any) {
+  return reinterpret_cast<CacheDatabaseT*>(any);
 }
 
 std::vector<char> ToCbor(const nlohmann::json& json) {
@@ -128,16 +131,29 @@ std::string EncodePath(const std::vector<std::string>& components) {
 
 }  // namespace
 
-CacheManager::CacheManager(const coro::util::EventLoop* event_loop,
-                           std::string cache_path)
-    : db_(CreateStorage(std::move(cache_path))),
-      worker_(event_loop, /*thread_count=*/1) {}
+void CacheDatabaseDeleter::operator()(CacheDatabase* db) const {
+  delete reinterpret_cast<CacheDatabaseT*>(db);
+}
+
+std::unique_ptr<CacheDatabase, CacheDatabaseDeleter> CreateCacheDatabase(
+    std::string path) {
+  return std::unique_ptr<CacheDatabase, CacheDatabaseDeleter>(
+      reinterpret_cast<CacheDatabase*>(
+          new CacheDatabaseT{CreateStorage(std::move(path))}));
+}
+
+CacheManager::CacheManager(CacheDatabase* db,
+                           const coro::util::EventLoop* event_loop,
+                           coro::util::ThreadPool* read_thread_pool)
+    : db_(db),
+      write_thread_pool_(event_loop, /*thread_count=*/1),
+      read_thread_pool_(read_thread_pool) {}
 
 Task<> CacheManager::Put(CloudProviderAccount account,
                          AbstractCloudProvider::Directory directory,
                          std::vector<AbstractCloudProvider::Item> items,
                          stdx::stop_token stop_token) {
-  auto& db = GetDb(db_);
+  auto* db = GetDb(db_);
   auto account_id = account.id();
   std::vector<DbItem> db_items(items.size() + 1);
   std::vector<DbDirectoryContent> db_directory_content(items.size());
@@ -167,13 +183,13 @@ Task<> CacheManager::Put(CloudProviderAccount account,
         },
         items[i]);
   }
-  co_return co_await worker_.Do(std::move(stop_token), [&] {
-    db.transaction([&] {
+  co_return co_await write_thread_pool_.Do(std::move(stop_token), [&] {
+    db->transaction([&] {
       for (const auto& d : db_items) {
-        db.replace(d);
+        db->replace(d);
       }
       for (const auto& d : db_directory_content) {
-        db.replace(d);
+        db->replace(d);
       }
       return true;
     });
@@ -183,10 +199,10 @@ Task<> CacheManager::Put(CloudProviderAccount account,
 Task<std::optional<std::vector<AbstractCloudProvider::Item>>> CacheManager::Get(
     CloudProviderAccount account, AbstractCloudProvider::Directory directory,
     stdx::stop_token stop_token) const {
-  auto& db = GetDb(db_);
+  auto* db = GetDb(db_);
   auto account_id = account.id();
-  auto result = co_await worker_.Do(std::move(stop_token), [&] {
-    return db.select(
+  auto result = co_await read_thread_pool_->Do(std::move(stop_token), [&] {
+    return db->select(
         &DbItem::content,
         join<DbDirectoryContent>(on(and_(
             and_(c(&DbItem::account_type) == &DbDirectoryContent::account_type,
@@ -217,7 +233,7 @@ Task<> CacheManager::Put(CloudProviderAccount account,
                          std::vector<char> image_bytes, std::string mime_type,
                          stdx::stop_token stop_token) {
   auto account_id = account.id();
-  co_await worker_.Do(
+  co_await write_thread_pool_.Do(
       std::move(stop_token),
       [db = GetDb(db_),
        entry = DbImage{
@@ -228,7 +244,7 @@ Task<> CacheManager::Put(CloudProviderAccount account,
            .quality = static_cast<int>(quality),
            .mime_type = std::move(mime_type),
            .image_bytes = std::move(image_bytes)}]() mutable {
-        db.replace(std::move(entry));
+        db->replace(std::move(entry));
       });
 }
 
@@ -236,11 +252,11 @@ auto CacheManager::Get(CloudProviderAccount account,
                        AbstractCloudProvider::Item item, ThumbnailQuality,
                        stdx::stop_token stop_token)
     -> Task<std::optional<ImageData>> {
-  auto& db = GetDb(db_);
+  auto* db = GetDb(db_);
   auto account_id = account.id();
   auto item_id = std::visit([](auto i) { return i.id; }, std::move(item));
-  auto result = co_await worker_.Do(std::move(stop_token), [&] {
-    return db.select(
+  auto result = co_await read_thread_pool_->Do(std::move(stop_token), [&] {
+    return db->select(
         columns(&DbImage::image_bytes, &DbImage::mime_type),
         where(and_(c(&DbImage::account_type) == account_id.type,
                    and_(c(&DbImage::account_username) == account_id.username,
@@ -257,7 +273,7 @@ Task<> CacheManager::Put(CloudProviderAccount account,
                          std::vector<std::string> path,
                          AbstractCloudProvider::Item item,
                          stdx::stop_token stop_token) {
-  auto& db = GetDb(db_);
+  auto* db = GetDb(db_);
   auto account_id = account.id();
   DbItem db_item = {
       .account_type = account_id.type,
@@ -269,10 +285,10 @@ Task<> CacheManager::Put(CloudProviderAccount account,
       .account_type = std::move(account_id.type),
       .account_username = std::move(account_id.username),
       .id = std::visit([](const auto& item) { return item.id; }, item)};
-  co_await worker_.Do(std::move(stop_token), [&] {
-    db.transaction([&] {
-      db.replace(std::move(db_item));
-      db.replace(std::move(db_item_by_path));
+  co_await write_thread_pool_.Do(std::move(stop_token), [&] {
+    db->transaction([&] {
+      db->replace(std::move(db_item));
+      db->replace(std::move(db_item_by_path));
       return true;
     });
   });
@@ -281,11 +297,11 @@ Task<> CacheManager::Put(CloudProviderAccount account,
 Task<std::optional<AbstractCloudProvider::Item>> CacheManager::Get(
     CloudProviderAccount account, std::vector<std::string> path,
     stdx::stop_token stop_token) const {
-  auto& db = GetDb(db_);
+  auto* db = GetDb(db_);
   auto account_id = account.id();
-  auto content = co_await worker_.Do(
+  auto content = co_await read_thread_pool_->Do(
       std::move(stop_token), [&]() -> std::optional<std::vector<char>> {
-        auto result = db.select(
+        auto result = db->select(
             &DbItem::content,
             join<DbItemByPath>(on(and_(
                 and_(c(&DbItem::account_type) == &DbItemByPath::account_type,

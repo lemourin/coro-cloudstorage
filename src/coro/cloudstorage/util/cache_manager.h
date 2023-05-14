@@ -10,6 +10,15 @@
 
 namespace coro::cloudstorage::util {
 
+struct CacheDatabase;
+
+struct CacheDatabaseDeleter {
+  void operator()(CacheDatabase*) const;
+};
+
+std::unique_ptr<CacheDatabase, CacheDatabaseDeleter> CreateCacheDatabase(
+    std::string path);
+
 class CacheManager {
  public:
   struct ImageData {
@@ -17,7 +26,8 @@ class CacheManager {
     std::string mime_type;
   };
 
-  CacheManager(const coro::util::EventLoop* event_loop, std::string cache_path);
+  CacheManager(CacheDatabase*, const coro::util::EventLoop* event_loop,
+               coro::util::ThreadPool* read_thread_pool);
 
   Task<> Put(CloudProviderAccount, AbstractCloudProvider::Directory directory,
              std::vector<AbstractCloudProvider::Item> items,
@@ -44,8 +54,9 @@ class CacheManager {
       stdx::stop_token stop_token) const;
 
  private:
-  mutable std::any db_;
-  mutable coro::util::ThreadPool worker_;
+  CacheDatabase* db_;
+  mutable coro::util::ThreadPool write_thread_pool_;
+  coro::util::ThreadPool* read_thread_pool_;
 };
 
 class CloudProviderCacheManager {

@@ -1,6 +1,7 @@
 #include "coro/cloudstorage/util/cloud_provider_utils.h"
 
 #include <iostream>
+#include <nlohmann/json.hpp>
 
 #include "coro/cloudstorage/util/generator_utils.h"
 #include "coro/cloudstorage/util/string_utils.h"
@@ -98,9 +99,11 @@ Task<AbstractCloudProvider::Thumbnail> GetThumbnail(
       .mime_type = "image/png"};
 }
 
-Task<> UpdateDirectoryListCache(const AbstractCloudProvider* provider,
-                                CloudProviderCacheManager cache_manager,
-                                AbstractCloudProvider::Directory directory) {
+Task<> UpdateDirectoryListCache(
+    const AbstractCloudProvider* provider,
+    CloudProviderCacheManager cache_manager,
+    AbstractCloudProvider::Directory directory,
+    std::vector<AbstractCloudProvider::Item> previous) {
   try {
     std::vector<AbstractCloudProvider::Item> items;
     std::optional<std::string> page_token;
@@ -111,7 +114,14 @@ Task<> UpdateDirectoryListCache(const AbstractCloudProvider* provider,
                 std::back_inserter(items));
       page_token = std::move(page_data.next_page_token);
     } while (page_token);
-    co_await cache_manager.Put(directory, std::move(items), stdx::stop_token());
+    if (!std::equal(items.begin(), items.end(), previous.begin(),
+                    previous.end(),
+                    [provider](const auto& item1, const auto& item2) {
+                      return provider->ToJson(item1) == provider->ToJson(item2);
+                    })) {
+      co_await cache_manager.Put(directory, std::move(items),
+                                 stdx::stop_token());
+    }
   } catch (const std::exception& e) {
     std::cerr << "COULDN'T RELOAD DIRECTORY PAGE: " << e.what() << '\n';
   }
@@ -145,14 +155,16 @@ Task<AbstractCloudProvider::Item> GetItemByPathComponents(
   std::optional<AbstractCloudProvider::Item> item =
       co_await cache_manager.Get(components, stop_token);
   if (item) {
-    RunTask([cache_manager, provider,
+    RunTask([cache_manager, provider, previous_item = *item,
              components = std::vector<std::string>(
                  components.begin(), components.end())]() mutable -> Task<> {
       try {
         auto item = co_await GetItemByPathComponents(provider, components,
                                                      stdx::stop_token());
-        co_await cache_manager.Put(std::move(components), std::move(item),
-                                   stdx::stop_token());
+        if (provider->ToJson(item) != provider->ToJson(previous_item)) {
+          co_await cache_manager.Put(std::move(components), std::move(item),
+                                     stdx::stop_token());
+        }
       } catch (const std::exception& e) {
         std::cerr << "CAN'T RELOAD ITEM: " << e.what() << '\n';
       }
@@ -201,7 +213,7 @@ Generator<AbstractCloudProvider::PageData> ListDirectory(
     });
   } else {
     RunTask(UpdateDirectoryListCache, provider, cache_manager,
-            std::move(directory));
+            std::move(directory), *cached);
     co_yield AbstractCloudProvider::PageData{.items = std::move(*cached)};
   }
 }
