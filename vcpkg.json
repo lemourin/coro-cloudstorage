@@ -4,11 +4,11 @@
   "dependencies": [
     {
       "name": "coro-http",
-      "platform": "uwp"
+      "platform": "uwp | android"
     },
     {
       "name": "coro-http",
-      "platform": "!uwp",
+      "platform": "!uwp & !android",
       "features": [
         "stacktrace"
       ]
