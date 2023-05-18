@@ -1,5 +1,5 @@
-#ifndef CORO_CLOUDSTORAGE_FUSE_TIMING_OUT_CLOUD_PROVIDER_H
-#define CORO_CLOUDSTORAGE_FUSE_TIMING_OUT_CLOUD_PROVIDER_H
+#ifndef CORO_CLOUDSTORAGE_UTIL_TIMING_OUT_CLOUD_PROVIDER_H
+#define CORO_CLOUDSTORAGE_UTIL_TIMING_OUT_CLOUD_PROVIDER_H
 
 #include <utility>
 
@@ -20,6 +20,10 @@ class TimingOutCloudProvider : public AbstractCloudProvider {
       const AbstractCloudProvider::Directory& d) const override;
 
   std::string_view GetId() const override;
+
+  nlohmann::json ToJson(const AbstractCloudProvider::Item& item) const override;
+
+  AbstractCloudProvider::Item ToItem(const nlohmann::json&) const override;
 
   Task<AbstractCloudProvider::Directory> GetRoot(
       stdx::stop_token stop_token) const override;
@@ -129,4 +133,4 @@ class TimingOutCloudProvider : public AbstractCloudProvider {
 
 }  // namespace coro::cloudstorage::util
 
-#endif  // CORO_CLOUDSTORAGE_FUSE_TIMING_OUT_CLOUD_PROVIDER_H
+#endif  // CORO_CLOUDSTORAGE_UTIL_TIMING_OUT_CLOUD_PROVIDER_H

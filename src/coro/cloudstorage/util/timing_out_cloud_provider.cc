@@ -13,6 +13,16 @@ std::string_view TimingOutCloudProvider::GetId() const {
   return provider_->GetId();
 }
 
+nlohmann::json TimingOutCloudProvider::ToJson(
+    const AbstractCloudProvider::Item& item) const {
+  return provider_->ToJson(item);
+}
+
+AbstractCloudProvider::Item TimingOutCloudProvider::ToItem(
+    const nlohmann::json& json) const {
+  return provider_->ToItem(json);
+}
+
 Task<AbstractCloudProvider::Directory> TimingOutCloudProvider::GetRoot(
     stdx::stop_token stop_token) const {
   auto context_token = CreateStopToken("GetRoot", std::move(stop_token));

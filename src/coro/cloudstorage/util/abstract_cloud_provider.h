@@ -2,7 +2,7 @@
 #define CORO_CLOUDSTORAGE_UTIL_ABSTRACT_CLOUD_PROVIDER_H
 
 #include <any>
-#include <nlohmann/json_fwd.hpp>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <variant>
