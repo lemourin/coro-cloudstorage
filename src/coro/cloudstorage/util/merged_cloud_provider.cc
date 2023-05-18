@@ -11,7 +11,7 @@ namespace {
 using ::coro::util::MakeStopTokenOr;
 
 template <typename T, typename Entry>
-T ToItem(MergedCloudProvider::AccountId account_id, Entry entry) {
+T ToItemImpl(MergedCloudProvider::AccountId account_id, Entry entry) {
   T item;
   item.account_id = std::move(account_id);
   item.id =
@@ -105,11 +105,11 @@ auto MergedCloudProvider::ListDirectoryPage(
         [&]<typename CloudItem>(CloudItem &item) -> Item {
           if constexpr (std::is_same_v<AbstractCloudProvider::Directory,
                                        CloudItem>) {
-            return ToItem<Directory>(directory.account_id, std::move(item));
+            return ToItemImpl<Directory>(directory.account_id, std::move(item));
           } else {
             static_assert(
                 std::is_same_v<AbstractCloudProvider::File, CloudItem>);
-            return ToItem<File>(directory.account_id, std::move(item));
+            return ToItemImpl<File>(directory.account_id, std::move(item));
           }
         },
         item));
@@ -163,7 +163,7 @@ Task<ItemT> MergedCloudProvider::RenameItem(ItemT item, std::string new_name,
   auto p = account->provider;
   auto stop_token_or =
       MakeStopTokenOr(account->stop_source.get_token(), std::move(stop_token));
-  co_return ToItem<ItemT>(
+  co_return ToItemImpl<ItemT>(
       item.account_id,
       co_await p->RenameItem(std::move(item.item), std::move(new_name),
                              stop_token_or.GetToken()));
@@ -176,7 +176,7 @@ auto MergedCloudProvider::CreateDirectory(Directory parent, std::string name,
   auto p = account->provider;
   auto stop_token_or =
       MakeStopTokenOr(account->stop_source.get_token(), std::move(stop_token));
-  co_return ToItem<Directory>(
+  co_return ToItemImpl<Directory>(
       parent.account_id,
       co_await p->CreateDirectory(std::move(parent.item), std::move(name),
                                   stop_token_or.GetToken()));
@@ -202,10 +202,10 @@ Task<ItemT> MergedCloudProvider::MoveItem(ItemT source, Directory destination,
     auto p = account->provider;
     auto stop_token_or = MakeStopTokenOr(account->stop_source.get_token(),
                                          std::move(stop_token));
-    co_return ToItem<ItemT>(source.account_id,
-                            co_await p->MoveItem(std::move(source.item),
-                                                 std::move(destination.item),
-                                                 stop_token_or.GetToken()));
+    co_return ToItemImpl<ItemT>(
+        source.account_id, co_await p->MoveItem(std::move(source.item),
+                                                std::move(destination.item),
+                                                stop_token_or.GetToken()));
   }
 }
 
@@ -219,7 +219,7 @@ auto MergedCloudProvider::CreateFile(Directory parent, std::string name,
       MakeStopTokenOr(account->stop_source.get_token(), std::move(stop_token));
   AbstractCloudProvider::FileContent ncontent{.data = std::move(content.data),
                                               .size = content.size};
-  co_return ToItem<File>(
+  co_return ToItemImpl<File>(
       parent.account_id,
       co_await p->CreateFile(std::move(parent.item), std::move(name),
                              std::move(ncontent), stop_token_or.GetToken()));
@@ -233,6 +233,14 @@ auto MergedCloudProvider::GetAccount(const AccountId &account_id) -> Account * {
     }
   }
   throw CloudException(CloudException::Type::kNotFound);
+}
+
+nlohmann::json MergedCloudProvider::ToJson(const Item &) {
+  throw std::runtime_error("not implemented");
+}
+
+MergedCloudProvider::Item MergedCloudProvider::ToItem(const nlohmann::json &) {
+  throw std::runtime_error("not implemented");
 }
 
 auto MergedCloudProvider::GetAccount(const AccountId &account_id) const

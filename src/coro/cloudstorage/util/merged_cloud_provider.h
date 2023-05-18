@@ -112,6 +112,10 @@ class MergedCloudProvider {
   Task<File> CreateFile(Directory parent, std::string name, FileContent content,
                         stdx::stop_token stop_token);
 
+  static nlohmann::json ToJson(const Item &item);
+
+  static Item ToItem(const nlohmann::json &);
+
  private:
   struct Account {
     std::string id;
