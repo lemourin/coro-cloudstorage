@@ -95,6 +95,8 @@ class Dropbox {
 
   Task<Directory> GetRoot(stdx::stop_token);
 
+  Task<Item> GetItem(std::string id, stdx::stop_token);
+
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token);
 
   Task<PageData> ListDirectoryPage(Directory directory,

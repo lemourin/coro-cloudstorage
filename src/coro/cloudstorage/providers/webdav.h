@@ -70,6 +70,8 @@ class WebDAV {
 
   Task<Directory> GetRoot(stdx::stop_token) const;
 
+  Task<Item> GetItem(std::string id, stdx::stop_token) const;
+
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token) const;
 
   Task<PageData> ListDirectoryPage(Directory directory,

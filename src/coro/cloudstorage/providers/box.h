@@ -7,6 +7,7 @@
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/auth_manager.h"
+#include "coro/cloudstorage/util/cloud_provider_utils.h"
 #include "coro/cloudstorage/util/fetch_json.h"
 #include "coro/http/http.h"
 #include "coro/when_all.h"
@@ -24,8 +25,10 @@ class Box {
     int64_t space_total;
   };
 
+  using ItemId = util::TypedItemId<std::string>;
+
   struct ItemData {
-    std::string id;
+    ItemId id;
     std::string name;
     int64_t size;
     int64_t timestamp;
@@ -88,6 +91,8 @@ class Box {
       : auth_manager_(std::move(auth_manager)), http_(http) {}
 
   Task<Directory> GetRoot(stdx::stop_token);
+
+  Task<Item> GetItem(ItemId id, stdx::stop_token);
 
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token);
 

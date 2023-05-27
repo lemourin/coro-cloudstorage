@@ -575,6 +575,15 @@ auto Mega::GetRoot(stdx::stop_token stop_token) -> Task<Root> {
   throw CloudException(CloudException::Type::kNotFound);
 }
 
+auto Mega::GetItem(uint64_t id, stdx::stop_token stop_token) -> Task<Item> {
+  co_await LazyInit(std::move(stop_token));
+  if (auto it = items_.find(id); it != items_.end()) {
+    co_return it->second;
+  } else {
+    throw CloudException(CloudException::Type::kNotFound);
+  }
+}
+
 auto Mega::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
   nlohmann::json command;
   command["a"] = "uq";

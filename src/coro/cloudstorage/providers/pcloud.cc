@@ -11,6 +11,8 @@ constexpr std::string_view kSeparator = "Thnlg1ecwyUJHyhYYGrQ";
 using json = nlohmann::json;
 using Request = http::Request<std::string>;
 
+using ::coro::cloudstorage::util::StrCat;
+
 std::string GetUploadStreamPrefix(std::string_view name) {
   std::stringstream chunk;
   chunk << "--" << kSeparator << "\r\n"
@@ -36,11 +38,13 @@ T ToItemImpl(const nlohmann::json& json) {
   T result = {};
   result.name = json["name"];
   if constexpr (std::is_same_v<T, PCloud::File>) {
-    result.id = json["fileid"];
+    result.id = PCloud::ItemId{.type = PCloud::ItemId::Type::kFile,
+                               .id = json["fileid"]};
     result.size = json["size"];
     result.timestamp = json["modified"];
   } else {
-    result.id = json["folderid"];
+    result.id = PCloud::ItemId{.type = PCloud::ItemId::Type::kDirectory,
+                               .id = json["folderid"]};
   }
   return result;
 }
@@ -105,8 +109,28 @@ auto PCloud::Auth::ExchangeAuthorizationCode(
 }
 
 auto PCloud::GetRoot(stdx::stop_token) -> Task<Directory> {
-  Directory d{{.id = 0}};
+  Directory d{{.id = ItemId{.type = ItemId::Type::kDirectory, .id = 0}}};
   co_return d;
+}
+
+auto PCloud::GetItem(ItemId id, stdx::stop_token stop_token) -> Task<Item> {
+  Request request = [&] {
+    if (id.type == ItemId::Type::kFile) {
+      return Request{.url = StrCat(GetEndpoint("/checksumfile"), '?',
+                                   http::FormDataToString(
+                                       {{"fileid", std::to_string(id.id)},
+                                        {"timeformat", "timestamp"}}))};
+    } else {
+      return Request{.url = StrCat(GetEndpoint("/listfolder"), '?',
+                                   http::FormDataToString(
+                                       {{"nofiles", "1"},
+                                        {"folderid", std::to_string(id.id)},
+                                        {"timeformat", "timestamp"}}))};
+    }
+  }();
+  auto response = co_await FetchJson(*http_, auth_token_.access_token,
+                                     std::move(request), stop_token);
+  co_return ToItem(response["metadata"]);
 }
 
 auto PCloud::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
@@ -121,10 +145,10 @@ auto PCloud::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
 auto PCloud::ListDirectoryPage(Directory directory,
                                std::optional<std::string> page_token,
                                stdx::stop_token stop_token) -> Task<PageData> {
-  Request request{
-      .url = GetEndpoint("/listfolder") + "?" +
-             http::FormDataToString({{"folderid", std::to_string(directory.id)},
-                                     {"timeformat", "timestamp"}})};
+  Request request{.url = GetEndpoint("/listfolder") + "?" +
+                         http::FormDataToString(
+                             {{"folderid", std::to_string(directory.id.id)},
+                              {"timeformat", "timestamp"}})};
   auto response = co_await FetchJson(*http_, auth_token_.access_token,
                                      std::move(request), std::move(stop_token));
   PageData result;
@@ -138,7 +162,7 @@ Generator<std::string> PCloud::GetFileContent(File file, http::Range range,
                                               stdx::stop_token stop_token) {
   Request request{
       .url = GetEndpoint("/getfilelink") + "?" +
-             http::FormDataToString({{"fileid", std::to_string(file.id)}})};
+             http::FormDataToString({{"fileid", std::to_string(file.id.id)}})};
   auto url_response = co_await FetchJson(*http_, auth_token_.access_token,
                                          std::move(request), stop_token);
   request = {.url = "https://" + std::string(url_response["hosts"][0]) +
@@ -155,7 +179,7 @@ auto PCloud::RenameItem(Directory item, std::string new_name,
                         stdx::stop_token stop_token) -> Task<Directory> {
   Request request{
       .url = GetEndpoint("/renamefolder") + "?" +
-             http::FormDataToString({{"folderid", std::to_string(item.id)},
+             http::FormDataToString({{"folderid", std::to_string(item.id.id)},
                                      {"toname", std::move(new_name)},
                                      {"timeformat", "timestamp"}}),
       .invalidates_cache = true};
@@ -168,7 +192,7 @@ auto PCloud::RenameItem(File item, std::string new_name,
                         stdx::stop_token stop_token) -> Task<File> {
   Request request{
       .url = GetEndpoint("/renamefile") + "?" +
-             http::FormDataToString({{"fileid", std::to_string(item.id)},
+             http::FormDataToString({{"fileid", std::to_string(item.id.id)},
                                      {"toname", std::move(new_name)},
                                      {"timeformat", "timestamp"}}),
       .invalidates_cache = true};
@@ -181,7 +205,7 @@ auto PCloud::CreateDirectory(Directory parent, std::string name,
                              stdx::stop_token stop_token) -> Task<Directory> {
   Request request{
       .url = GetEndpoint("/createfolder") + "?" +
-             http::FormDataToString({{"folderid", std::to_string(parent.id)},
+             http::FormDataToString({{"folderid", std::to_string(parent.id.id)},
                                      {"name", std::move(name)},
                                      {"timeformat", "timestamp"}}),
       .invalidates_cache = true};
@@ -193,7 +217,7 @@ auto PCloud::CreateDirectory(Directory parent, std::string name,
 Task<> PCloud::RemoveItem(File item, stdx::stop_token stop_token) {
   Request request{
       .url = GetEndpoint("/deletefile") + "?" +
-             http::FormDataToString({{"fileid", std::to_string(item.id)}}),
+             http::FormDataToString({{"fileid", std::to_string(item.id.id)}}),
       .invalidates_cache = true};
   co_await Fetch(*http_, auth_token_.access_token, std::move(request),
                  std::move(stop_token));
@@ -202,7 +226,7 @@ Task<> PCloud::RemoveItem(File item, stdx::stop_token stop_token) {
 Task<> PCloud::RemoveItem(Directory item, stdx::stop_token stop_token) {
   Request request{
       .url = GetEndpoint("/deletefolderrecursive") + "?" +
-             http::FormDataToString({{"folderid", std::to_string(item.id)}}),
+             http::FormDataToString({{"folderid", std::to_string(item.id.id)}}),
       .invalidates_cache = true};
   co_await Fetch(*http_, auth_token_.access_token, std::move(request),
                  std::move(stop_token));
@@ -212,8 +236,8 @@ auto PCloud::MoveItem(Directory source, Directory destination,
                       stdx::stop_token stop_token) -> Task<Directory> {
   Request request{.url = GetEndpoint("/renamefolder") + "?" +
                          http::FormDataToString(
-                             {{"folderid", std::to_string(source.id)},
-                              {"tofolderid", std::to_string(destination.id)},
+                             {{"folderid", std::to_string(source.id.id)},
+                              {"tofolderid", std::to_string(destination.id.id)},
                               {"timeformat", "timestamp"}}),
                   .invalidates_cache = true};
   auto response = co_await FetchJson(*http_, auth_token_.access_token,
@@ -225,8 +249,8 @@ auto PCloud::MoveItem(File source, Directory destination,
                       stdx::stop_token stop_token) -> Task<File> {
   Request request{.url = GetEndpoint("/renamefile") + "?" +
                          http::FormDataToString(
-                             {{"fileid", std::to_string(source.id)},
-                              {"tofolderid", std::to_string(destination.id)},
+                             {{"fileid", std::to_string(source.id.id)},
+                              {"tofolderid", std::to_string(destination.id.id)},
                               {"timeformat", "timestamp"}}),
                   .invalidates_cache = true};
   auto response = co_await FetchJson(*http_, auth_token_.access_token,
@@ -239,7 +263,7 @@ auto PCloud::CreateFile(Directory parent, std::string_view name,
     -> Task<File> {
   http::Request<> request{
       .url = GetEndpoint("/uploadfile") + "?" +
-             http::FormDataToString({{"folderid", std::to_string(parent.id)},
+             http::FormDataToString({{"folderid", std::to_string(parent.id.id)},
                                      {"filename", name},
                                      {"timeformat", "timestamp"}}),
       .method = http::Method::kPost,
@@ -261,7 +285,7 @@ auto PCloud::GetItemThumbnail(File file, http::Range range,
   Request request{
       .url = GetEndpoint("/getthumb") + "?" +
              http::FormDataToString(
-                 {{"fileid", std::to_string(file.id)}, {"size", "256x256"}}),
+                 {{"fileid", std::to_string(file.id.id)}, {"size", "256x256"}}),
       .headers = {ToRangeHeader(range)}};
   auto response = co_await Fetch(*http_, auth_token_.access_token,
                                  std::move(request), std::move(stop_token));
@@ -305,13 +329,13 @@ nlohmann::json PCloud::ToJson(const Item& item) {
         nlohmann::json json;
         json["name"] = item.name;
         if constexpr (std::is_same_v<T, File>) {
-          json["fileid"] = item.id;
+          json["fileid"] = item.id.id;
           json["isfolder"] = false;
           json["size"] = item.size;
           json["modified"] = item.timestamp;
         } else {
           json["isfolder"] = true;
-          json["folderid"] = item.id;
+          json["folderid"] = item.id.id;
         }
         return json;
       },

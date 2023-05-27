@@ -6,6 +6,7 @@
 
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_data.h"
+#include "coro/cloudstorage/util/cloud_provider_utils.h"
 #include "coro/cloudstorage/util/fetch_json.h"
 #include "coro/cloudstorage/util/serialize_utils.h"
 #include "coro/http/http.h"
@@ -21,8 +22,10 @@ class PCloud {
     int64_t space_total;
   };
 
+  using ItemId = util::TypedItemId<int64_t>;
+
   struct ItemData {
-    int64_t id;
+    ItemId id;
     std::string name;
   };
 
@@ -82,6 +85,8 @@ class PCloud {
       : http_(http), auth_token_(std::move(auth_token)) {}
 
   Task<Directory> GetRoot(stdx::stop_token);
+
+  Task<Item> GetItem(ItemId id, stdx::stop_token);
 
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token);
 

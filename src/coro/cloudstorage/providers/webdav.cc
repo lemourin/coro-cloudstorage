@@ -254,6 +254,17 @@ auto WebDAV::GetRoot(stdx::stop_token) const -> Task<Directory> {
   co_return d;
 }
 
+auto WebDAV::GetItem(std::string id, stdx::stop_token stop_token) const
+    -> Task<Item> {
+  Request request{.url = GetEndpoint(id),
+                  .method = http::Method::kPropfind,
+                  .headers = {{"Depth", "0"}}};
+  auto response = co_await FetchXml(*http_, auth_token_.credential,
+                                    std::move(request), std::move(stop_token));
+  co_return coro::cloudstorage::ToItem(XmlNode<pugi::xml_node>(
+      response.document_element().first_child(), response.ns()));
+}
+
 auto WebDAV::GetGeneralData(stdx::stop_token stop_token) const
     -> Task<GeneralData> {
   std::string username;

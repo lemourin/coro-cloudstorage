@@ -3,6 +3,7 @@
 
 #include <sstream>
 
+#include "coro/cloudstorage/providers/mega.h"
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
 
 namespace coro::cloudstorage::util {
@@ -67,15 +68,29 @@ concept CanCreateDirectory = requires(
   { item } -> stdx::convertible_to<typename CloudProvider::Item>;
 };
 
-template <typename CloudProvider>
-concept CanGetItem = requires(
-    CloudProvider& provider, std::string item_id, stdx::stop_token stop_token,
-    decltype(provider.GetItem(item_id, stop_token)) item_promise,
-    typename decltype(item_promise)::type item) {
-  {
-    std::declval<decltype(item)>()
-  } -> stdx::convertible_to<typename CloudProvider::Item>;
+template <typename CloudProvider, typename = void>
+struct ItemIdType {
+  using type = std::string;
 };
+
+template <typename CloudProvider>
+struct ItemIdType<CloudProvider, std::void_t<typename CloudProvider::ItemId>> {
+  using type = typename CloudProvider::ItemId;
+};
+
+template <typename CloudProvider>
+using ItemIdTypeT = typename ItemIdType<CloudProvider>::type;
+
+template <typename CloudProvider>
+concept CanGetItem =
+    requires(CloudProvider& provider, ItemIdTypeT<CloudProvider> item_id,
+             stdx::stop_token stop_token,
+             decltype(provider.GetItem(item_id, stop_token)) item_promise,
+             typename decltype(item_promise)::type item) {
+      {
+        std::declval<decltype(item)>()
+      } -> stdx::convertible_to<typename CloudProvider::Item>;
+    };
 
 template <typename Item, typename CloudProvider>
 concept HasThumbnail = requires(
@@ -170,8 +185,9 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider,
   Task<Item> GetItem(std::string id,
                      stdx::stop_token stop_token) const override {
     if constexpr (CanGetItem<CloudProviderT>) {
-      auto item =
-          co_await provider()->GetItem(std::move(id), std::move(stop_token));
+      auto new_id = FromString<ItemIdTypeT<CloudProviderT>>(std::move(id));
+      auto item = co_await provider()->GetItem(std::move(new_id),
+                                               std::move(stop_token));
       co_return std::visit([](auto&& i) { return Item(Convert(std::move(i))); },
                            std::move(item));
     } else {
@@ -337,11 +353,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider,
                                              Directory, File>>
   static To Convert(From d) {
     To result;
-    result.id = [&] {
-      std::stringstream stream;
-      stream << d.id;
-      return std::move(stream).str();
-    }();
+    result.id = ToString(d.id);
     result.name = d.name;
     result.size = GetSize(d);
     result.timestamp = GetTimestamp(d);

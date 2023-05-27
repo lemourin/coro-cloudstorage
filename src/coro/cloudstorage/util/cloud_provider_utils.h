@@ -6,6 +6,7 @@
 
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/cloudstorage/util/cache_manager.h"
+#include "coro/cloudstorage/util/string_utils.h"
 #include "coro/cloudstorage/util/thumbnail_generator.h"
 
 namespace coro::cloudstorage::util {
@@ -68,6 +69,27 @@ Task<AbstractCloudProvider::Thumbnail> GetItemThumbnailWithFallback(
     const ThumbnailGenerator*, CloudProviderCacheManager,
     const AbstractCloudProvider*, Item, ThumbnailQuality, http::Range,
     stdx::stop_token);
+
+template <typename T>
+struct TypedItemId {
+  enum class Type { kFile, kDirectory } type;
+  T id;
+};
+
+template <typename T>
+struct FromStringT<TypedItemId<T>> {
+  TypedItemId<T> operator()(std::string id) const {
+    auto type = id[0] == 'F' ? TypedItemId<T>::Type::kFile
+                             : TypedItemId<T>::Type::kDirectory;
+    return TypedItemId{.type = type,
+                       .id = FromString<T>(std::move(id).substr(1))};
+  }
+};
+
+template <typename T>
+std::string ToString(const TypedItemId<T>& id) {
+  return StrCat(id.type == TypedItemId<T>::Type::kFile ? 'F' : 'D', id.id);
+}
 
 }  // namespace coro::cloudstorage::util
 

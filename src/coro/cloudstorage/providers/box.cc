@@ -21,13 +21,21 @@ using ::coro::cloudstorage::util::StrCat;
 using ::coro::cloudstorage::util::Take;
 
 std::string GetEndpoint(std::string_view path) {
-  return std::string(kEndpoint) + std::string(path);
+  return StrCat(kEndpoint, path);
 }
 
 template <typename Item>
 Item ToItemImpl(const nlohmann::json& json) {
   Item item;
-  item.id = json["id"];
+  item.id = Box::ItemId{.type =
+                            [] {
+                              if constexpr (std::is_same_v<Item, Box::File>) {
+                                return Box::ItemId::Type::kFile;
+                              } else {
+                                return Box::ItemId::Type::kDirectory;
+                              }
+                            }(),
+                        .id = json["id"]};
   item.size = json["size"];
   item.name = json["name"];
   item.timestamp = http::ParseTime(std::string(json["modified_at"]));
@@ -39,7 +47,7 @@ Generator<std::string> GetUploadStream(Box::Directory parent,
                                        Box::FileContent content) {
   nlohmann::json request;
   request["name"] = name;
-  request["parent"]["id"] = std::move(parent.id);
+  request["parent"]["id"] = std::move(parent.id.id);
   std::stringstream chunk;
   chunk << "--" << kSeparator << "\r\n"
         << "Content-Disposition: form-data; name=\"attributes\""
@@ -60,9 +68,10 @@ Task<T> RenameItemImpl(AuthManager* auth_manager, std::string endpoint, T item,
   nlohmann::json request;
   request["name"] = std::move(new_name);
   auto response = co_await auth_manager->FetchJson(
-      http::Request<std::string>{.url = GetEndpoint(endpoint + item.id),
-                                 .method = http::Method::kPut,
-                                 .body = request.dump()},
+      http::Request<std::string>{
+          .url = GetEndpoint(StrCat(endpoint, item.id.id)),
+          .method = http::Method::kPut,
+          .body = request.dump()},
       std::move(stop_token));
   co_return ToItemImpl<T>(response);
 }
@@ -71,11 +80,12 @@ template <typename T>
 Task<T> MoveItemImpl(AuthManager* auth_manager, std::string endpoint, T source,
                      Box::Directory destination, stdx::stop_token stop_token) {
   nlohmann::json request;
-  request["parent"]["id"] = std::move(destination.id);
+  request["parent"]["id"] = std::move(destination.id.id);
   auto response = co_await auth_manager->FetchJson(
-      http::Request<std::string>{.url = GetEndpoint(endpoint + source.id),
-                                 .method = http::Method::kPut,
-                                 .body = request.dump()},
+      http::Request<std::string>{
+          .url = GetEndpoint(StrCat(endpoint, source.id.id)),
+          .method = http::Method::kPut,
+          .body = request.dump()},
       std::move(stop_token));
   co_return ToItemImpl<T>(response);
 }
@@ -131,8 +141,19 @@ auto Box::Auth::RefreshAccessToken(const coro::http::Http& http,
 }
 
 auto Box::GetRoot(stdx::stop_token) -> Task<Directory> {
-  Directory root{{.id = "0"}};
+  Directory root{{.id = ItemId{.type = ItemId::Type::kDirectory, .id = "0"}}};
   co_return root;
+}
+
+auto Box::GetItem(ItemId id, stdx::stop_token stop_token) -> Task<Item> {
+  std::vector<std::pair<std::string, std::string>> params = {
+      {"fields", std::string(kFileProperties)}};
+  std::string type = id.type == ItemId::Type::kDirectory ? "folders" : "files";
+  Request request{.url = StrCat(GetEndpoint(StrCat('/', type, '/', id.id)), '?',
+                                http::FormDataToString(std::move(params)))};
+  auto json = co_await auth_manager_.FetchJson(std::move(request),
+                                               std::move(stop_token));
+  co_return ToItem(json);
 }
 
 auto Box::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
@@ -151,8 +172,9 @@ auto Box::ListDirectoryPage(Directory directory,
   if (page_token) {
     params.emplace_back("offset", std::move(*page_token));
   }
-  Request request{.url = GetEndpoint("/folders/") + directory.id + "/items?" +
-                         http::FormDataToString(std::move(params))};
+  Request request{.url = StrCat(GetEndpoint("/folders/"), directory.id.id,
+                                "/items?",
+                                http::FormDataToString(std::move(params)))};
   auto json = co_await auth_manager_.FetchJson(std::move(request),
                                                std::move(stop_token));
   PageData result;
@@ -170,7 +192,7 @@ auto Box::ListDirectoryPage(Directory directory,
 
 Generator<std::string> Box::GetFileContent(File file, http::Range range,
                                            stdx::stop_token stop_token) {
-  Request request{.url = GetEndpoint("/files/" + file.id + "/content"),
+  Request request{.url = GetEndpoint(StrCat("/files/", file.id.id, "/content")),
                   .headers = {http::ToRangeHeader(range)}};
   auto response = co_await auth_manager_.Fetch(std::move(request), stop_token);
   if (response.status / 100 == 3) {
@@ -197,7 +219,7 @@ auto Box::CreateDirectory(Directory parent, std::string name,
                           stdx::stop_token stop_token) -> Task<Directory> {
   json request;
   request["name"] = std::move(name);
-  request["parent"]["id"] = std::move(parent.id);
+  request["parent"]["id"] = std::move(parent.id.id);
   auto response =
       co_await auth_manager_.FetchJson(Request{.url = GetEndpoint("/folders"),
                                                .method = http::Method::kPost,
@@ -207,14 +229,15 @@ auto Box::CreateDirectory(Directory parent, std::string name,
 }
 
 Task<> Box::RemoveItem(File item, stdx::stop_token stop_token) {
-  Request request = {.url = GetEndpoint("/files/" + item.id),
+  Request request = {.url = GetEndpoint(StrCat("/files/", item.id.id)),
                      .method = http::Method::kDelete};
   co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
 }
 
 Task<> Box::RemoveItem(Directory item, stdx::stop_token stop_token) {
-  Request request{.url = GetEndpoint("/folders/" + item.id) + "?" +
-                         http::FormDataToString({{"recursive", "true"}}),
+  Request request{.url = GetEndpoint(
+                      StrCat("/folders/", item.id.id, '?',
+                             http::FormDataToString({{"recursive", "true"}}))),
                   .method = http::Method::kDelete};
   co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
 }
@@ -234,7 +257,7 @@ auto Box::MoveItem(File source, Directory destination,
 auto Box::CreateFile(Directory parent, std::string_view name,
                      FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
-  std::optional<std::string> id;
+  std::optional<ItemId> id;
   FOR_CO_AWAIT(const auto& page, ListDirectory(this, parent, stop_token)) {
     for (const auto& item : page.items) {
       if (std::visit([](const auto& d) { return d.name; }, item) == name) {
@@ -258,7 +281,7 @@ auto Box::CreateFile(Directory parent, std::string_view name,
             json json;
             if (!id) {
               json["name"] = std::string(name);
-              json["parent"]["id"] = parent.id;
+              json["parent"]["id"] = parent.id.id;
             }
             if (content.size) {
               json["size"] = *content.size;
@@ -289,8 +312,8 @@ auto Box::CreateFile(Directory parent, std::string_view name,
 auto Box::GetItemThumbnail(File file, http::Range range,
                            stdx::stop_token stop_token) -> Task<Thumbnail> {
   Request request{
-      .url = GetEndpoint("/files/" + file.id +
-                         "/thumbnail.png?min_width=256&min_height=256"),
+      .url = GetEndpoint(StrCat("/files/", file.id.id,
+                                "/thumbnail.png?min_width=256&min_height=256")),
       .headers = {ToRangeHeader(range)}};
   auto response =
       co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
@@ -316,7 +339,7 @@ nlohmann::json Box::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& item) {
         nlohmann::json json;
-        json["id"] = item.id;
+        json["id"] = item.id.id;
         json["name"] = item.name;
         json["size"] = item.size;
         json["modified_at"] = http::ToTimeString(item.timestamp);

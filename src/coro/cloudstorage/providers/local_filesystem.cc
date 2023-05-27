@@ -152,6 +152,19 @@ auto LocalFileSystem::GetRoot(stdx::stop_token) const -> Task<Directory> {
   co_return d;
 }
 
+auto LocalFileSystem::GetItem(std::string id, stdx::stop_token stop_token) const
+    -> Task<Item> {
+  co_return co_await thread_pool_->Do(std::move(stop_token), [&]() -> Item {
+    PageData page_data;
+    std::filesystem::directory_entry entry(id);
+    if (std::filesystem::is_directory(entry)) {
+      return coro::cloudstorage::ToItem<Directory>(entry);
+    } else {
+      return coro::cloudstorage::ToItem<File>(entry);
+    }
+  });
+}
+
 auto LocalFileSystem::ListDirectoryPage(Directory directory,
                                         std::optional<std::string>,
                                         stdx::stop_token stop_token) const

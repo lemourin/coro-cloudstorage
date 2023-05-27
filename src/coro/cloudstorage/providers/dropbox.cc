@@ -164,6 +164,20 @@ auto Dropbox::GetRoot(stdx::stop_token) -> Task<Directory> {
   co_return d;
 }
 
+auto Dropbox::GetItem(std::string id, stdx::stop_token stop_token)
+    -> Task<Item> {
+  json body;
+  body["path"] = std::move(id);
+  http::Request<std::string> request{
+      .url = GetEndpoint("/files/get_metadata"),
+      .method = http::Method::kPost,
+      .headers = {{"Content-Type", "application/json"}},
+      .body = body.dump(),
+      .invalidates_cache = false};
+  co_return ToItem(
+      co_await auth_manager_.FetchJson(std::move(request), stop_token));
+}
+
 auto Dropbox::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
   Task<json> task1 = auth_manager_.FetchJson(
       Request{.url = GetEndpoint("/users/get_current_account"),

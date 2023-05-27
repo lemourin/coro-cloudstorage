@@ -9,6 +9,29 @@
 namespace coro::cloudstorage::util {
 
 template <typename T>
+struct FromStringT;
+
+template <typename T>
+T FromString(std::string sv) {
+  return FromStringT<T>{}(std::move(sv));
+}
+
+template <>
+inline std::string FromString(std::string sv) {
+  return std::move(sv);
+}
+
+template <>
+inline uint64_t FromString<uint64_t>(std::string sv) {
+  return std::stoull(sv);
+}
+
+template <>
+inline int64_t FromString<int64_t>(std::string sv) {
+  return std::stoll(sv);
+}
+
+template <typename T>
 std::string ToString(T d) {
   std::stringstream stream;
   stream << std::move(d);

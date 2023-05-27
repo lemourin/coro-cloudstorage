@@ -44,6 +44,8 @@ class Mega {
     class AuthHandler;
   };
 
+  using ItemId = uint64_t;
+
   struct ItemData {
     uint64_t id;
     int64_t timestamp;
@@ -124,6 +126,8 @@ class Mega {
   ~Mega() { stop_source_.request_stop(); }
 
   Task<Root> GetRoot(stdx::stop_token stop_token);
+
+  Task<Item> GetItem(uint64_t id, stdx::stop_token stop_token);
 
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token);
 

@@ -76,6 +76,16 @@ auto YandexDisk::GetRoot(stdx::stop_token) -> Task<Directory> {
   co_return d;
 }
 
+auto YandexDisk::GetItem(std::string id, stdx::stop_token stop_token)
+    -> Task<Item> {
+  std::vector<std::pair<std::string, std::string>> params = {
+      {"path", id}, {"preview_size", "M"}};
+  Request request{.url = StrCat(GetEndpoint("/disk/resources"), '?',
+                                http::FormDataToString(std::move(params)))};
+  auto response = co_await FetchJson(std::move(request), std::move(stop_token));
+  co_return ToItem(response);
+}
+
 auto YandexDisk::GetGeneralData(stdx::stop_token stop_token)
     -> Task<GeneralData> {
   Task<json> task1 =

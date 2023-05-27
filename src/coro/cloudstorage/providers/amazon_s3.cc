@@ -17,6 +17,7 @@ namespace {
 using ::coro::cloudstorage::util::GetFileName;
 using ::coro::cloudstorage::util::GetHMACSHA256;
 using ::coro::cloudstorage::util::GetSHA256;
+using ::coro::cloudstorage::util::StrCat;
 using ::coro::cloudstorage::util::ToHex;
 
 Generator<std::string> GenerateLoginPage() {
@@ -229,6 +230,25 @@ auto AmazonS3::GetRoot(stdx::stop_token) const -> Task<Directory> {
   co_return d;
 }
 
+auto AmazonS3::GetItem(std::string id, stdx::stop_token stop_token) const
+    -> Task<Item> {
+  pugi::xml_document response = co_await FetchXml(
+      Request{.url = StrCat(GetEndpoint("/"), '?',
+                            http::FormDataToString({{"list-type", "2"},
+                                                    {"prefix", id},
+                                                    {"delimiter", "/"},
+                                                    {"max-keys", "1"}}))},
+      std::move(stop_token));
+  auto file = ToFile(response.document_element().child("Contents"));
+  if (!file.id.ends_with('/')) {
+    co_return file;
+  }
+  Directory directory;
+  directory.id = std::move(file.id);
+  directory.name = std::move(file.name);
+  co_return directory;
+}
+
 auto AmazonS3::GetGeneralData(stdx::stop_token) const -> Task<GeneralData> {
   GeneralData data{.username =
                        http::ParseUri(auth_token_.endpoint).host.value()};
@@ -316,7 +336,7 @@ auto AmazonS3::CreateFile(Directory parent, std::string_view name,
                           stdx::stop_token stop_token) const -> Task<File> {
   auto new_id = util::StrCat(parent.id, name);
   auto request = http::Request<>{
-      .url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(new_id))),
+      .url = GetEndpoint(StrCat("/", http::EncodeUriPath(new_id))),
       .method = http::Method::kPut,
       .headers = {{"Content-Length", std::to_string(content.size)}},
       .body = std::move(content.data)};
@@ -328,10 +348,11 @@ template <typename ItemT>
 Task<ItemT> AmazonS3::GetItem(std::string_view id,
                               stdx::stop_token stop_token) const {
   pugi::xml_document response = co_await FetchXml(
-      Request{
-          .url = GetEndpoint("/") + "?" +
-                 http::FormDataToString(
-                     {{"list-type", "2"}, {"prefix", id}, {"delimiter", "/"}})},
+      Request{.url = StrCat(GetEndpoint("/"), '?',
+                            http::FormDataToString({{"list-type", "2"},
+                                                    {"prefix", id},
+                                                    {"delimiter", "/"},
+                                                    {"max-keys", "1"}}))},
       std::move(stop_token));
   if constexpr (std::is_same_v<ItemT, Directory>) {
     auto file = ToFile(response.document_element().child("Contents"));
@@ -467,7 +488,6 @@ nlohmann::json AmazonS3::ToJson(const Item& item) {
 }
 
 namespace util {
-
 template <>
 nlohmann::json ToJson<AmazonS3::Auth::AuthToken>(
     AmazonS3::Auth::AuthToken token) {
