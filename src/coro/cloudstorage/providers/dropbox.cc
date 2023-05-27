@@ -19,7 +19,7 @@ using ::coro::http::GetBody;
 template <typename T>
 T ToItemImpl(const nlohmann::json& json) {
   T result = {};
-  result.id = json["path_display"];
+  result.id = json["id"];
   result.name = json["name"];
   if constexpr (std::is_same_v<T, Dropbox::File>) {
     result.size = json.at("size");
@@ -397,7 +397,7 @@ nlohmann::json Dropbox::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& item) {
         nlohmann::json json;
-        json["path_display"] = item.id;
+        json["id"] = item.id;
         json["name"] = item.name;
         if constexpr (std::is_same_v<T, File>) {
           json[".tag"] = "file";
