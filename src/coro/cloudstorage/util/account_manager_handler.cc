@@ -3,12 +3,12 @@
 #include <fmt/core.h>
 
 #include "coro/cloudstorage/util/assets.h"
-#include "coro/cloudstorage/util/cloud_provider_handler.h"
 #include "coro/cloudstorage/util/exception_utils.h"
 #include "coro/cloudstorage/util/generator_utils.h"
 #include "coro/cloudstorage/util/get_size_handler.h"
 #include "coro/cloudstorage/util/item_content_handler.h"
 #include "coro/cloudstorage/util/item_thumbnail_handler.h"
+#include "coro/cloudstorage/util/list_directory_handler.h"
 #include "coro/cloudstorage/util/mux_handler.h"
 #include "coro/cloudstorage/util/settings_handler.h"
 #include "coro/cloudstorage/util/static_file_handler.h"
@@ -214,6 +214,15 @@ auto AccountManagerHandler::Impl::operator()(Request request,
     try {
       co_return co_await HandleRequest(std::move(request),
                                        std::move(stop_token));
+    } catch (const CloudException& e) {
+      switch (e.type()) {
+        case CloudException::Type::kNotFound:
+          co_return Response{.status = 404};
+        case CloudException::Type::kUnauthorized:
+          co_return Response{.status = 401};
+        default:
+          throw;
+      }
     } catch (...) {
       co_return GetErrorResponse(GetErrorMetadata());
     }
@@ -335,23 +344,28 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
   }
 
   for (const auto& account : accounts_) {
-    handlers.emplace_back(Handler{
-        .account = account,
-        .prefix = StrCat("/list/", account.type(), '/',
-                         http::EncodeUri(account.username())),
-        .handler = CloudProviderHandler(
-            account.provider().get(), thumbnail_generator_, settings_manager_,
-            CloudProviderCacheManager(account, cache_manager_),
-            [account_id = account.id()](std::string_view item_id) {
-              return StrCat("/thumbnail/", account_id.type, '/',
-                            http::EncodeUri(account_id.username), '/',
-                            http::EncodeUri(item_id));
-            },
-            [account_id = account.id()](std::string_view item_id) {
-              return StrCat("/content/", account_id.type, '/',
-                            http::EncodeUri(account_id.username), '/',
-                            http::EncodeUri(item_id));
-            })});
+    handlers.emplace_back(
+        Handler{.account = account,
+                .prefix = StrCat("/list/", account.type(), '/',
+                                 http::EncodeUri(account.username())),
+                .handler = ListDirectoryHandler(
+                    account.provider().get(),
+                    CloudProviderCacheManager(account, cache_manager_),
+                    [account_id = account.id()](std::string_view item_id) {
+                      return StrCat("/list/", account_id.type, '/',
+                                    http::EncodeUri(account_id.username), '/',
+                                    http::EncodeUri(item_id));
+                    },
+                    [account_id = account.id()](std::string_view item_id) {
+                      return StrCat("/thumbnail/", account_id.type, '/',
+                                    http::EncodeUri(account_id.username), '/',
+                                    http::EncodeUri(item_id));
+                    },
+                    [account_id = account.id()](std::string_view item_id) {
+                      return StrCat("/content/", account_id.type, '/',
+                                    http::EncodeUri(account_id.username), '/',
+                                    http::EncodeUri(item_id));
+                    })});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/webdav/", account.type(), '/',

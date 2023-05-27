@@ -83,7 +83,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/timing_out_stop_token.cc
     coro/cloudstorage/util/cloud_factory_config.cc
     coro/cloudstorage/util/generator_utils.cc
-    coro/cloudstorage/util/cloud_provider_handler.cc
+    coro/cloudstorage/util/list_directory_handler.cc
     coro/cloudstorage/util/mux_handler.cc
     coro/cloudstorage/util/cache_manager.cc
     coro/cloudstorage/util/item_thumbnail_handler.cc
@@ -132,7 +132,7 @@ target_sources(coro-cloudstorage
         coro/cloudstorage/util/recursive_visit.h
         coro/cloudstorage/util/webdav_handler.h
         coro/cloudstorage/util/random_number_generator.h
-        coro/cloudstorage/util/cloud_provider_handler.h
+        coro/cloudstorage/util/list_directory_handler.h
         coro/cloudstorage/util/auth_data.h
         coro/cloudstorage/util/string_utils.h
         coro/cloudstorage/util/webdav_utils.h
