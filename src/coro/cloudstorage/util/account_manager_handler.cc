@@ -12,6 +12,7 @@
 #include "coro/cloudstorage/util/settings_handler.h"
 #include "coro/cloudstorage/util/static_file_handler.h"
 #include "coro/cloudstorage/util/theme_handler.h"
+#include "coro/cloudstorage/util/webdav_handler.h"
 #include "coro/cloudstorage/util/webdav_utils.h"
 #include "coro/util/stop_token_or.h"
 
@@ -345,6 +346,11 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
                             http::EncodeUri(account_id.username), '/',
                             http::EncodeUri(item_id));
             })});
+    handlers.emplace_back(
+        Handler{.account = account,
+                .prefix = StrCat("/webdav/", account.type(), '/',
+                                 http::EncodeUri(account.username())),
+                .handler = WebDAVHandler(account.provider().get())});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/thumbnail/", account.type(), '/',

@@ -160,7 +160,7 @@ Task<Response> HandleExistingItem(CloudProvider* provider, Request request,
                                    destination_path.end()),
           stop_token);
       auto item = co_await std::visit(
-          MoveItemF<Item>{provider, std::move(d), std::move(stop_token)},
+          MoveItemF<Item>{provider, std::move(d), stop_token},
           std::move(destination_directory));
       if (!item) {
         co_return Response{.status = 501};
@@ -197,6 +197,21 @@ Task<Response> HandleExistingItem(CloudProvider* provider, Request request,
       co_return Response{.status = 207,
                          .headers = {{"Content-Type", "text/html"}},
                          .body = GetWebDavItemResponse(GetPath(request), d)};
+    }
+  } else if (request.method == http::Method::kGet) {
+    if constexpr (std::is_same_v<Item, AbstractCloudProvider::File>) {
+      co_return co_await GetFileContentResponse(
+          provider, std::move(d),
+          [&]() -> std::optional<http::Range> {
+            if (auto header = http::GetHeader(request.headers, "Range")) {
+              return http::ParseRange(std::move(*header));
+            } else {
+              return std::nullopt;
+            }
+          }(),
+          std::move(stop_token));
+    } else {
+      co_return Response{.status = 400};
     }
   } else {
     throw RuntimeError("unsupported method");

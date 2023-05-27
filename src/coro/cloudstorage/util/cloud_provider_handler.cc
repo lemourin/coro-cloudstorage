@@ -135,15 +135,6 @@ auto CloudProviderHandler::operator()(Request request,
                                       stdx::stop_token stop_token)
     -> Task<Response> {
   try {
-    if (request.method == http::Method::kPropfind ||
-        request.method == http::Method::kMove ||
-        request.method == http::Method::kProppatch ||
-        request.method == http::Method::kMkcol ||
-        request.method == http::Method::kDelete ||
-        request.method == http::Method::kPut) {
-      co_return co_await WebDAVHandler(provider_)(std::move(request),
-                                                  std::move(stop_token));
-    }
     auto uri = http::ParseUri(request.url);
     auto path = GetEffectivePath(uri.path.value());
     auto item = co_await GetItemByPathComponents(cache_manager_, provider_,
