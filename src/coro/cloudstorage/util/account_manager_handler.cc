@@ -7,6 +7,7 @@
 #include "coro/cloudstorage/util/exception_utils.h"
 #include "coro/cloudstorage/util/generator_utils.h"
 #include "coro/cloudstorage/util/get_size_handler.h"
+#include "coro/cloudstorage/util/item_content_handler.h"
 #include "coro/cloudstorage/util/item_thumbnail_handler.h"
 #include "coro/cloudstorage/util/mux_handler.h"
 #include "coro/cloudstorage/util/settings_handler.h"
@@ -345,6 +346,11 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
               return StrCat("/thumbnail/", account_id.type, '/',
                             http::EncodeUri(account_id.username), '/',
                             http::EncodeUri(item_id));
+            },
+            [account_id = account.id()](std::string_view item_id) {
+              return StrCat("/content/", account_id.type, '/',
+                            http::EncodeUri(account_id.username), '/',
+                            http::EncodeUri(item_id));
             })});
     handlers.emplace_back(
         Handler{.account = account,
@@ -358,6 +364,11 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
                 .handler = ItemThumbnailHandler{
                     account.provider().get(), thumbnail_generator_,
                     CloudProviderCacheManager(account, cache_manager_)}});
+    handlers.emplace_back(
+        Handler{.account = account,
+                .prefix = StrCat("/content/", account.type(), '/',
+                                 http::EncodeUri(account.username())),
+                .handler = ItemContentHandler{account.provider().get()}});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/remove/", account.type(), '/',

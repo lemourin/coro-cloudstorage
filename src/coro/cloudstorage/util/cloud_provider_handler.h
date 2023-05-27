@@ -26,12 +26,15 @@ class CloudProviderHandler {
       const SettingsManager* settings_manager,
       CloudProviderCacheManager cache_manager,
       stdx::any_invocable<std::string(std::string_view item_id) const>
-          thumbnail_url_generator)
+          thumbnail_url_generator,
+      stdx::any_invocable<std::string(std::string_view item_id) const>
+          content_url_generator)
       : provider_(provider),
         thumbnail_generator_(thumbnail_generator),
         settings_manager_(settings_manager),
         cache_manager_(std::move(cache_manager)),
-        thumbnail_url_generator_(std::move(thumbnail_url_generator)) {}
+        thumbnail_url_generator_(std::move(thumbnail_url_generator)),
+        content_url_generator_(std::move(content_url_generator)) {}
 
   Task<Response> operator()(Request request, stdx::stop_token stop_token);
 
@@ -59,6 +62,8 @@ class CloudProviderHandler {
   CloudProviderCacheManager cache_manager_;
   stdx::any_invocable<std::string(std::string_view id) const>
       thumbnail_url_generator_;
+  stdx::any_invocable<std::string(std::string_view item_id) const>
+      content_url_generator_;
 };
 
 }  // namespace coro::cloudstorage::util

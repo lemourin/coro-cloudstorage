@@ -96,14 +96,16 @@ std::string GetItemEntry(
     std::string_view host, const Item& item, std::string_view path,
     bool use_dash_player,
     const stdx::any_invocable<std::string(std::string_view item_id) const>&
-        thumbnail_url_generator) {
+        thumbnail_url_generator,
+    const stdx::any_invocable<std::string(std::string_view item_id) const>&
+        content_url_generator) {
   std::string file_link = StrCat(path, http::EncodeUri(item.name));
   return fmt::format(
       fmt::runtime(kItemEntryHtml), fmt::arg("name", item.name),
       fmt::arg("size", SizeToString(item.size)),
       fmt::arg("timestamp", TimeStampToString(item.timestamp)),
-      fmt::arg("url",
-               StrCat(file_link, use_dash_player ? "?dash_player=true" : "")),
+      fmt::arg("url", StrCat(content_url_generator(item.id),
+                             use_dash_player ? "?dash_player=true" : "")),
       fmt::arg("thumbnail_url",
                RewriteThumbnailUrl(host, thumbnail_url_generator(item.id))));
 }
@@ -112,7 +114,9 @@ std::string GetItemEntry(
     std::string_view host, const AbstractCloudProvider::Item& item,
     std::string_view path, bool use_dash_player,
     const stdx::any_invocable<std::string(std::string_view item_id) const>&
-        thumbnail_url_generator) {
+        thumbnail_url_generator,
+    const stdx::any_invocable<std::string(std::string_view item_id) const>&
+        content_url_generator) {
   return std::visit(
       [&]<typename Item>(const Item& item) {
         bool effective_use_dash_player = [&] {
@@ -124,7 +128,7 @@ std::string GetItemEntry(
           }
         }();
         return GetItemEntry(host, item, path, effective_use_dash_player,
-                            thumbnail_url_generator);
+                            thumbnail_url_generator, content_url_generator);
       },
       item);
 }
@@ -242,7 +246,7 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
   FOR_CO_AWAIT(const auto& page, page_data) {
     for (const auto& item : page.items) {
       co_yield GetItemEntry(host, item, path, use_dash_player,
-                            thumbnail_url_generator_);
+                            thumbnail_url_generator_, content_url_generator_);
     }
   }
   co_yield "</table>"
