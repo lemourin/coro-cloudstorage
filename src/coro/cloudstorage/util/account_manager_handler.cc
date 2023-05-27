@@ -344,13 +344,13 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
   }
 
   for (const auto& account : accounts_) {
+    CloudProviderCacheManager cache_manager(account, cache_manager_);
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/list/", account.type(), '/',
                                  http::EncodeUri(account.username())),
                 .handler = ListDirectoryHandler(
-                    account.provider().get(),
-                    CloudProviderCacheManager(account, cache_manager_),
+                    account.provider().get(), cache_manager,
                     [account_id = account.id()](std::string_view item_id) {
                       return StrCat("/list/", account_id.type, '/',
                                     http::EncodeUri(account_id.username), '/',
@@ -371,18 +371,18 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
                 .prefix = StrCat("/webdav/", account.type(), '/',
                                  http::EncodeUri(account.username())),
                 .handler = WebDAVHandler(account.provider().get())});
-    handlers.emplace_back(
-        Handler{.account = account,
-                .prefix = StrCat("/thumbnail/", account.type(), '/',
-                                 http::EncodeUri(account.username())),
-                .handler = ItemThumbnailHandler{
-                    account.provider().get(), thumbnail_generator_,
-                    CloudProviderCacheManager(account, cache_manager_)}});
-    handlers.emplace_back(
-        Handler{.account = account,
-                .prefix = StrCat("/content/", account.type(), '/',
-                                 http::EncodeUri(account.username())),
-                .handler = ItemContentHandler{account.provider().get()}});
+    handlers.emplace_back(Handler{
+        .account = account,
+        .prefix = StrCat("/thumbnail/", account.type(), '/',
+                         http::EncodeUri(account.username())),
+        .handler = ItemThumbnailHandler{account.provider().get(),
+                                        thumbnail_generator_, cache_manager}});
+    handlers.emplace_back(Handler{
+        .account = account,
+        .prefix = StrCat("/content/", account.type(), '/',
+                         http::EncodeUri(account.username())),
+        .handler =
+            ItemContentHandler{account.provider().get(), cache_manager}});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/remove/", account.type(), '/',

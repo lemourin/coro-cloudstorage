@@ -13,6 +13,8 @@ namespace coro::cloudstorage::util {
 
 enum class FileType { kUnknown, kVideo, kAudio, kImage };
 
+inline constexpr std::string_view kRootId = "";
+
 FileType GetFileType(std::string_view mime_type);
 
 template <typename CloudProviderT, typename DirectoryT>
@@ -44,6 +46,15 @@ Task<AbstractCloudProvider::Item> GetItemByPathComponents(
 Task<AbstractCloudProvider::Item> GetItemByPath(const AbstractCloudProvider*,
                                                 std::string path,
                                                 stdx::stop_token stop_token);
+
+Task<AbstractCloudProvider::Item> GetItemById(const AbstractCloudProvider*,
+                                              std::string id,
+                                              stdx::stop_token stop_token);
+
+Task<AbstractCloudProvider::Item> GetItemById(const AbstractCloudProvider*,
+                                              CloudProviderCacheManager,
+                                              std::string id,
+                                              stdx::stop_token stop_token);
 
 template <typename Item>
 Task<AbstractCloudProvider::Thumbnail> GetItemThumbnailWithFallback(

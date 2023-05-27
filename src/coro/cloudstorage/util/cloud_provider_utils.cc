@@ -274,6 +274,45 @@ Task<AbstractCloudProvider::Thumbnail> GetItemThumbnailWithFallback(
       .mime_type = std::move(thumbnail.mime_type)};
 }
 
+Task<AbstractCloudProvider::Item> GetItemById(
+    const AbstractCloudProvider* provider, std::string id,
+    stdx::stop_token stop_token) {
+  if (id == kRootId) {
+    co_return co_await provider->GetRoot(std::move(stop_token));
+  } else {
+    co_return co_await provider->GetItem(std::move(id), std::move(stop_token));
+  }
+}
+
+Task<AbstractCloudProvider::Item> GetItemById(
+    const AbstractCloudProvider* provider,
+    CloudProviderCacheManager cache_manager, std::string id,
+    stdx::stop_token stop_token) {
+  auto item = co_await cache_manager.Get(id, stop_token);
+  if (item) {
+    RunTask([provider, cache_manager = std::move(cache_manager),
+             id = std::move(id)]() mutable -> Task<> {
+      try {
+        auto item =
+            co_await GetItemById(provider, std::move(id), stdx::stop_token());
+        co_await cache_manager.Put(std::move(id), std::move(item),
+                                   stdx::stop_token());
+      } catch (const Exception& e) {
+        std::cerr << "Failed to update item." << e.what();
+      }
+    });
+    co_return *item;
+  } else {
+    auto item = co_await GetItemById(provider, id, stop_token);
+    RunTask([provider, item, cache_manager = std::move(cache_manager),
+             id = std::move(id)]() mutable -> Task<> {
+      return cache_manager.Put(std::move(id), std::move(item),
+                               stdx::stop_token());
+    });
+    co_return item;
+  }
+}
+
 template Task<AbstractCloudProvider::Thumbnail> GetItemThumbnailWithFallback(
     const ThumbnailGenerator*, CloudProviderCacheManager,
     const AbstractCloudProvider*, AbstractCloudProvider::File, ThumbnailQuality,

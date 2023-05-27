@@ -1,5 +1,6 @@
 #include "coro/cloudstorage/util/item_content_handler.h"
 
+#include "coro/cloudstorage/util/cloud_provider_utils.h"
 #include "coro/cloudstorage/util/handler_utils.h"
 #include "coro/util/regex.h"
 
@@ -17,7 +18,8 @@ Task<http::Response<>> ItemContentHandler::operator()(
   }
   std::string item_id =
       http::DecodeUri(std::string_view(results[1].begin(), results[1].end()));
-  auto item = co_await provider_->GetItem(item_id, stop_token);
+  auto item =
+      co_await GetItemById(provider_, cache_manager_, item_id, stop_token);
   auto* file = std::get_if<AbstractCloudProvider::File>(&item);
   if (!file) {
     co_return http::Response<>{.status = 400};

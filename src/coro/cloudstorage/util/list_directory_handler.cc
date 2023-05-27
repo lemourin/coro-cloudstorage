@@ -72,9 +72,8 @@ auto ListDirectoryHandler::operator()(http::Request<> request,
   }
   std::string item_id =
       http::DecodeUri(std::string_view(results[1].begin(), results[1].end()));
-  auto item = item_id.empty()
-                  ? co_await provider_->GetRoot(stop_token)
-                  : co_await provider_->GetItem(item_id, stop_token);
+  auto item =
+      co_await GetItemById(provider_, cache_manager_, item_id, stop_token);
   auto* directory = std::get_if<AbstractCloudProvider::Directory>(&item);
   if (!directory) {
     co_return http::Response<>{.status = 400};

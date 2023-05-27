@@ -196,6 +196,19 @@ Task<> CacheManager::Put(CloudProviderAccount account,
   });
 }
 
+Task<> CacheManager::Put(CloudProviderAccount account, std::string id,
+                         AbstractCloudProvider::Item item,
+                         stdx::stop_token stop_token) {
+  auto* db = GetDb(db_);
+  auto account_id = account.id();
+  DbItem db_item = DbItem{.account_type = account_id.type,
+                          .account_username = account_id.username,
+                          .id = id,
+                          .content = ToCbor(account.provider()->ToJson(item))};
+  co_return co_await write_thread_pool_.Do(
+      std::move(stop_token), [&] { db->replace(std::move(db_item)); });
+}
+
 Task<std::optional<std::vector<AbstractCloudProvider::Item>>> CacheManager::Get(
     CloudProviderAccount account, AbstractCloudProvider::Directory directory,
     stdx::stop_token stop_token) const {
@@ -309,6 +322,31 @@ Task<std::optional<AbstractCloudProvider::Item>> CacheManager::Get(
                          &DbItemByPath::account_username),
                 c(&DbItem::id) == &DbItemByPath::id))),
             where(and_(and_(c(&DbItemByPath::path) == EncodePath(path),
+                            c(&DbItem::account_type) == account_id.type),
+                       c(&DbItem::account_username) == account_id.username)));
+        if (result.empty()) {
+          return std::nullopt;
+        } else {
+          return result[0];
+        }
+      });
+  if (content) {
+    co_return account.provider()->ToItem(nlohmann::json::from_cbor(*content));
+  } else {
+    co_return std::nullopt;
+  }
+}
+
+Task<std::optional<AbstractCloudProvider::Item>> CacheManager::Get(
+    CloudProviderAccount account, std::string id,
+    stdx::stop_token stop_token) const {
+  auto* db = GetDb(db_);
+  auto account_id = account.id();
+  auto content = co_await read_thread_pool_->Do(
+      std::move(stop_token), [&]() -> std::optional<std::vector<char>> {
+        auto result = db->select(
+            &DbItem::content,
+            where(and_(and_(c(&DbItem::id) == id,
                             c(&DbItem::account_type) == account_id.type),
                        c(&DbItem::account_username) == account_id.username)));
         if (result.empty()) {
