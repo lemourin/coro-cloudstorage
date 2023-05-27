@@ -81,38 +81,22 @@ std::string RewriteThumbnailUrl(std::string_view host, std::string url) {
   return rewritten;
 }
 
-Generator<std::string> GetDashPlayer(std::string host, std::string path) {
+Generator<std::string> GetDashPlayer(std::string host, std::string path,
+                                     std::string poster_url) {
   std::stringstream stream;
   stream << "<source src='" << path << "'>";
-  std::string content = fmt::format(
-      fmt::runtime(kDashPlayerHtml),
-      fmt::arg("poster",
-               RewriteThumbnailUrl(host, StrCat(path, "?hq_thumbnail=true"))),
-      fmt::arg("source", std::move(stream).str()));
+  std::string content =
+      fmt::format(fmt::runtime(kDashPlayerHtml), fmt::arg("poster", poster_url),
+                  fmt::arg("source", std::move(stream).str()));
   co_yield std::move(content);
 }
 
-std::string_view GetIconName(AbstractCloudProvider::Directory) {
-  return "folder";
-}
-
-std::string_view GetIconName(AbstractCloudProvider::File file) {
-  switch (GetFileType(file.mime_type)) {
-    case FileType::kUnknown:
-      return "unknown";
-    case FileType::kImage:
-      return "image-x-generic";
-    case FileType::kAudio:
-      return "audio-x-generic";
-    case FileType::kVideo:
-      return "video-x-generic";
-  }
-  throw RuntimeError("invalid file type");
-}
-
 template <typename Item>
-std::string GetItemEntry(std::string_view host, const Item& item,
-                         std::string_view path, bool use_dash_player) {
+std::string GetItemEntry(
+    std::string_view host, const Item& item, std::string_view path,
+    bool use_dash_player,
+    const stdx::any_invocable<std::string(std::string_view item_id) const>&
+        thumbnail_url_generator) {
   std::string file_link = StrCat(path, http::EncodeUri(item.name));
   return fmt::format(
       fmt::runtime(kItemEntryHtml), fmt::arg("name", item.name),
@@ -120,14 +104,15 @@ std::string GetItemEntry(std::string_view host, const Item& item,
       fmt::arg("timestamp", TimeStampToString(item.timestamp)),
       fmt::arg("url",
                StrCat(file_link, use_dash_player ? "?dash_player=true" : "")),
-      fmt::arg(
-          "thumbnail_url",
-          RewriteThumbnailUrl(host, StrCat(file_link, "?thumbnail=true"))));
+      fmt::arg("thumbnail_url",
+               RewriteThumbnailUrl(host, thumbnail_url_generator(item.id))));
 }
 
-std::string GetItemEntry(std::string_view host,
-                         const AbstractCloudProvider::Item& item,
-                         std::string_view path, bool use_dash_player) {
+std::string GetItemEntry(
+    std::string_view host, const AbstractCloudProvider::Item& item,
+    std::string_view path, bool use_dash_player,
+    const stdx::any_invocable<std::string(std::string_view item_id) const>&
+        thumbnail_url_generator) {
   return std::visit(
       [&]<typename Item>(const Item& item) {
         bool effective_use_dash_player = [&] {
@@ -138,7 +123,8 @@ std::string GetItemEntry(std::string_view host,
             return false;
           }
         }();
-        return GetItemEntry(host, item, path, effective_use_dash_player);
+        return GetItemEntry(host, item, path, effective_use_dash_player,
+                            thumbnail_url_generator);
       },
       item);
 }
@@ -160,28 +146,10 @@ auto CloudProviderHandler::operator()(Request request,
     }
     auto uri = http::ParseUri(request.url);
     auto path = GetEffectivePath(uri.path.value());
+    auto item = co_await GetItemByPathComponents(cache_manager_, provider_,
+                                                 path, stop_token);
     if (request.method == http::Method::kGet && uri.query) {
       auto query = http::ParseQuery(*uri.query);
-      if (auto it = query.find("thumbnail");
-          it != query.end() && it->second == "true") {
-        co_return co_await std::visit(
-            [&]<typename T>(T&& d) {
-              return GetItemThumbnail(std::forward<T>(d),
-                                      ThumbnailQuality::kLow, stop_token);
-            },
-            co_await GetItemByPathComponents(cache_manager_, provider_, path,
-                                             stop_token));
-      }
-      if (auto it = query.find("hq_thumbnail");
-          it != query.end() && it->second == "true") {
-        co_return co_await std::visit(
-            [&]<typename T>(T&& d) {
-              return GetItemThumbnail(std::forward<T>(d),
-                                      ThumbnailQuality::kHigh, stop_token);
-            },
-            co_await GetItemByPathComponents(cache_manager_, provider_, path,
-                                             stop_token));
-      }
       if (auto it = query.find("dash_player");
           it != query.end() && it->second == "true") {
         co_return Response{
@@ -189,7 +157,12 @@ auto CloudProviderHandler::operator()(Request request,
             .headers = {{"Content-Type", "text/html; charset=UTF-8"}},
             .body = GetDashPlayer(
                 http::GetHeader(request.headers, "Host").value(),
-                StrCat(GetItemPathPrefix(request.headers), uri.path.value()))};
+                StrCat(GetItemPathPrefix(request.headers), uri.path.value()),
+                RewriteThumbnailUrl(
+                    http::GetHeader(request.headers, "Host").value(),
+                    StrCat(thumbnail_url_generator_(
+                               std::get<AbstractCloudProvider::File>(item).id),
+                           "?quality=high")))};
       }
     }
     co_return co_await std::visit(
@@ -197,8 +170,7 @@ auto CloudProviderHandler::operator()(Request request,
           return HandleExistingItem(std::move(request), std::forward<T>(d),
                                     stop_token);
         },
-        co_await GetItemByPathComponents(cache_manager_, provider_, path,
-                                         stop_token));
+        std::move(item));
   } catch (const CloudException& e) {
     switch (e.type()) {
       case CloudException::Type::kNotFound:
@@ -217,45 +189,6 @@ std::string CloudProviderHandler::GetItemPathPrefix(
     return "";
   }
   return ::coro::cloudstorage::util::GetItemPathPrefix(headers);
-}
-
-template <typename Item>
-auto CloudProviderHandler::GetStaticIcon(const Item& item, int http_code) const
-    -> Response {
-  std::vector<std::pair<std::string, std::string>> headers = {
-      {"Location", StrCat("/static/", GetIconName(item), ".svg")}};
-  if (http_code == 301) {
-    headers.push_back({"Cache-Control", "private"});
-    headers.push_back({"Cache-Control", "max-age=604800"});
-  }
-  return Response{.status = http_code, .headers = std::move(headers)};
-}
-
-template <typename Item>
-auto CloudProviderHandler::GetItemThumbnail(Item d, ThumbnailQuality quality,
-                                            stdx::stop_token stop_token) const
-    -> Task<Response> {
-  try {
-    auto thumbnail = co_await GetItemThumbnailWithFallback(
-        thumbnail_generator_, cache_manager_, provider_, d, quality,
-        http::Range{}, stop_token);
-    co_return Response{
-        .status = 200,
-        .headers = {{"Cache-Control", "private"},
-                    {"Cache-Control", "max-age=604800"},
-                    {"Content-Type", std::string(thumbnail.mime_type)},
-                    {"Content-Length", std::to_string(thumbnail.size)}},
-        .body = std::move(thumbnail.data)};
-  } catch (const ThumbnailGeneratorException& e) {
-    std::cerr << "FAILED TO GENERATE THUMBNAIL " << e.what() << '\n';
-    co_return GetStaticIcon(d, 302);
-  } catch (const CloudException& e) {
-    co_return GetStaticIcon(
-        d,
-        /*http_code=*/e.type() == CloudException::Type::kNotFound ? 301 : 302);
-  } catch (...) {
-    co_return GetStaticIcon(d, /*http_code=*/302);
-  }
 }
 
 auto CloudProviderHandler::HandleExistingItem(Request request,
@@ -308,18 +241,17 @@ Generator<std::string> CloudProviderHandler::GetDirectoryContent(
       "</head>"
       "<body class='root-container'>"
       "<table class='content-table'>";
-  std::string parent_entry = fmt::format(
-      fmt::runtime(kItemEntryHtml), fmt::arg("name", ".."),
-      fmt::arg("size", ""), fmt::arg("timestamp", ""),
-      fmt::arg("url", GetDirectoryPath(path)),
-      fmt::arg("thumbnail_url",
-               RewriteThumbnailUrl(
-                   host, StrCat(IsRoot(path) ? path : GetDirectoryPath(path),
-                                "?thumbnail=true"))));
+  std::string parent_entry =
+      fmt::format(fmt::runtime(kItemEntryHtml), fmt::arg("name", ".."),
+                  fmt::arg("size", ""), fmt::arg("timestamp", ""),
+                  fmt::arg("url", GetDirectoryPath(path)),
+                  fmt::arg("thumbnail_url",
+                           RewriteThumbnailUrl(host, "/static/folder.svg")));
   co_yield std::move(parent_entry);
   FOR_CO_AWAIT(const auto& page, page_data) {
     for (const auto& item : page.items) {
-      co_yield GetItemEntry(host, item, path, use_dash_player);
+      co_yield GetItemEntry(host, item, path, use_dash_player,
+                            thumbnail_url_generator_);
     }
   }
   co_yield "</table>"

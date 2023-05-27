@@ -67,6 +67,16 @@ concept CanCreateDirectory = requires(
   { item } -> stdx::convertible_to<typename CloudProvider::Item>;
 };
 
+template <typename CloudProvider>
+concept CanGetItem = requires(
+    CloudProvider& provider, std::string item_id, stdx::stop_token stop_token,
+    decltype(provider.GetItem(item_id, stop_token)) item_promise,
+    typename decltype(item_promise)::type item) {
+  {
+    std::declval<decltype(item)>()
+  } -> stdx::convertible_to<typename CloudProvider::Item>;
+};
+
 template <typename Item, typename CloudProvider>
 concept HasThumbnail = requires(
     CloudProvider& provider, Item v, http::Range range,
@@ -155,6 +165,18 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider,
 
   Task<Directory> GetRoot(stdx::stop_token stop_token) const override {
     co_return Convert(co_await provider()->GetRoot(std::move(stop_token)));
+  }
+
+  Task<Item> GetItem(std::string id,
+                     stdx::stop_token stop_token) const override {
+    if constexpr (CanGetItem<CloudProviderT>) {
+      auto item =
+          co_await provider()->GetItem(std::move(id), std::move(stop_token));
+      co_return std::visit([](auto&& i) { return Item(Convert(std::move(i))); },
+                           std::move(item));
+    } else {
+      throw std::runtime_error("not implemented");
+    }
   }
 
   nlohmann::json ToJson(

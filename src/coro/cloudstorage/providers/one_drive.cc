@@ -2,10 +2,13 @@
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
 #include "coro/cloudstorage/util/generator_utils.h"
+#include "coro/cloudstorage/util/string_utils.h"
 
 namespace coro::cloudstorage {
 
 namespace {
+
+using ::coro::cloudstorage::util::StrCat;
 
 constexpr std::string_view kFileProperties =
     "name,folder,audio,image,photo,video,id,size,lastModifiedDateTime,"
@@ -114,6 +117,17 @@ auto OneDrive::Auth::ExchangeAuthorizationCode(const coro::http::Http& http,
 auto OneDrive::GetRoot(stdx::stop_token) -> Task<Directory> {
   Directory d{{.id = "root"}};
   co_return d;
+}
+
+auto OneDrive::GetItem(std::string id, stdx::stop_token stop_token)
+    -> Task<Item> {
+  auto request = Request{
+      .url = StrCat(GetEndpoint(StrCat("/drive/items/", id)), '?',
+                    http::FormDataToString({{"expand", "thumbnails"},
+                                            {"select", kFileProperties}}))};
+  json data = co_await auth_manager_.FetchJson(std::move(request),
+                                               std::move(stop_token));
+  co_return ToItem(data);
 }
 
 auto OneDrive::GetGeneralData(stdx::stop_token stop_token)

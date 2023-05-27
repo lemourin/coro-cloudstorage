@@ -20,27 +20,24 @@ class CloudProviderHandler {
   using Request = http::Request<>;
   using Response = http::Response<>;
 
-  CloudProviderHandler(AbstractCloudProvider* provider,
-                       const ThumbnailGenerator* thumbnail_generator,
-                       const SettingsManager* settings_manager,
-                       CloudProviderCacheManager cache_manager)
+  CloudProviderHandler(
+      AbstractCloudProvider* provider,
+      const ThumbnailGenerator* thumbnail_generator,
+      const SettingsManager* settings_manager,
+      CloudProviderCacheManager cache_manager,
+      stdx::any_invocable<std::string(std::string_view item_id) const>
+          thumbnail_url_generator)
       : provider_(provider),
         thumbnail_generator_(thumbnail_generator),
         settings_manager_(settings_manager),
-        cache_manager_(std::move(cache_manager)) {}
+        cache_manager_(std::move(cache_manager)),
+        thumbnail_url_generator_(std::move(thumbnail_url_generator)) {}
 
   Task<Response> operator()(Request request, stdx::stop_token stop_token);
 
  private:
   std::string GetItemPathPrefix(
       std::span<const std::pair<std::string, std::string>> headers) const;
-
-  template <typename Item>
-  Response GetStaticIcon(const Item& item, int http_code) const;
-
-  template <typename Item>
-  Task<Response> GetItemThumbnail(Item d, ThumbnailQuality,
-                                  stdx::stop_token stop_token) const;
 
   Task<Response> HandleExistingItem(Request request,
                                     AbstractCloudProvider::File d,
@@ -60,6 +57,8 @@ class CloudProviderHandler {
   const ThumbnailGenerator* thumbnail_generator_;
   const SettingsManager* settings_manager_;
   CloudProviderCacheManager cache_manager_;
+  stdx::any_invocable<std::string(std::string_view id) const>
+      thumbnail_url_generator_;
 };
 
 }  // namespace coro::cloudstorage::util

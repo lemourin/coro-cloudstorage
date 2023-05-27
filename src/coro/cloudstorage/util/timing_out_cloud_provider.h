@@ -28,6 +28,9 @@ class TimingOutCloudProvider : public AbstractCloudProvider {
   Task<AbstractCloudProvider::Directory> GetRoot(
       stdx::stop_token stop_token) const override;
 
+  Task<AbstractCloudProvider::Item> GetItem(std::string id,
+                                            stdx::stop_token) const override;
+
   Task<AbstractCloudProvider::PageData> ListDirectoryPage(
       AbstractCloudProvider::Directory directory,
       std::optional<std::string> page_token,

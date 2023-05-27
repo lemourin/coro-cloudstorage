@@ -29,6 +29,13 @@ Task<AbstractCloudProvider::Directory> TimingOutCloudProvider::GetRoot(
   co_return co_await provider_->GetRoot(context_token.GetToken());
 }
 
+Task<AbstractCloudProvider::Item> TimingOutCloudProvider::GetItem(
+    std::string id, stdx::stop_token stop_token) const {
+  auto context_token = CreateStopToken("GetRoot", std::move(stop_token));
+  co_return co_await provider_->GetItem(std::move(id),
+                                        context_token.GetToken());
+}
+
 Task<AbstractCloudProvider::PageData> TimingOutCloudProvider::ListDirectoryPage(
     AbstractCloudProvider::Directory directory,
     std::optional<std::string> page_token, stdx::stop_token stop_token) const {
