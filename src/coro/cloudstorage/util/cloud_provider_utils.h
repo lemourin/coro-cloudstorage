@@ -100,8 +100,8 @@ struct FromStringT<TypedItemId<T>> {
   TypedItemId<T> operator()(std::string id) const {
     auto type = id[0] == 'F' ? TypedItemId<T>::Type::kFile
                              : TypedItemId<T>::Type::kDirectory;
-    return TypedItemId{.type = type,
-                       .id = FromString<T>(std::move(id).substr(1))};
+    return TypedItemId<T>{.type = type,
+                          .id = FromString<T>(std::move(id).substr(1))};
   }
 };
 

@@ -3,8 +3,8 @@
 
 #include <sstream>
 
-#include "coro/cloudstorage/providers/mega.h"
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
+#include "coro/cloudstorage/util/string_utils.h"
 
 namespace coro::cloudstorage::util {
 
