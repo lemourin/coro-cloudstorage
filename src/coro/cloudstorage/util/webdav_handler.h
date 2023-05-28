@@ -11,16 +11,14 @@ namespace coro::cloudstorage::util {
 
 class WebDAVHandler {
  public:
-  using Request = http::Request<>;
-  using Response = http::Response<>;
-  using CloudProvider = AbstractCloudProvider;
+  explicit WebDAVHandler(AbstractCloudProvider* provider)
+      : provider_(provider) {}
 
-  explicit WebDAVHandler(CloudProvider* provider) : provider_(provider) {}
-
-  Task<Response> operator()(Request request, stdx::stop_token stop_token) const;
+  Task<http::Response<>> operator()(http::Request<> request,
+                                    stdx::stop_token stop_token) const;
 
  private:
-  CloudProvider* provider_;
+  AbstractCloudProvider* provider_;
 };
 
 }  // namespace coro::cloudstorage::util
