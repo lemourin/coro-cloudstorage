@@ -92,8 +92,8 @@ Task<http::Response<>> ItemThumbnailHandler::operator()(
   }();
   std::string item_id =
       http::DecodeUri(std::string_view(results[1].begin(), results[1].end()));
-  auto item =
-      co_await GetItemById(provider_, cache_manager_, item_id, stop_token);
+  auto item = co_await GetItemById(provider_, cache_manager_,
+                                   /*updated=*/nullptr, item_id, stop_token);
   co_return co_await std::visit(
       [thumbnail_generator = thumbnail_generator_,
        cache_manager = cache_manager_, provider = provider_, quality,

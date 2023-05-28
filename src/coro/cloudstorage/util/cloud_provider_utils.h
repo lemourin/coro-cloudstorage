@@ -32,16 +32,23 @@ auto ListDirectory(CloudProviderT* d, DirectoryT directory,
 }
 
 Generator<AbstractCloudProvider::PageData> ListDirectory(
-    CloudProviderCacheManager, const AbstractCloudProvider*,
-    AbstractCloudProvider::Directory, stdx::stop_token);
+    CloudProviderCacheManager,
+    std::shared_ptr<
+        Promise<std::optional<std::vector<AbstractCloudProvider::Item>>>>
+        updated,
+    const AbstractCloudProvider*, AbstractCloudProvider::Directory,
+    stdx::stop_token);
 
 Task<AbstractCloudProvider::Item> GetItemByPathComponents(
     const AbstractCloudProvider*, std::vector<std::string> components,
     stdx::stop_token stop_token);
 
 Task<AbstractCloudProvider::Item> GetItemByPathComponents(
-    CloudProviderCacheManager, const AbstractCloudProvider*,
-    std::vector<std::string> components, stdx::stop_token stop_token);
+    CloudProviderCacheManager,
+    std::shared_ptr<Promise<std::optional<AbstractCloudProvider::Item>>>
+        updated,
+    const AbstractCloudProvider*, std::vector<std::string> components,
+    stdx::stop_token stop_token);
 
 Task<AbstractCloudProvider::Item> GetItemByPath(const AbstractCloudProvider*,
                                                 std::string path,
@@ -51,10 +58,11 @@ Task<AbstractCloudProvider::Item> GetItemById(const AbstractCloudProvider*,
                                               std::string id,
                                               stdx::stop_token stop_token);
 
-Task<AbstractCloudProvider::Item> GetItemById(const AbstractCloudProvider*,
-                                              CloudProviderCacheManager,
-                                              std::string id,
-                                              stdx::stop_token stop_token);
+Task<AbstractCloudProvider::Item> GetItemById(
+    const AbstractCloudProvider*, CloudProviderCacheManager,
+    std::shared_ptr<Promise<std::optional<AbstractCloudProvider::Item>>>
+        updated,
+    std::string id, stdx::stop_token stop_token);
 
 template <typename Item>
 Task<AbstractCloudProvider::Thumbnail> GetItemThumbnailWithFallback(

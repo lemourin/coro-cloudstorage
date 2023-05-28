@@ -72,8 +72,8 @@ auto ListDirectoryHandler::operator()(http::Request<> request,
   }
   std::string item_id =
       http::DecodeUri(std::string_view(results[1].begin(), results[1].end()));
-  auto item =
-      co_await GetItemById(provider_, cache_manager_, item_id, stop_token);
+  auto item = co_await GetItemById(provider_, cache_manager_,
+                                   /*updated=*/nullptr, item_id, stop_token);
   auto* directory = std::get_if<AbstractCloudProvider::Directory>(&item);
   if (!directory) {
     co_return http::Response<>{.status = 400};
@@ -83,7 +83,8 @@ auto ListDirectoryHandler::operator()(http::Request<> request,
       .headers = {{"Content-Type", "text/html"}},
       .body = GetDirectoryContent(
           http::GetHeader(request.headers, "Host").value(), *directory,
-          ListDirectory(cache_manager_, provider_, *directory, stop_token),
+          ListDirectory(cache_manager_, /*updated=*/nullptr, provider_,
+                        *directory, stop_token),
           stop_token)};
 }
 
