@@ -185,6 +185,10 @@ Task<> CacheManager::Put(CloudProviderAccount account,
   }
   co_return co_await write_thread_pool_.Do(std::move(stop_token), [&] {
     db->transaction([&] {
+      db->remove_all<DbDirectoryContent>(where(and_(
+          c(&DbDirectoryContent::account_type) == account_id.type,
+          and_(c(&DbDirectoryContent::account_username) == account_id.username,
+               c(&DbDirectoryContent::parent_item_id) == directory.id))));
       for (const auto& d : db_items) {
         db->replace(d);
       }
