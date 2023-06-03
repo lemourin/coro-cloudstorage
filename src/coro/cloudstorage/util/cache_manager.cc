@@ -112,7 +112,6 @@ auto CreateStorage(std::string path) {
                  primary_key(&DbImage::account_type, &DbImage::account_username,
                              &DbImage::item_id)));
   storage.sync_schema();
-  storage.open_forever();
   return storage;
 }
 
@@ -142,11 +141,8 @@ std::unique_ptr<CacheDatabase, CacheDatabaseDeleter> CreateCacheDatabase(
 }
 
 CacheManager::CacheManager(CacheDatabase* db,
-                           const coro::util::EventLoop* event_loop,
-                           coro::util::ThreadPool* read_thread_pool)
-    : db_(db),
-      write_thread_pool_(event_loop, /*thread_count=*/1),
-      read_thread_pool_(read_thread_pool) {}
+                           const coro::util::EventLoop* event_loop)
+    : db_(db), worker_(event_loop, /*thread_count=*/1, "db") {}
 
 Task<> CacheManager::Put(CloudProviderAccount account, DirectoryContent content,
                          stdx::stop_token stop_token) {
@@ -185,7 +181,7 @@ Task<> CacheManager::Put(CloudProviderAccount account, DirectoryContent content,
                                .account_username = account_id.username,
                                .parent_item_id = content.parent.id,
                                .update_time = content.update_time};
-  co_return co_await write_thread_pool_.Do(std::move(stop_token), [&] {
+  co_return co_await worker_.Do(std::move(stop_token), [&] {
     db->transaction([&] {
       db->remove_all<DbDirectoryContent>(where(and_(
           c(&DbDirectoryContent::account_type) == account_id.type,
@@ -213,8 +209,8 @@ Task<> CacheManager::Put(CloudProviderAccount account, ItemData item,
              .id = std::visit([](const auto& d) { return d.id; }, item.item),
              .content = ToCbor(account.provider()->ToJson(item.item)),
              .update_time = item.update_time};
-  co_return co_await write_thread_pool_.Do(
-      std::move(stop_token), [&] { db->replace(std::move(db_item)); });
+  co_return co_await worker_.Do(std::move(stop_token),
+                                [&] { db->replace(std::move(db_item)); });
 }
 
 auto CacheManager::Get(CloudProviderAccount account, ParentDirectoryKey key,
@@ -222,10 +218,11 @@ auto CacheManager::Get(CloudProviderAccount account, ParentDirectoryKey key,
     -> Task<std::optional<DirectoryContent>> {
   auto* db = GetDb(db_);
   auto account_id = account.id();
-  auto result = co_await read_thread_pool_->Do(
+  auto result = co_await worker_.Do(
       std::move(stop_token),
       [&]() -> std::optional<std::pair<DbDirectoryMetadata,
                                        std::vector<std::vector<char>>>> {
+        auto lock = db->transaction_guard();
         auto metadata = db->get_all<DbDirectoryMetadata>(where(and_(
             c(&DbDirectoryMetadata::account_type) == account_id.type,
             and_(c(&DbDirectoryMetadata::account_username) ==
@@ -269,7 +266,7 @@ Task<> CacheManager::Put(CloudProviderAccount account, std::string id,
                          ThumbnailQuality quality, ImageData image,
                          stdx::stop_token stop_token) {
   auto account_id = account.id();
-  co_await write_thread_pool_.Do(
+  co_await worker_.Do(
       std::move(stop_token),
       [db = GetDb(db_),
        entry = DbImage{.account_type = std::move(account_id.type),
@@ -288,7 +285,7 @@ auto CacheManager::Get(CloudProviderAccount account, ImageKey key,
     -> Task<std::optional<ImageData>> {
   auto* db = GetDb(db_);
   auto account_id = account.id();
-  auto result = co_await read_thread_pool_->Do(std::move(stop_token), [&] {
+  auto result = co_await worker_.Do(std::move(stop_token), [&] {
     return db->select(
         columns(&DbImage::image_bytes, &DbImage::mime_type,
                 &DbImage::update_time),
@@ -311,7 +308,7 @@ Task<std::optional<CacheManager::ItemData>> CacheManager::Get(
     stdx::stop_token stop_token) const {
   auto* db = GetDb(db_);
   auto account_id = account.id();
-  auto item = co_await read_thread_pool_->Do(
+  auto item = co_await worker_.Do(
       std::move(stop_token), [&]() -> std::optional<DbItem> {
         auto result = db->get_all<DbItem>(
             where(and_(and_(c(&DbItem::id) == key.item_id,

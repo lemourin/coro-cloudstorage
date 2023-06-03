@@ -19,7 +19,7 @@ CloudFactoryContext::CloudFactoryContext(
       muxer_(event_loop_, &thumbnail_thread_pool_),
       random_engine_(std::random_device()()),
       random_number_generator_(&random_engine_),
-      cache_(cache_db_.get(), event_loop, &thread_pool_),
+      cache_(cache_db_.get(), event_loop),
       factory_(event_loop_, &thread_pool_, &http_, &thumbnail_generator_,
                &muxer_, &random_number_generator_, config.auth_data),
       settings_manager_(&factory_, std::move(config)) {}

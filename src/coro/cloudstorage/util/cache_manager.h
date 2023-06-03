@@ -51,8 +51,7 @@ class CacheManager {
     int64_t update_time;
   };
 
-  CacheManager(CacheDatabase*, const coro::util::EventLoop* event_loop,
-               coro::util::ThreadPool* read_thread_pool);
+  CacheManager(CacheDatabase*, const coro::util::EventLoop* event_loop);
 
   Task<> Put(CloudProviderAccount, DirectoryContent,
              stdx::stop_token stop_token);
@@ -74,8 +73,7 @@ class CacheManager {
 
  private:
   CacheDatabase* db_;
-  mutable coro::util::ThreadPool write_thread_pool_;
-  coro::util::ThreadPool* read_thread_pool_;
+  mutable coro::util::ThreadPool worker_;
 };
 
 class CloudProviderCacheManager {
