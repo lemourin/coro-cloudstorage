@@ -70,8 +70,8 @@ auto ListDirectoryHandler::operator()(http::Request<> request,
                        re::regex(R"(\/list\/[^\/]+\/[^\/]+\/(.*)$)"))) {
     co_return http::Response<>{.status = 400};
   }
-  std::string item_id = http::DecodeUri(
-      std::string_view(&*results[1].begin(), results[1].length()));
+  std::string item_id =
+      http::DecodeUri(ToStringView(results[1].begin(), results[1].end()));
   int64_t current_time = clock_->Now();
   auto item =
       co_await GetItemById(provider_, cache_manager_, /*updated=*/nullptr,

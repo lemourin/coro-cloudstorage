@@ -73,6 +73,15 @@ std::string ErrorToString(int error_code);
 
 std::string_view TrimWhitespace(std::string_view);
 
+template <typename T1, typename T2>
+std::string_view ToStringView(T1 begin, T2 end) {
+  if (begin == end) {
+    return std::string_view();
+  } else {
+    return std::string_view(&*begin, end - begin);
+  }
+}
+
 }  // namespace coro::cloudstorage::util
 
 #endif  // CORO_CLOUDSTORAGE_FUSE_STRING_UTILS_H

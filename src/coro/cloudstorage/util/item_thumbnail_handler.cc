@@ -91,8 +91,8 @@ Task<http::Response<>> ItemThumbnailHandler::operator()(
     }
     return ThumbnailQuality::kLow;
   }();
-  std::string item_id = http::DecodeUri(
-      std::string_view(&*results[1].begin(), results[1].length()));
+  std::string item_id =
+      http::DecodeUri(ToStringView(results[1].begin(), results[1].end()));
   int64_t current_time = clock_->Now();
   auto item =
       co_await GetItemById(provider_, cache_manager_, /*updated=*/nullptr,
