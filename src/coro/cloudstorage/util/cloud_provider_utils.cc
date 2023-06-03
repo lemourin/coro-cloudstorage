@@ -100,7 +100,7 @@ Task<AbstractCloudProvider::Thumbnail> GetThumbnail(
 
 Task<> UpdateDirectoryListCache(
     const AbstractCloudProvider* provider,
-    CloudProviderCacheManager cache_manager,
+    CloudProviderCacheManager cache_manager, int64_t current_time,
     std::shared_ptr<
         Promise<std::optional<std::vector<AbstractCloudProvider::Item>>>>
         updated,
@@ -122,7 +122,10 @@ Task<> UpdateDirectoryListCache(
                     [provider](const auto& item1, const auto& item2) {
                       return provider->ToJson(item1) == provider->ToJson(item2);
                     })) {
-      co_await cache_manager.Put(directory, items, std::move(stop_token));
+      co_await cache_manager.Put(
+          CacheManager::DirectoryContent{
+              .parent = directory, .items = items, .update_time = current_time},
+          std::move(stop_token));
       if (updated) {
         updated->SetValue(std::move(items));
       }
@@ -131,7 +134,7 @@ Task<> UpdateDirectoryListCache(
         updated->SetValue(std::nullopt);
       }
     }
-  } catch (const std::exception& e) {
+  } catch (...) {
     if (updated) {
       updated->SetException(std::current_exception());
     }
@@ -159,95 +162,64 @@ Task<Item> GetItemByPathComponents(const AbstractCloudProvider* d,
                                              std::move(components), stop_token);
 }
 
-Task<AbstractCloudProvider::Item> GetItemByPathComponents(
-    CloudProviderCacheManager cache_manager,
-    std::shared_ptr<Promise<std::optional<AbstractCloudProvider::Item>>>
-        updated,
-    const AbstractCloudProvider* provider, std::vector<std::string> components,
-    stdx::stop_token stop_token) {
-  std::optional<AbstractCloudProvider::Item> item =
-      co_await cache_manager.Get(components, stop_token);
-  if (item) {
-    RunTask([cache_manager = std::move(cache_manager),
-             updated = std::move(updated), provider, previous_item = *item,
-             components =
-                 std::vector<std::string>(components.begin(), components.end()),
-             stop_token = std::move(stop_token)]() mutable -> Task<> {
-      try {
-        auto item =
-            co_await GetItemByPathComponents(provider, components, stop_token);
-        if (provider->ToJson(item) != provider->ToJson(previous_item)) {
-          co_await cache_manager.Put(std::move(components), item,
-                                     std::move(stop_token));
-          if (updated) {
-            updated->SetValue(std::move(item));
-          }
-        } else {
-          if (updated) {
-            updated->SetValue(std::nullopt);
-          }
-        }
-      } catch (const std::exception& e) {
-        if (updated) {
-          updated->SetException(std::current_exception());
-        }
-      }
-    });
-    co_return *item;
-  } else {
-    auto new_item =
-        co_await GetItemByPathComponents(provider, components, stop_token);
-    co_await cache_manager.Put(std::move(components), new_item,
-                               std::move(stop_token));
-    if (updated) {
-      updated->SetException(std::nullopt);
-    }
-    co_return new_item;
-  }
-}
-
 Task<Item> GetItemByPath(const AbstractCloudProvider* d, std::string path,
                          stdx::stop_token stop_token) {
   co_return co_await GetItemByPath(d, co_await d->GetRoot(stop_token),
                                    std::move(path), stop_token);
 }
 
-Generator<AbstractCloudProvider::PageData> ListDirectory(
-    CloudProviderCacheManager cache_manager,
+Task<VersionedDirectoryContent> ListDirectory(
+    CloudProviderCacheManager cache_manager, int64_t current_time,
     std::shared_ptr<
         Promise<std::optional<std::vector<AbstractCloudProvider::Item>>>>
         updated,
     const AbstractCloudProvider* provider,
     AbstractCloudProvider::Directory directory, stdx::stop_token stop_token) {
-  auto cached = co_await cache_manager.Get(directory, stop_token);
+  auto cached = co_await cache_manager.Get(
+      CacheManager::ParentDirectoryKey{directory.id}, stop_token);
   if (!cached) {
-    std::optional<std::string> page_token;
-    std::vector<AbstractCloudProvider::Item> items;
-    try {
-      do {
-        auto page_data = co_await provider->ListDirectoryPage(
-            directory, page_token, stop_token);
-        std::copy(page_data.items.begin(), page_data.items.end(),
-                  std::back_inserter(items));
-        co_yield page_data;
-        page_token = std::move(page_data.next_page_token);
-      } while (page_token);
-      co_await cache_manager.Put(std::move(directory), std::move(items),
-                                 std::move(stop_token));
-      if (updated) {
-        updated->SetValue(std::nullopt);
-      }
-    } catch (...) {
-      if (updated) {
-        updated->SetException(std::current_exception());
-      }
-      throw;
-    }
+    co_return VersionedDirectoryContent{
+        [](auto cache_manager, auto current_time, auto updated,
+           const auto* provider, auto directory,
+           auto stop_token) -> Generator<AbstractCloudProvider::PageData> {
+          std::optional<std::string> page_token;
+          std::vector<AbstractCloudProvider::Item> items;
+          try {
+            do {
+              auto page_data = co_await provider->ListDirectoryPage(
+                  directory, page_token, stop_token);
+              std::copy(page_data.items.begin(), page_data.items.end(),
+                        std::back_inserter(items));
+              co_yield page_data;
+              page_token = std::move(page_data.next_page_token);
+            } while (page_token);
+            co_await cache_manager.Put(
+                CacheManager::DirectoryContent{.parent = std::move(directory),
+                                               .items = std::move(items),
+                                               .update_time = current_time},
+                std::move(stop_token));
+            if (updated) {
+              updated->SetValue(std::nullopt);
+            }
+          } catch (...) {
+            if (updated) {
+              updated->SetException(std::current_exception());
+            }
+            throw;
+          }
+        }(std::move(cache_manager), current_time, std::move(updated), provider,
+                            std::move(directory), std::move(stop_token)),
+        current_time};
   } else {
     RunTask(UpdateDirectoryListCache, provider, std::move(cache_manager),
-            std::move(updated), std::move(directory), *cached,
-            std::move(stop_token));
-    co_yield AbstractCloudProvider::PageData{.items = std::move(*cached)};
+            current_time, std::move(updated), std::move(directory),
+            cached->items, std::move(stop_token));
+    co_return VersionedDirectoryContent{
+        .content =
+            [](auto items) -> Generator<AbstractCloudProvider::PageData> {
+          co_yield AbstractCloudProvider::PageData{.items = std::move(items)};
+        }(std::move(cached->items)),
+        .update_time = cached->update_time};
   }
 }
 
@@ -273,34 +245,44 @@ GetItemThumbnailWithFallback<AbstractCloudProvider::Directory>(
 }
 
 template <typename Item>
-Task<AbstractCloudProvider::Thumbnail> GetItemThumbnailWithFallback(
+Task<VersionedThumbnail> GetItemThumbnailWithFallback(
     const ThumbnailGenerator* thumbnail_generator,
-    CloudProviderCacheManager cache_manager,
+    CloudProviderCacheManager cache_manager, int64_t current_time,
     const AbstractCloudProvider* provider, Item item, ThumbnailQuality quality,
     http::Range range, stdx::stop_token stop_token) {
   std::optional<CacheManager::ImageData> image_data =
-      co_await cache_manager.Get(item, quality, stop_token);
+      co_await cache_manager.Get(CacheManager::ImageKey{item.id, quality},
+                                 stop_token);
   if (image_data) {
     int64_t size = image_data->image_bytes.size();
     std::string data(image_data->image_bytes.begin(),
                      image_data->image_bytes.end());
-    co_return AbstractCloudProvider::Thumbnail{
-        .data = ToGenerator(Trim(std::move(data), range)),
-        .size = size,
-        .mime_type = std::move(image_data->mime_type)};
+    co_return VersionedThumbnail{
+        .thumbnail =
+            AbstractCloudProvider::Thumbnail{
+                .data = ToGenerator(Trim(std::move(data), range)),
+                .size = size,
+                .mime_type = std::move(image_data->mime_type)},
+        .update_time = image_data->update_time};
   }
   AbstractCloudProvider::Thumbnail thumbnail =
       co_await GetItemThumbnailWithFallback(thumbnail_generator, provider, item,
                                             quality, http::Range{}, stop_token);
   auto image_bytes = co_await http::GetBody(std::move(thumbnail.data));
   co_await cache_manager.Put(
-      std::move(item), quality,
-      std::vector<char>(image_bytes.begin(), image_bytes.end()),
-      thumbnail.mime_type, std::move(stop_token));
-  co_return AbstractCloudProvider::Thumbnail{
-      .data = ToGenerator(Trim(std::move(image_bytes), range)),
-      .size = thumbnail.size,
-      .mime_type = std::move(thumbnail.mime_type)};
+      item.id, quality,
+      CacheManager::ImageData{.image_bytes = std::vector<char>(
+                                  image_bytes.begin(), image_bytes.end()),
+                              .mime_type = thumbnail.mime_type,
+                              .update_time = current_time},
+      std::move(stop_token));
+  co_return VersionedThumbnail{
+      .thumbnail =
+          AbstractCloudProvider::Thumbnail{
+              .data = ToGenerator(Trim(std::move(image_bytes), range)),
+              .size = thumbnail.size,
+              .mime_type = std::move(thumbnail.mime_type)},
+      .update_time = current_time};
 }
 
 Task<AbstractCloudProvider::Item> GetItemById(
@@ -313,23 +295,24 @@ Task<AbstractCloudProvider::Item> GetItemById(
   }
 }
 
-Task<AbstractCloudProvider::Item> GetItemById(
+Task<CacheManager::ItemData> GetItemById(
     const AbstractCloudProvider* provider,
     CloudProviderCacheManager cache_manager,
     std::shared_ptr<Promise<std::optional<AbstractCloudProvider::Item>>>
         updated,
-    std::string id, stdx::stop_token stop_token) {
-  auto item = co_await cache_manager.Get(id, stop_token);
+    int64_t current_time, std::string id, stdx::stop_token stop_token) {
+  auto item = co_await cache_manager.Get(CacheManager::ItemKey{id}, stop_token);
   if (item) {
     RunTask([provider, cache_manager = std::move(cache_manager),
-             updated = std::move(updated), id = std::move(id),
-             prev_item = *item,
+             updated = std::move(updated), current_time, id = std::move(id),
+             prev_item = item->item,
              stop_token = std::move(stop_token)]() mutable -> Task<> {
       try {
         auto item = co_await GetItemById(provider, id, stop_token);
         if (provider->ToJson(item) != provider->ToJson(prev_item)) {
-          co_await cache_manager.Put(std::move(id), item,
-                                     std::move(stop_token));
+          co_await cache_manager.Put(
+              CacheManager::ItemData{.item = item, .update_time = current_time},
+              std::move(stop_token));
           if (updated) {
             updated->SetValue(std::move(item));
           }
@@ -338,7 +321,7 @@ Task<AbstractCloudProvider::Item> GetItemById(
             updated->SetValue(std::nullopt);
           }
         }
-      } catch (const std::exception& e) {
+      } catch (...) {
         if (updated) {
           updated->SetException(std::current_exception());
         }
@@ -347,21 +330,24 @@ Task<AbstractCloudProvider::Item> GetItemById(
     co_return *item;
   } else {
     auto item = co_await GetItemById(provider, id, stop_token);
-    co_await cache_manager.Put(std::move(id), item, std::move(stop_token));
+    co_await cache_manager.Put(
+        CacheManager::ItemData{.item = item, .update_time = current_time},
+        std::move(stop_token));
     if (updated) {
       updated->SetValue(std::nullopt);
     }
-    co_return item;
+    co_return CacheManager::ItemData{.item = std::move(item),
+                                     .update_time = current_time};
   }
 }
 
-template Task<AbstractCloudProvider::Thumbnail> GetItemThumbnailWithFallback(
-    const ThumbnailGenerator*, CloudProviderCacheManager,
+template Task<VersionedThumbnail> GetItemThumbnailWithFallback(
+    const ThumbnailGenerator*, CloudProviderCacheManager, int64_t,
     const AbstractCloudProvider*, AbstractCloudProvider::File, ThumbnailQuality,
     http::Range, stdx::stop_token);
 
-template Task<AbstractCloudProvider::Thumbnail> GetItemThumbnailWithFallback(
-    const ThumbnailGenerator*, CloudProviderCacheManager,
+template Task<VersionedThumbnail> GetItemThumbnailWithFallback(
+    const ThumbnailGenerator*, CloudProviderCacheManager, int64_t,
     const AbstractCloudProvider*, AbstractCloudProvider::Directory,
     ThumbnailQuality, http::Range, stdx::stop_token);
 

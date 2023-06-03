@@ -21,44 +21,56 @@ std::unique_ptr<CacheDatabase, CacheDatabaseDeleter> CreateCacheDatabase(
 
 class CacheManager {
  public:
+  struct ImageKey {
+    std::string item_id;
+    ThumbnailQuality quality;
+  };
+
   struct ImageData {
     std::vector<char> image_bytes;
     std::string mime_type;
+    int64_t update_time;
+  };
+
+  struct ItemKey {
+    std::string item_id;
+  };
+
+  struct ItemData {
+    AbstractCloudProvider::Item item;
+    int64_t update_time;
+  };
+
+  struct ParentDirectoryKey {
+    std::string item_id;
+  };
+
+  struct DirectoryContent {
+    AbstractCloudProvider::Directory parent;
+    std::vector<AbstractCloudProvider::Item> items;
+    int64_t update_time;
   };
 
   CacheManager(CacheDatabase*, const coro::util::EventLoop* event_loop,
                coro::util::ThreadPool* read_thread_pool);
 
-  Task<> Put(CloudProviderAccount, AbstractCloudProvider::Directory directory,
-             std::vector<AbstractCloudProvider::Item> items,
+  Task<> Put(CloudProviderAccount, DirectoryContent,
              stdx::stop_token stop_token);
 
-  Task<> Put(CloudProviderAccount, std::vector<std::string> path,
-             AbstractCloudProvider::Item, stdx::stop_token);
+  Task<> Put(CloudProviderAccount, ItemData, stdx::stop_token);
 
-  Task<> Put(CloudProviderAccount, std::string id, AbstractCloudProvider::Item,
-             stdx::stop_token);
+  Task<> Put(CloudProviderAccount, std::string id, ThumbnailQuality, ImageData,
+             stdx::stop_token stop_token);
 
-  Task<> Put(CloudProviderAccount, AbstractCloudProvider::Item,
-             ThumbnailQuality, std::vector<char> image_bytes,
-             std::string mime_type, stdx::stop_token stop_token);
+  Task<std::optional<DirectoryContent>> Get(CloudProviderAccount,
+                                            ParentDirectoryKey,
+                                            stdx::stop_token stop_token) const;
 
-  Task<std::optional<std::vector<AbstractCloudProvider::Item>>> Get(
-      CloudProviderAccount, AbstractCloudProvider::Directory directory,
-      stdx::stop_token stop_token) const;
-
-  Task<std::optional<ImageData>> Get(CloudProviderAccount,
-                                     AbstractCloudProvider::Item,
-                                     ThumbnailQuality,
+  Task<std::optional<ImageData>> Get(CloudProviderAccount, ImageKey,
                                      stdx::stop_token stop_token);
 
-  Task<std::optional<AbstractCloudProvider::Item>> Get(
-      CloudProviderAccount, std::vector<std::string> path,
-      stdx::stop_token stop_token) const;
-
-  Task<std::optional<AbstractCloudProvider::Item>> Get(
-      CloudProviderAccount, std::string path,
-      stdx::stop_token stop_token) const;
+  Task<std::optional<ItemData>> Get(CloudProviderAccount, ItemKey id,
+                                    stdx::stop_token stop_token) const;
 
  private:
   CacheDatabase* db_;

@@ -88,6 +88,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/cache_manager.cc
     coro/cloudstorage/util/item_thumbnail_handler.cc
     coro/cloudstorage/util/item_content_handler.cc
+    coro/cloudstorage/util/clock.cc
     coro/cloudstorage/cloud_factory.cc
 )
 
@@ -150,6 +151,7 @@ target_sources(coro-cloudstorage
         coro/cloudstorage/util/cache_manager.h
         coro/cloudstorage/util/item_thumbnail_handler.h
         coro/cloudstorage/util/item_content_handler.h
+        coro/cloudstorage/util/clock.h
         coro/cloudstorage/cloud_exception.h
         coro/cloudstorage/cloud_factory.h
 )

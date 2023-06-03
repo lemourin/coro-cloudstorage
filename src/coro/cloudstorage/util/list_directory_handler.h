@@ -3,6 +3,7 @@
 
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/cache_manager.h"
+#include "coro/cloudstorage/util/clock.h"
 #include "coro/cloudstorage/util/handler_utils.h"
 #include "coro/http/http_parse.h"
 #include "coro/mutex.h"
@@ -12,7 +13,8 @@ namespace coro::cloudstorage::util {
 class ListDirectoryHandler {
  public:
   ListDirectoryHandler(
-      AbstractCloudProvider* provider, CloudProviderCacheManager cache_manager,
+      AbstractCloudProvider* provider, const Clock* clock,
+      CloudProviderCacheManager cache_manager,
       stdx::any_invocable<std::string(std::string_view item_id) const>
           list_url_generator,
       stdx::any_invocable<std::string(std::string_view item_id) const>
@@ -20,6 +22,7 @@ class ListDirectoryHandler {
       stdx::any_invocable<std::string(std::string_view item_id) const>
           content_url_generator)
       : provider_(provider),
+        clock_(clock),
         cache_manager_(std::move(cache_manager)),
         list_url_generator_(std::move(list_url_generator)),
         thumbnail_url_generator_(std::move(thumbnail_url_generator)),
@@ -35,6 +38,7 @@ class ListDirectoryHandler {
       stdx::stop_token stop_token) const;
 
   AbstractCloudProvider* provider_;
+  const Clock* clock_;
   CloudProviderCacheManager cache_manager_;
   stdx::any_invocable<std::string(std::string_view item_id) const>
       list_url_generator_;

@@ -44,19 +44,20 @@ http::Response<> GetStaticIcon(const Item& item, int http_code) {
 template <typename Item>
 Task<http::Response<>> GetItemThumbnail(
     const ThumbnailGenerator* thumbnail_generator,
-    CloudProviderCacheManager cache_manager, AbstractCloudProvider* provider,
-    Item d, ThumbnailQuality quality, stdx::stop_token stop_token) {
+    CloudProviderCacheManager cache_manager, int64_t current_time,
+    AbstractCloudProvider* provider, Item d, ThumbnailQuality quality,
+    stdx::stop_token stop_token) {
   try {
-    auto thumbnail = co_await GetItemThumbnailWithFallback(
-        thumbnail_generator, std::move(cache_manager), provider, d, quality,
-        http::Range{}, stop_token);
+    auto data = co_await GetItemThumbnailWithFallback(
+        thumbnail_generator, std::move(cache_manager), current_time, provider,
+        d, quality, http::Range{}, stop_token);
     co_return http::Response<>{
         .status = 200,
         .headers = {{"Cache-Control", "private"},
                     {"Cache-Control", "max-age=604800"},
-                    {"Content-Type", std::string(thumbnail.mime_type)},
-                    {"Content-Length", std::to_string(thumbnail.size)}},
-        .body = std::move(thumbnail.data)};
+                    {"Content-Type", std::string(data.thumbnail.mime_type)},
+                    {"Content-Length", std::to_string(data.thumbnail.size)}},
+        .body = std::move(data.thumbnail.data)};
   } catch (const ThumbnailGeneratorException& e) {
     std::cerr << "FAILED TO GENERATE THUMBNAIL " << e.what() << '\n';
     co_return GetStaticIcon(d, 302);
@@ -92,17 +93,19 @@ Task<http::Response<>> ItemThumbnailHandler::operator()(
   }();
   std::string item_id = http::DecodeUri(
       std::string_view(&*results[1].begin(), results[1].length()));
-  auto item = co_await GetItemById(provider_, cache_manager_,
-                                   /*updated=*/nullptr, item_id, stop_token);
+  int64_t current_time = clock_->Now();
+  auto item =
+      co_await GetItemById(provider_, cache_manager_, /*updated=*/nullptr,
+                           current_time, item_id, stop_token);
   co_return co_await std::visit(
       [thumbnail_generator = thumbnail_generator_,
-       cache_manager = cache_manager_, provider = provider_, quality,
-       stop_token = std::move(stop_token)](auto&& item) mutable {
+       cache_manager = cache_manager_, current_time, provider = provider_,
+       quality, stop_token = std::move(stop_token)](auto&& item) mutable {
         return GetItemThumbnail(thumbnail_generator, std::move(cache_manager),
-                                provider, std::move(item), quality,
-                                std::move(stop_token));
+                                current_time, provider, std::move(item),
+                                quality, std::move(stop_token));
       },
-      std::move(item));
+      std::move(item.item));
 }
 
 }  // namespace coro::cloudstorage::util

@@ -72,20 +72,23 @@ auto ListDirectoryHandler::operator()(http::Request<> request,
   }
   std::string item_id = http::DecodeUri(
       std::string_view(&*results[1].begin(), results[1].length()));
-  auto item = co_await GetItemById(provider_, cache_manager_,
-                                   /*updated=*/nullptr, item_id, stop_token);
-  auto* directory = std::get_if<AbstractCloudProvider::Directory>(&item);
+  int64_t current_time = clock_->Now();
+  auto item =
+      co_await GetItemById(provider_, cache_manager_, /*updated=*/nullptr,
+                           current_time, item_id, stop_token);
+  auto* directory = std::get_if<AbstractCloudProvider::Directory>(&item.item);
   if (!directory) {
     co_return http::Response<>{.status = 400};
   }
+  auto versioned = co_await ListDirectory(cache_manager_, current_time,
+                                          /*updated=*/nullptr, provider_,
+                                          *directory, stop_token);
   co_return http::Response<>{
       .status = 200,
       .headers = {{"Content-Type", "text/html"}},
       .body = GetDirectoryContent(
-          http::GetHeader(request.headers, "Host").value(), *directory,
-          ListDirectory(cache_manager_, /*updated=*/nullptr, provider_,
-                        *directory, stop_token),
-          stop_token)};
+          http::GetHeader(request.headers, "Host").value(),
+          std::move(*directory), std::move(versioned.content), stop_token)};
 }
 
 Generator<std::string> ListDirectoryHandler::GetDirectoryContent(

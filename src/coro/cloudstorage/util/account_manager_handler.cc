@@ -105,8 +105,8 @@ class AccountManagerHandler::Impl {
 
   Impl(const AbstractCloudFactory* factory,
        const ThumbnailGenerator* thumbnail_generator, const Muxer* muxer,
-       AccountListener account_listener, SettingsManager* settings_manager,
-       CacheManager* cache_manager);
+       const Clock* clock, AccountListener account_listener,
+       SettingsManager* settings_manager, CacheManager* cache_manager);
 
   ~Impl() { Quit(); }
 
@@ -168,6 +168,7 @@ class AccountManagerHandler::Impl {
   const AbstractCloudFactory* factory_;
   const ThumbnailGenerator* thumbnail_generator_;
   const Muxer* muxer_;
+  const Clock* clock_;
   AccountListener account_listener_;
   SettingsManager* settings_manager_;
   CacheManager* cache_manager_;
@@ -177,13 +178,14 @@ class AccountManagerHandler::Impl {
 
 AccountManagerHandler::Impl::Impl(const AbstractCloudFactory* factory,
                                   const ThumbnailGenerator* thumbnail_generator,
-                                  const Muxer* muxer,
+                                  const Muxer* muxer, const Clock* clock,
                                   AccountListener account_listener,
                                   SettingsManager* settings_manager,
                                   CacheManager* cache_manager)
     : factory_(factory),
       thumbnail_generator_(thumbnail_generator),
       muxer_(muxer),
+      clock_(clock),
       account_listener_(std::move(account_listener)),
       settings_manager_(settings_manager),
       cache_manager_(cache_manager) {
@@ -350,7 +352,7 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
                 .prefix = StrCat("/list/", account.type(), '/',
                                  http::EncodeUri(account.username())),
                 .handler = ListDirectoryHandler(
-                    account.provider().get(), cache_manager,
+                    account.provider().get(), clock_, cache_manager,
                     [account_id = account.id()](std::string_view item_id) {
                       return StrCat("/list/", account_id.type, '/',
                                     http::EncodeUri(account_id.username), '/',
@@ -375,14 +377,14 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
         .account = account,
         .prefix = StrCat("/thumbnail/", account.type(), '/',
                          http::EncodeUri(account.username())),
-        .handler = ItemThumbnailHandler{account.provider().get(),
+        .handler = ItemThumbnailHandler{account.provider().get(), clock_,
                                         thumbnail_generator_, cache_manager}});
-    handlers.emplace_back(Handler{
-        .account = account,
-        .prefix = StrCat("/content/", account.type(), '/',
-                         http::EncodeUri(account.username())),
-        .handler =
-            ItemContentHandler{account.provider().get(), cache_manager}});
+    handlers.emplace_back(
+        Handler{.account = account,
+                .prefix = StrCat("/content/", account.type(), '/',
+                                 http::EncodeUri(account.username())),
+                .handler = ItemContentHandler{account.provider().get(), clock_,
+                                              cache_manager}});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/remove/", account.type(), '/',
@@ -504,9 +506,9 @@ auto AccountManagerHandler::Impl::OnRemoveHandler::operator()(
 AccountManagerHandler::AccountManagerHandler(
     const AbstractCloudFactory* factory,
     const ThumbnailGenerator* thumbnail_generator, const Muxer* muxer,
-    AccountListener account_listener, SettingsManager* settings_manager,
-    CacheManager* cache_manager)
-    : impl_(std::make_unique<Impl>(factory, thumbnail_generator, muxer,
+    const Clock* clock, AccountListener account_listener,
+    SettingsManager* settings_manager, CacheManager* cache_manager)
+    : impl_(std::make_unique<Impl>(factory, thumbnail_generator, muxer, clock,
                                    std::move(account_listener),
                                    settings_manager, cache_manager)) {}
 

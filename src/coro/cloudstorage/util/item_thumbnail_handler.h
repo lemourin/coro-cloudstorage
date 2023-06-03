@@ -3,6 +3,7 @@
 
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/cloudstorage/util/cache_manager.h"
+#include "coro/cloudstorage/util/clock.h"
 #include "coro/cloudstorage/util/thumbnail_generator.h"
 #include "coro/http/http.h"
 #include "coro/stdx/stop_token.h"
@@ -12,10 +13,11 @@ namespace coro::cloudstorage::util {
 
 class ItemThumbnailHandler {
  public:
-  ItemThumbnailHandler(AbstractCloudProvider* provider,
+  ItemThumbnailHandler(AbstractCloudProvider* provider, const Clock* clock,
                        const ThumbnailGenerator* thumbnail_generator,
                        CloudProviderCacheManager cache_manager)
       : provider_(provider),
+        clock_(clock),
         thumbnail_generator_(thumbnail_generator),
         cache_manager_(std::move(cache_manager)) {}
 
@@ -24,6 +26,7 @@ class ItemThumbnailHandler {
 
  private:
   AbstractCloudProvider* provider_;
+  const Clock* clock_;
   const ThumbnailGenerator* thumbnail_generator_;
   CloudProviderCacheManager cache_manager_;
 };

@@ -5,6 +5,7 @@
 #include "coro/cloudstorage/util/account_manager_handler.h"
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/cache_manager.h"
+#include "coro/cloudstorage/util/clock.h"
 #include "coro/cloudstorage/util/muxer.h"
 #include "coro/cloudstorage/util/random_number_generator.h"
 #include "coro/cloudstorage/util/thumbnail_generator.h"
@@ -54,6 +55,7 @@ class CloudFactoryContext {
   util::CacheManager cache_;
   CloudFactory factory_;
   util::SettingsManager settings_manager_;
+  util::Clock clock_;
 };
 
 }  // namespace coro::cloudstorage::util
