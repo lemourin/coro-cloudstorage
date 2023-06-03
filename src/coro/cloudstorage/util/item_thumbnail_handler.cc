@@ -94,9 +94,8 @@ Task<http::Response<>> ItemThumbnailHandler::operator()(
   std::string item_id =
       http::DecodeUri(ToStringView(results[1].begin(), results[1].end()));
   int64_t current_time = clock_->Now();
-  auto item =
-      co_await GetItemById(provider_, cache_manager_, /*updated=*/nullptr,
-                           current_time, item_id, stop_token);
+  auto item = co_await GetItemById(provider_, cache_manager_, current_time,
+                                   item_id, stop_token);
   co_return co_await std::visit(
       [thumbnail_generator = thumbnail_generator_,
        cache_manager = cache_manager_, current_time, provider = provider_,

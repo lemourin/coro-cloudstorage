@@ -34,15 +34,16 @@ auto ListDirectory(CloudProviderT* d, DirectoryT directory,
 struct VersionedDirectoryContent {
   Generator<AbstractCloudProvider::PageData> content;
   int64_t update_time;
+  std::shared_ptr<
+      Promise<std::optional<std::vector<AbstractCloudProvider::Item>>>>
+      updated;
 };
 
-Task<VersionedDirectoryContent> ListDirectory(
-    CloudProviderCacheManager, int64_t current_time,
-    std::shared_ptr<
-        Promise<std::optional<std::vector<AbstractCloudProvider::Item>>>>
-        updated,
-    const AbstractCloudProvider*, AbstractCloudProvider::Directory,
-    stdx::stop_token);
+Task<VersionedDirectoryContent> ListDirectory(CloudProviderCacheManager,
+                                              int64_t current_time,
+                                              const AbstractCloudProvider*,
+                                              AbstractCloudProvider::Directory,
+                                              stdx::stop_token);
 
 Task<AbstractCloudProvider::Item> GetItemByPathComponents(
     const AbstractCloudProvider*, std::vector<std::string> components,
@@ -56,12 +57,16 @@ Task<AbstractCloudProvider::Item> GetItemById(const AbstractCloudProvider*,
                                               std::string id,
                                               stdx::stop_token stop_token);
 
-Task<CacheManager::ItemData> GetItemById(
-    const AbstractCloudProvider* provider,
-    CloudProviderCacheManager cache_manager,
-    std::shared_ptr<Promise<std::optional<AbstractCloudProvider::Item>>>
-        updated,
-    int64_t current_time, std::string id, stdx::stop_token stop_token);
+struct VersionedItem {
+  AbstractCloudProvider::Item item;
+  int64_t update_time;
+  std::shared_ptr<Promise<std::optional<AbstractCloudProvider::Item>>> updated;
+};
+
+Task<VersionedItem> GetItemById(const AbstractCloudProvider* provider,
+                                CloudProviderCacheManager cache_manager,
+                                int64_t current_time, std::string id,
+                                stdx::stop_token stop_token);
 
 template <typename Item>
 Task<AbstractCloudProvider::Thumbnail> GetItemThumbnailWithFallback(
@@ -85,6 +90,8 @@ GetItemThumbnailWithFallback<AbstractCloudProvider::Directory>(
 struct VersionedThumbnail {
   AbstractCloudProvider::Thumbnail thumbnail;
   int64_t update_time;
+  std::shared_ptr<Promise<std::optional<AbstractCloudProvider::Thumbnail>>>
+      updated;
 };
 
 template <typename Item>

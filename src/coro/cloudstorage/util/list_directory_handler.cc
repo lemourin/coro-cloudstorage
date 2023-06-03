@@ -73,16 +73,14 @@ auto ListDirectoryHandler::operator()(http::Request<> request,
   std::string item_id =
       http::DecodeUri(ToStringView(results[1].begin(), results[1].end()));
   int64_t current_time = clock_->Now();
-  auto item =
-      co_await GetItemById(provider_, cache_manager_, /*updated=*/nullptr,
-                           current_time, item_id, stop_token);
+  auto item = co_await GetItemById(provider_, cache_manager_, current_time,
+                                   item_id, stop_token);
   auto* directory = std::get_if<AbstractCloudProvider::Directory>(&item.item);
   if (!directory) {
     co_return http::Response<>{.status = 400};
   }
   auto versioned = co_await ListDirectory(cache_manager_, current_time,
-                                          /*updated=*/nullptr, provider_,
-                                          *directory, stop_token);
+                                          provider_, *directory, stop_token);
   co_return http::Response<>{
       .status = 200,
       .headers = {{"Content-Type", "text/html"}},
