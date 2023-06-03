@@ -28,6 +28,7 @@ class CloudFactoryContext {
   auto* factory() { return &factory_; }
   auto* thread_pool() { return &thread_pool_; }
   auto* cache() { return &cache_; }
+  auto* clock() { return &clock_; }
 
   AccountManagerHandler CreateAccountManagerHandler(AccountListener listener);
 
