@@ -56,9 +56,9 @@ class CacheManager {
   Task<> Put(CloudProviderAccount, DirectoryContent,
              stdx::stop_token stop_token);
 
-  Task<> Put(CloudProviderAccount, ItemData, stdx::stop_token);
+  Task<> Put(CloudProviderAccount, ItemKey, ItemData, stdx::stop_token);
 
-  Task<> Put(CloudProviderAccount, std::string id, ThumbnailQuality, ImageData,
+  Task<> Put(CloudProviderAccount, ImageKey, ImageData,
              stdx::stop_token stop_token);
 
   Task<std::optional<DirectoryContent>> Get(CloudProviderAccount,

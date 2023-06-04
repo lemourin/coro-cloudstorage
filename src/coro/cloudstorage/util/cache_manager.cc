@@ -154,7 +154,8 @@ Task<> CacheManager::Put(CloudProviderAccount account, DirectoryContent content,
       DbItem{.account_type = account_id.type,
              .account_username = account_id.username,
              .id = content.parent.id,
-             .content = ToCbor(account.provider()->ToJson(content.parent))};
+             .content = ToCbor(account.provider()->ToJson(content.parent)),
+             .update_time = content.update_time};
   int32_t order = 0;
   for (size_t i = 0; i < content.items.size(); i++) {
     db_items[i + 1] = std::visit(
@@ -199,18 +200,18 @@ Task<> CacheManager::Put(CloudProviderAccount account, DirectoryContent content,
   });
 }
 
-Task<> CacheManager::Put(CloudProviderAccount account, ItemData item,
-                         stdx::stop_token stop_token) {
+Task<> CacheManager::Put(CloudProviderAccount account, ItemKey key,
+                         ItemData item, stdx::stop_token stop_token) {
   auto* db = GetDb(db_);
   auto account_id = account.id();
   DbItem db_item =
       DbItem{.account_type = account_id.type,
              .account_username = account_id.username,
-             .id = std::visit([](const auto& d) { return d.id; }, item.item),
+             .id = std::move(key.item_id),
              .content = ToCbor(account.provider()->ToJson(item.item)),
              .update_time = item.update_time};
   co_return co_await worker_.Do(std::move(stop_token),
-                                [&] { db->replace(std::move(db_item)); });
+                                [&] { db->replace(db_item); });
 }
 
 auto CacheManager::Get(CloudProviderAccount account, ParentDirectoryKey key,
@@ -262,21 +263,20 @@ auto CacheManager::Get(CloudProviderAccount account, ParentDirectoryKey key,
                              .update_time = result->first.update_time};
 }
 
-Task<> CacheManager::Put(CloudProviderAccount account, std::string id,
-                         ThumbnailQuality quality, ImageData image,
-                         stdx::stop_token stop_token) {
+Task<> CacheManager::Put(CloudProviderAccount account, ImageKey key,
+                         ImageData image, stdx::stop_token stop_token) {
   auto account_id = account.id();
   co_await worker_.Do(
       std::move(stop_token),
       [db = GetDb(db_),
        entry = DbImage{.account_type = std::move(account_id.type),
                        .account_username = std::move(account_id.username),
-                       .item_id = std::move(id),
-                       .quality = static_cast<int>(quality),
+                       .item_id = std::move(key.item_id),
+                       .quality = static_cast<int>(key.quality),
                        .mime_type = std::move(image.mime_type),
                        .image_bytes = std::move(image.image_bytes),
                        .update_time = image.update_time}]() mutable {
-        db->replace(std::move(entry));
+        db->replace(entry);
       });
 }
 

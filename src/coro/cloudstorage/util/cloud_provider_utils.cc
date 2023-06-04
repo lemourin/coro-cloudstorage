@@ -265,8 +265,8 @@ Task<VersionedThumbnail> GetItemThumbnailWithFallback(
                   std::vector<char>(image_bytes.begin(), image_bytes.end()),
               .mime_type = thumbnail.mime_type,
               .update_time = current_time};
-          co_await cache_manager.Put(item.id, quality, image_data,
-                                     std::move(stop_token));
+          co_await cache_manager.Put(CacheManager::ImageKey{item.id, quality},
+                                     image_data, std::move(stop_token));
           int64_t size = image_data.image_bytes.size();
           std::string data(image_data.image_bytes.begin(),
                            image_data.image_bytes.end());
@@ -299,7 +299,7 @@ Task<VersionedThumbnail> GetItemThumbnailWithFallback(
                                               stop_token);
     auto image_bytes = co_await http::GetBody(std::move(thumbnail.data));
     co_await cache_manager.Put(
-        item.id, quality,
+        CacheManager::ImageKey{item.id, quality},
         CacheManager::ImageData{.image_bytes = std::vector<char>(
                                     image_bytes.begin(), image_bytes.end()),
                                 .mime_type = thumbnail.mime_type,
@@ -345,6 +345,7 @@ Task<VersionedItem> GetItemById(const AbstractCloudProvider* provider,
         auto item = co_await GetItemById(provider, id, stop_token);
         if (provider->ToJson(item) != provider->ToJson(prev_item)) {
           co_await cache_manager.Put(
+              CacheManager::ItemKey{id},
               CacheManager::ItemData{.item = item, .update_time = current_time},
               std::move(stop_token));
           updated->SetValue(std::move(item));
@@ -362,6 +363,7 @@ Task<VersionedItem> GetItemById(const AbstractCloudProvider* provider,
     try {
       auto item = co_await GetItemById(provider, id, stop_token);
       co_await cache_manager.Put(
+          CacheManager::ItemKey{id},
           CacheManager::ItemData{.item = item, .update_time = current_time},
           std::move(stop_token));
       updated->SetValue(std::nullopt);
