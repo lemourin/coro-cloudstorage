@@ -89,6 +89,7 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/util/item_thumbnail_handler.cc
     coro/cloudstorage/util/item_content_handler.cc
     coro/cloudstorage/util/clock.cc
+    coro/cloudstorage/util/cloud_provider_account.cc
     coro/cloudstorage/cloud_factory.cc
 )
 

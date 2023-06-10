@@ -5,7 +5,7 @@
 #include <string_view>
 
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
-#include "coro/cloudstorage/util/cache_manager.h"
+#include "coro/cloudstorage/util/cloud_provider_account.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/cloudstorage/util/thumbnail_generator.h"
 
@@ -31,20 +31,6 @@ auto ListDirectory(CloudProviderT* d, DirectoryT directory,
   } while (current_page_token);
 }
 
-struct VersionedDirectoryContent {
-  Generator<AbstractCloudProvider::PageData> content;
-  int64_t update_time;
-  std::shared_ptr<
-      Promise<std::optional<std::vector<AbstractCloudProvider::Item>>>>
-      updated;
-};
-
-Task<VersionedDirectoryContent> ListDirectory(CloudProviderCacheManager,
-                                              int64_t current_time,
-                                              const AbstractCloudProvider*,
-                                              AbstractCloudProvider::Directory,
-                                              stdx::stop_token);
-
 Task<AbstractCloudProvider::Item> GetItemByPathComponents(
     const AbstractCloudProvider*, std::vector<std::string> components,
     stdx::stop_token stop_token);
@@ -56,17 +42,6 @@ Task<AbstractCloudProvider::Item> GetItemByPath(const AbstractCloudProvider*,
 Task<AbstractCloudProvider::Item> GetItemById(const AbstractCloudProvider*,
                                               std::string id,
                                               stdx::stop_token stop_token);
-
-struct VersionedItem {
-  AbstractCloudProvider::Item item;
-  int64_t update_time;
-  std::shared_ptr<Promise<std::optional<AbstractCloudProvider::Item>>> updated;
-};
-
-Task<VersionedItem> GetItemById(const AbstractCloudProvider* provider,
-                                CloudProviderCacheManager cache_manager,
-                                int64_t current_time, std::string id,
-                                stdx::stop_token stop_token);
 
 template <typename Item>
 Task<AbstractCloudProvider::Thumbnail> GetItemThumbnailWithFallback(
@@ -85,19 +60,6 @@ Task<AbstractCloudProvider::Thumbnail>
 GetItemThumbnailWithFallback<AbstractCloudProvider::Directory>(
     const ThumbnailGenerator*, const AbstractCloudProvider*,
     AbstractCloudProvider::Directory, ThumbnailQuality, http::Range,
-    stdx::stop_token);
-
-struct VersionedThumbnail {
-  AbstractCloudProvider::Thumbnail thumbnail;
-  int64_t update_time;
-  std::shared_ptr<Promise<std::optional<AbstractCloudProvider::Thumbnail>>>
-      updated;
-};
-
-template <typename Item>
-Task<VersionedThumbnail> GetItemThumbnailWithFallback(
-    const ThumbnailGenerator*, CloudProviderCacheManager, int64_t current_time,
-    const AbstractCloudProvider*, Item, ThumbnailQuality, http::Range,
     stdx::stop_token);
 
 template <typename T>

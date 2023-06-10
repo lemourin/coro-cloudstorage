@@ -144,49 +144,49 @@ CacheManager::CacheManager(CacheDatabase* db,
                            const coro::util::EventLoop* event_loop)
     : db_(db), worker_(event_loop, /*thread_count=*/1, "db") {}
 
-Task<> CacheManager::Put(CloudProviderAccount account, DirectoryContent content,
+Task<> CacheManager::Put(AccountKey account, DirectoryContent content,
                          stdx::stop_token stop_token) {
   auto* db = GetDb(db_);
-  auto account_id = account.id();
   std::vector<DbItem> db_items(content.items.size() + 1);
   std::vector<DbDirectoryContent> db_directory_content(content.items.size());
+  std::string account_type{account.provider->GetId()};
   db_items[0] =
-      DbItem{.account_type = account_id.type,
-             .account_username = account_id.username,
+      DbItem{.account_type = account_type,
+             .account_username = account.username,
              .id = content.parent.id,
-             .content = ToCbor(account.provider()->ToJson(content.parent)),
+             .content = ToCbor(account.provider->ToJson(content.parent)),
              .update_time = content.update_time};
   int32_t order = 0;
   for (size_t i = 0; i < content.items.size(); i++) {
     db_items[i + 1] = std::visit(
         [&](const auto& e) {
           return DbItem{
-              .account_type = account_id.type,
-              .account_username = account_id.username,
+              .account_type = account_type,
+              .account_username = account.username,
               .id = e.id,
-              .content = ToCbor(account.provider()->ToJson(content.items[i])),
+              .content = ToCbor(account.provider->ToJson(content.items[i])),
               .update_time = content.update_time};
         },
         content.items[i]);
     db_directory_content[i] = std::visit(
         [&](const auto& i) {
-          return DbDirectoryContent{.account_type = account_id.type,
-                                    .account_username = account_id.username,
+          return DbDirectoryContent{.account_type = account_type,
+                                    .account_username = account.username,
                                     .parent_item_id = content.parent.id,
                                     .child_item_id = i.id,
                                     .order = order++};
         },
         content.items[i]);
   }
-  DbDirectoryMetadata metadata{.account_type = account_id.type,
-                               .account_username = account_id.username,
+  DbDirectoryMetadata metadata{.account_type = account_type,
+                               .account_username = account.username,
                                .parent_item_id = content.parent.id,
                                .update_time = content.update_time};
   co_return co_await worker_.Do(std::move(stop_token), [&] {
     db->transaction([&] {
       db->remove_all<DbDirectoryContent>(where(and_(
-          c(&DbDirectoryContent::account_type) == account_id.type,
-          and_(c(&DbDirectoryContent::account_username) == account_id.username,
+          c(&DbDirectoryContent::account_type) == account_type,
+          and_(c(&DbDirectoryContent::account_username) == account.username,
                c(&DbDirectoryContent::parent_item_id) == content.parent.id))));
       for (const auto& d : db_items) {
         db->replace(d);
@@ -200,34 +200,31 @@ Task<> CacheManager::Put(CloudProviderAccount account, DirectoryContent content,
   });
 }
 
-Task<> CacheManager::Put(CloudProviderAccount account, ItemKey key,
-                         ItemData item, stdx::stop_token stop_token) {
+Task<> CacheManager::Put(AccountKey account, ItemKey key, ItemData item,
+                         stdx::stop_token stop_token) {
   auto* db = GetDb(db_);
-  auto account_id = account.id();
   DbItem db_item =
-      DbItem{.account_type = account_id.type,
-             .account_username = account_id.username,
+      DbItem{.account_type = std::string{account.provider->GetId()},
+             .account_username = account.username,
              .id = std::move(key.item_id),
-             .content = ToCbor(account.provider()->ToJson(item.item)),
+             .content = ToCbor(account.provider->ToJson(item.item)),
              .update_time = item.update_time};
   co_return co_await worker_.Do(std::move(stop_token),
                                 [&] { db->replace(db_item); });
 }
 
-auto CacheManager::Get(CloudProviderAccount account, ParentDirectoryKey key,
+auto CacheManager::Get(AccountKey account, ParentDirectoryKey key,
                        stdx::stop_token stop_token) const
     -> Task<std::optional<DirectoryContent>> {
   auto* db = GetDb(db_);
-  auto account_id = account.id();
   auto result = co_await worker_.Do(
       std::move(stop_token),
       [&]() -> std::optional<std::pair<DbDirectoryMetadata,
                                        std::vector<std::vector<char>>>> {
         auto lock = db->transaction_guard();
         auto metadata = db->get_all<DbDirectoryMetadata>(where(and_(
-            c(&DbDirectoryMetadata::account_type) == account_id.type,
-            and_(c(&DbDirectoryMetadata::account_username) ==
-                     account_id.username,
+            c(&DbDirectoryMetadata::account_type) == account.provider->GetId(),
+            and_(c(&DbDirectoryMetadata::account_username) == account.username,
                  c(&DbDirectoryMetadata::parent_item_id) == key.item_id))));
         if (metadata.empty()) {
           return std::nullopt;
@@ -242,12 +239,12 @@ auto CacheManager::Get(CloudProviderAccount account, ParentDirectoryKey key,
                          c(&DbItem::account_username) ==
                              &DbDirectoryContent::account_username),
                     c(&DbItem::id) == &DbDirectoryContent::child_item_id))),
-                where(and_(
-                    c(&DbDirectoryContent::account_type) == account_id.type,
-                    and_(c(&DbDirectoryContent::account_username) ==
-                             account_id.username,
-                         c(&DbDirectoryContent::parent_item_id) ==
-                             key.item_id))),
+                where(and_(c(&DbDirectoryContent::account_type) ==
+                               account.provider->GetId(),
+                           and_(c(&DbDirectoryContent::account_username) ==
+                                    account.username,
+                                c(&DbDirectoryContent::parent_item_id) ==
+                                    key.item_id))),
                 order_by(&DbDirectoryContent::order)));
       });
   if (!result) {
@@ -256,21 +253,20 @@ auto CacheManager::Get(CloudProviderAccount account, ParentDirectoryKey key,
 
   std::vector<AbstractCloudProvider::Item> items{result->second.size()};
   for (size_t i = 0; i < items.size(); i++) {
-    items[i] = account.provider()->ToItem(
-        nlohmann::json::from_cbor(result->second[i]));
+    items[i] =
+        account.provider->ToItem(nlohmann::json::from_cbor(result->second[i]));
   }
   co_return DirectoryContent{.items = std::move(items),
                              .update_time = result->first.update_time};
 }
 
-Task<> CacheManager::Put(CloudProviderAccount account, ImageKey key,
-                         ImageData image, stdx::stop_token stop_token) {
-  auto account_id = account.id();
+Task<> CacheManager::Put(AccountKey account, ImageKey key, ImageData image,
+                         stdx::stop_token stop_token) {
   co_await worker_.Do(
       std::move(stop_token),
       [db = GetDb(db_),
-       entry = DbImage{.account_type = std::move(account_id.type),
-                       .account_username = std::move(account_id.username),
+       entry = DbImage{.account_type = std::string{account.provider->GetId()},
+                       .account_username = std::move(account.username),
                        .item_id = std::move(key.item_id),
                        .quality = static_cast<int>(key.quality),
                        .mime_type = std::move(image.mime_type),
@@ -280,17 +276,16 @@ Task<> CacheManager::Put(CloudProviderAccount account, ImageKey key,
       });
 }
 
-auto CacheManager::Get(CloudProviderAccount account, ImageKey key,
+auto CacheManager::Get(AccountKey account, ImageKey key,
                        stdx::stop_token stop_token)
     -> Task<std::optional<ImageData>> {
   auto* db = GetDb(db_);
-  auto account_id = account.id();
   auto result = co_await worker_.Do(std::move(stop_token), [&] {
     return db->select(
         columns(&DbImage::image_bytes, &DbImage::mime_type,
                 &DbImage::update_time),
-        where(and_(c(&DbImage::account_type) == account_id.type,
-                   and_(c(&DbImage::account_username) == account_id.username,
+        where(and_(c(&DbImage::account_type) == account.provider->GetId(),
+                   and_(c(&DbImage::account_username) == account.username,
                         and_(c(&DbImage::item_id) == key.item_id,
                              c(&DbImage::quality) ==
                                  static_cast<int>(key.quality))))));
@@ -304,16 +299,14 @@ auto CacheManager::Get(CloudProviderAccount account, ImageKey key,
 }
 
 Task<std::optional<CacheManager::ItemData>> CacheManager::Get(
-    CloudProviderAccount account, ItemKey key,
-    stdx::stop_token stop_token) const {
+    AccountKey account, ItemKey key, stdx::stop_token stop_token) const {
   auto* db = GetDb(db_);
-  auto account_id = account.id();
   auto item = co_await worker_.Do(
       std::move(stop_token), [&]() -> std::optional<DbItem> {
-        auto result = db->get_all<DbItem>(
-            where(and_(and_(c(&DbItem::id) == key.item_id,
-                            c(&DbItem::account_type) == account_id.type),
-                       c(&DbItem::account_username) == account_id.username)));
+        auto result = db->get_all<DbItem>(where(
+            and_(and_(c(&DbItem::id) == key.item_id,
+                      c(&DbItem::account_type) == account.provider->GetId()),
+                 c(&DbItem::account_username) == account.username)));
         if (result.empty()) {
           return std::nullopt;
         } else {
@@ -321,7 +314,7 @@ Task<std::optional<CacheManager::ItemData>> CacheManager::Get(
         }
       });
   if (item) {
-    co_return ItemData{.item = account.provider()->ToItem(
+    co_return ItemData{.item = account.provider->ToItem(
                            nlohmann::json::from_cbor(item->content)),
                        .update_time = item->update_time};
   } else {

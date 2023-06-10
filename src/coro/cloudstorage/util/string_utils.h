@@ -6,6 +6,8 @@
 #include <string_view>
 #include <vector>
 
+#include "coro/http/http.h"
+
 namespace coro::cloudstorage::util {
 
 template <typename T>
@@ -81,6 +83,8 @@ std::string_view ToStringView(T1 begin, T2 end) {
     return std::string_view(&*begin, end - begin);
   }
 }
+
+std::string Trim(std::string input, http::Range range);
 
 }  // namespace coro::cloudstorage::util
 

@@ -55,4 +55,14 @@ std::string_view TrimWhitespace(std::string_view input) {
   return input.substr(it1, it2 - it1 + 1);
 }
 
+std::string Trim(std::string input, http::Range range) {
+  if (range.start != 0 || (range.end && *range.end != input.size())) {
+    return std::move(input).substr(
+        range.start,
+        range.end ? *range.end - range.start + 1 : std::string::npos);
+  } else {
+    return std::move(input);
+  }
+}
+
 }  // namespace coro::cloudstorage::util

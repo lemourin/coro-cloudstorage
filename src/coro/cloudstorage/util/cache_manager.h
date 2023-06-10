@@ -3,7 +3,7 @@
 
 #include <any>
 
-#include "coro/cloudstorage/util/cloud_provider_account.h"
+#include "coro/cloudstorage/util/abstract_cloud_provider.h"
 #include "coro/task.h"
 #include "coro/util/event_loop.h"
 #include "coro/util/thread_pool.h"
@@ -21,6 +21,11 @@ std::unique_ptr<CacheDatabase, CacheDatabaseDeleter> CreateCacheDatabase(
 
 class CacheManager {
  public:
+  struct AccountKey {
+    std::shared_ptr<AbstractCloudProvider> provider;
+    std::string username;
+  };
+
   struct ImageKey {
     std::string item_id;
     ThumbnailQuality quality;
@@ -53,48 +58,24 @@ class CacheManager {
 
   CacheManager(CacheDatabase*, const coro::util::EventLoop* event_loop);
 
-  Task<> Put(CloudProviderAccount, DirectoryContent,
-             stdx::stop_token stop_token);
+  Task<> Put(AccountKey, DirectoryContent, stdx::stop_token stop_token);
 
-  Task<> Put(CloudProviderAccount, ItemKey, ItemData, stdx::stop_token);
+  Task<> Put(AccountKey, ItemKey, ItemData, stdx::stop_token);
 
-  Task<> Put(CloudProviderAccount, ImageKey, ImageData,
-             stdx::stop_token stop_token);
+  Task<> Put(AccountKey, ImageKey, ImageData, stdx::stop_token stop_token);
 
-  Task<std::optional<DirectoryContent>> Get(CloudProviderAccount,
-                                            ParentDirectoryKey,
+  Task<std::optional<DirectoryContent>> Get(AccountKey, ParentDirectoryKey,
                                             stdx::stop_token stop_token) const;
 
-  Task<std::optional<ImageData>> Get(CloudProviderAccount, ImageKey,
+  Task<std::optional<ImageData>> Get(AccountKey, ImageKey,
                                      stdx::stop_token stop_token);
 
-  Task<std::optional<ItemData>> Get(CloudProviderAccount, ItemKey id,
+  Task<std::optional<ItemData>> Get(AccountKey, ItemKey id,
                                     stdx::stop_token stop_token) const;
 
  private:
   CacheDatabase* db_;
   mutable coro::util::ThreadPool worker_;
-};
-
-class CloudProviderCacheManager {
- public:
-  CloudProviderCacheManager(CloudProviderAccount account,
-                            CacheManager* cache_manager)
-      : account_(std::move(account)), cache_manager_(cache_manager) {}
-
-  template <typename... Args>
-  auto Put(Args&&... args) {
-    return cache_manager_->Put(account_, std::forward<Args>(args)...);
-  }
-
-  template <typename... Args>
-  auto Get(Args&&... args) const {
-    return cache_manager_->Get(account_, std::forward<Args>(args)...);
-  }
-
- private:
-  CloudProviderAccount account_;
-  CacheManager* cache_manager_;
 };
 
 }  // namespace coro::cloudstorage::util

@@ -18,14 +18,13 @@ Task<http::Response<>> ItemContentHandler::operator()(
   }
   std::string item_id = http::DecodeUri(
       http::DecodeUri(ToStringView(results[1].begin(), results[1].end())));
-  auto item = co_await GetItemById(provider_, cache_manager_, clock_->Now(),
-                                   item_id, stop_token);
+  auto item = co_await account_.GetItemById(item_id, stop_token);
   auto* file = std::get_if<AbstractCloudProvider::File>(&item.item);
   if (!file) {
     co_return http::Response<>{.status = 400};
   }
   co_return co_await GetFileContentResponse(
-      provider_, std::move(*file),
+      account_.provider().get(), std::move(*file),
       [&]() -> std::optional<http::Range> {
         if (auto header = http::GetHeader(request.headers, "Range")) {
           return http::ParseRange(std::move(*header));

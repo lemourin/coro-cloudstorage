@@ -42,14 +42,11 @@ http::Response<> GetStaticIcon(const Item& item, int http_code) {
 }
 
 template <typename Item>
-Task<http::Response<>> GetItemThumbnail(
-    const ThumbnailGenerator* thumbnail_generator,
-    CloudProviderCacheManager cache_manager, int64_t current_time,
-    AbstractCloudProvider* provider, Item d, ThumbnailQuality quality,
-    stdx::stop_token stop_token) {
+Task<http::Response<>> GetItemThumbnail(CloudProviderAccount account, Item d,
+                                        ThumbnailQuality quality,
+                                        stdx::stop_token stop_token) {
   try {
-    auto data = co_await GetItemThumbnailWithFallback(
-        thumbnail_generator, std::move(cache_manager), current_time, provider,
+    auto data = co_await account.GetItemThumbnailWithFallback(
         d, quality, http::Range{}, stop_token);
     co_return http::Response<>{
         .status = 200,
@@ -93,16 +90,12 @@ Task<http::Response<>> ItemThumbnailHandler::operator()(
   }();
   std::string item_id =
       http::DecodeUri(ToStringView(results[1].begin(), results[1].end()));
-  int64_t current_time = clock_->Now();
-  auto item = co_await GetItemById(provider_, cache_manager_, current_time,
-                                   item_id, stop_token);
+  auto item = co_await account_.GetItemById(item_id, stop_token);
   co_return co_await std::visit(
-      [thumbnail_generator = thumbnail_generator_,
-       cache_manager = cache_manager_, current_time, provider = provider_,
-       quality, stop_token = std::move(stop_token)](auto&& item) mutable {
-        return GetItemThumbnail(thumbnail_generator, std::move(cache_manager),
-                                current_time, provider, std::move(item),
-                                quality, std::move(stop_token));
+      [account = account_, quality,
+       stop_token = std::move(stop_token)](auto&& item) mutable {
+        return GetItemThumbnail(account, std::move(item), quality,
+                                std::move(stop_token));
       },
       std::move(item.item));
 }

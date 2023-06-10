@@ -346,13 +346,12 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
   }
 
   for (const auto& account : accounts_) {
-    CloudProviderCacheManager cache_manager(account, cache_manager_);
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/list/", account.type(), '/',
                                  http::EncodeUri(account.username())),
                 .handler = ListDirectoryHandler(
-                    account.provider().get(), clock_, cache_manager,
+                    account,
                     [account_id = account.id()](std::string_view item_id) {
                       return StrCat("/list/", account_id.type, '/',
                                     http::EncodeUri(account_id.username), '/',
@@ -373,18 +372,16 @@ auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
                 .prefix = StrCat("/webdav/", account.type(), '/',
                                  http::EncodeUri(account.username())),
                 .handler = WebDAVHandler(account.provider().get())});
-    handlers.emplace_back(Handler{
-        .account = account,
-        .prefix = StrCat("/thumbnail/", account.type(), '/',
-                         http::EncodeUri(account.username())),
-        .handler = ItemThumbnailHandler{account.provider().get(), clock_,
-                                        thumbnail_generator_, cache_manager}});
+    handlers.emplace_back(
+        Handler{.account = account,
+                .prefix = StrCat("/thumbnail/", account.type(), '/',
+                                 http::EncodeUri(account.username())),
+                .handler = ItemThumbnailHandler{account}});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/content/", account.type(), '/',
                                  http::EncodeUri(account.username())),
-                .handler = ItemContentHandler{account.provider().get(), clock_,
-                                              cache_manager}});
+                .handler = ItemContentHandler{account}});
     handlers.emplace_back(
         Handler{.account = account,
                 .prefix = StrCat("/remove/", account.type(), '/',
@@ -453,7 +450,8 @@ void AccountManagerHandler::Impl::RemoveCloudProvider(const F& predicate) {
 CloudProviderAccount AccountManagerHandler::Impl::CreateAccount(
     std::unique_ptr<AbstractCloudProvider> provider, std::string username,
     int64_t version) {
-  return CloudProviderAccount(username, version, std::move(provider));
+  return CloudProviderAccount(username, version, std::move(provider),
+                              cache_manager_, clock_, thumbnail_generator_);
 }
 
 Task<CloudProviderAccount> AccountManagerHandler::Impl::Create(

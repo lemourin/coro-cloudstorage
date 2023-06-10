@@ -7,12 +7,36 @@
 #include <string_view>
 
 #include "coro/cloudstorage/util/abstract_cloud_provider.h"
+#include "coro/cloudstorage/util/cache_manager.h"
+#include "coro/cloudstorage/util/clock.h"
 #include "coro/cloudstorage/util/string_utils.h"
+#include "coro/cloudstorage/util/thumbnail_generator.h"
 #include "coro/stdx/stop_source.h"
 #include "coro/stdx/stop_token.h"
 #include "coro/util/type_list.h"
 
 namespace coro::cloudstorage::util {
+
+struct VersionedDirectoryContent {
+  Generator<AbstractCloudProvider::PageData> content;
+  int64_t update_time;
+  std::shared_ptr<
+      Promise<std::optional<std::vector<AbstractCloudProvider::Item>>>>
+      updated;
+};
+
+struct VersionedItem {
+  AbstractCloudProvider::Item item;
+  int64_t update_time;
+  std::shared_ptr<Promise<std::optional<AbstractCloudProvider::Item>>> updated;
+};
+
+struct VersionedThumbnail {
+  AbstractCloudProvider::Thumbnail thumbnail;
+  int64_t update_time;
+  std::shared_ptr<Promise<std::optional<AbstractCloudProvider::Thumbnail>>>
+      updated;
+};
 
 class CloudProviderAccount {
  public:
@@ -32,20 +56,43 @@ class CloudProviderAccount {
   const auto& provider() const { return provider_; }
   stdx::stop_token stop_token() const { return stop_source_.get_token(); }
 
+  Task<VersionedDirectoryContent> ListDirectory(
+      AbstractCloudProvider::Directory, stdx::stop_token) const;
+
+  Task<VersionedItem> GetItemById(std::string id,
+                                  stdx::stop_token stop_token) const;
+
+  template <typename Item>
+  Task<VersionedThumbnail> GetItemThumbnailWithFallback(Item, ThumbnailQuality,
+                                                        http::Range,
+                                                        stdx::stop_token) const;
+
  private:
   CloudProviderAccount(std::string username, int64_t version,
-                       std::unique_ptr<AbstractCloudProvider> account)
+                       std::unique_ptr<AbstractCloudProvider> account,
+                       CacheManager* cache_manager, const Clock* clock,
+                       const ThumbnailGenerator* thumbnail_generator)
       : username_(std::move(username)),
         version_(version),
         type_(account->GetId()),
-        provider_(std::move(account)) {}
+        provider_(std::move(account)),
+        cache_manager_(cache_manager),
+        clock_(clock),
+        thumbnail_generator_(thumbnail_generator) {}
 
   friend class AccountManagerHandler;
+
+  CacheManager::AccountKey account_key() const {
+    return {provider_, username_};
+  }
 
   std::string username_;
   int64_t version_;
   std::string type_;
   std::shared_ptr<AbstractCloudProvider> provider_;
+  CacheManager* cache_manager_;
+  const Clock* clock_;
+  const ThumbnailGenerator* thumbnail_generator_;
   stdx::stop_source stop_source_;
 };
 
