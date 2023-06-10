@@ -18,17 +18,9 @@ namespace {
 using ::coro::util::MakeUniqueStopTokenOr;
 
 constexpr const char* kMp4Sample =
-    R"(/mux/?video_account_type=mega&audio_account_type=mega&video_account_name=lemourin%40gmail.com&audio_account_name=lemourin%40gmail.com&video_path=/I%E2%80%99m%20Your%20Treasure%20Box%20%EF%BC%8A%E3%81%82%E3%81%AA%E3%81%9F%E3%81%AF%20%E3%83%9E%E3%83%AA%E3%83%B3%E3%81%9B%E3%82%93%E3%81%A1%E3%82%87%E3%81%86%E3%82%92%20%E3%81%9F%E3%81%8B%E3%82%89%E3%81%B0%E3%81%93%E3%81%8B%E3%82%89%E3%81%BF%E3%81%A4%E3%81%91%E3%81%9F/%E3%80%90original%20anime%20MV%E3%80%91I%E2%80%99m%20Your%20Treasure%20Box%20%EF%BC%8A%E3%81%82%E3%81%AA%E3%81%9F%E3%81%AF%20%E3%83%9E%E3%83%AA%E3%83%B3%E3%81%9B%E3%82%93%E3%81%A1%E3%82%87%E3%81%86%E3%82%92%20%E3%81%9F%E3%81%8B%E3%82%89%E3%81%B0%E3%81%93%E3%81%8B%E3%82%89%E3%81%BF%E3%81%A4%E3%81%91%E3%81%9F%E3%80%82%E3%80%90hololive%E2%A7%B8%E5%AE%9D%E9%90%98%E3%83%9E%E3%83%AA%E3%83%B3%E3%80%91%20%5BvV-5W7SFHDc%5D.mp4&audio_path=/I%E2%80%99m%20Your%20Treasure%20Box%20%EF%BC%8A%E3%81%82%E3%81%AA%E3%81%9F%E3%81%AF%20%E3%83%9E%E3%83%AA%E3%83%B3%E3%81%9B%E3%82%93%E3%81%A1%E3%82%87%E3%81%86%E3%82%92%20%E3%81%9F%E3%81%8B%E3%82%89%E3%81%B0%E3%81%93%E3%81%8B%E3%82%89%E3%81%BF%E3%81%A4%E3%81%91%E3%81%9F/%E3%80%90original%20anime%20MV%E3%80%91I%E2%80%99m%20Your%20Treasure%20Box%20%EF%BC%8A%E3%81%82%E3%81%AA%E3%81%9F%E3%81%AF%20%E3%83%9E%E3%83%AA%E3%83%B3%E3%81%9B%E3%82%93%E3%81%A1%E3%82%87%E3%81%86%E3%82%92%20%E3%81%9F%E3%81%8B%E3%82%89%E3%81%B0%E3%81%93%E3%81%8B%E3%82%89%E3%81%BF%E3%81%A4%E3%81%91%E3%81%9F%E3%80%82%E3%80%90hololive%E2%A7%B8%E5%AE%9D%E9%90%98%E3%83%9E%E3%83%AA%E3%83%B3%E3%80%91%20%5BvV-5W7SFHDc%5D.m4a&format=mp4)";
+    R"(/mux/?video_account_type=mega&audio_account_type=mega&video_account_name=lemourin%40gmail.com&audio_account_name=lemourin%40gmail.com&video_id=1009087793198683328&audio_id=11838556048967991440&format=mp4)";
 constexpr const char* kWebmSample =
-    R"(/mux/?video_account_type=mega&audio_account_type=mega&video_account_name=lemourin%40gmail.com&audio_account_name=lemourin%40gmail.com&video_path=/Imagine%20Dragons%20%26%20JID%20-%20Enemy%20%28from%20the%20series%20Arcane%EF%BC%9A%20League%20of%20Legends%29%20%EF%BD%9C%20Official%20Music%20Video/Imagine%20Dragons%20%26%20JID%20-%20Enemy%20%28from%20the%20series%20Arcane%EF%BC%9A%20League%20of%20Legends%29%20%EF%BD%9C%20Official%20Music%20Video%20%5BF5tSoaJ93ac%5D.webm&audio_path=/Imagine%20Dragons%20%26%20JID%20-%20Enemy%20%28from%20the%20series%20Arcane%EF%BC%9A%20League%20of%20Legends%29%20%EF%BD%9C%20Official%20Music%20Video/Imagine%20Dragons%20%26%20JID%20-%20Enemy%20%28from%20the%20series%20Arcane%EF%BC%9A%20League%20of%20Legends%29%20%EF%BD%9C%20Official%20Music%20Video%20%5BF5tSoaJ93ac%5D.audio.webm&format=webm)";
-
-std::vector<std::string> GetPathComponents(const std::string& encoded_path) {
-  std::vector<std::string> components = SplitString(encoded_path, '/');
-  for (auto& component : components) {
-    component = http::DecodeUri(component);
-  }
-  return components;
-}
+    R"(/mux/?video_account_type=mega&audio_account_type=mega&video_account_name=lemourin%40gmail.com&audio_account_name=lemourin%40gmail.com&video_id=12293138135299678493&audio_id=3034018774527793109&format=webm)";
 
 CloudProviderAccount FindAccount(std::span<const CloudProviderAccount> accounts,
                                  const CloudProviderAccount::Id& account_id) {
@@ -63,15 +55,15 @@ Task<http::Response<>> MuxHandler::operator()(
   auto query = http::ParseQuery(uri.query.value());
   auto video_account_type = query.find("video_account_type");
   auto video_account_name = query.find("video_account_name");
-  auto video_path = query.find("video_path");
+  auto video_id = query.find("video_id");
   auto audio_account_type = query.find("audio_account_type");
   auto audio_account_name = query.find("audio_account_name");
-  auto audio_path = query.find("audio_path");
+  auto audio_id = query.find("audio_id");
   auto format = query.find("format");
   auto seekable = query.find("seekable");
   if (video_account_type == query.end() || video_account_name == query.end() ||
-      video_path == query.end() || audio_account_type == query.end() ||
-      audio_account_name == query.end() || audio_path == query.end() ||
+      video_id == query.end() || audio_account_type == query.end() ||
+      audio_account_name == query.end() || audio_id == query.end() ||
       format == query.end()) {
     co_return http::Response<>{.status = 400};
   }
@@ -86,19 +78,15 @@ Task<http::Response<>> MuxHandler::operator()(
       FindAccount(accounts_, {http::DecodeUri(audio_account_type->second),
                               http::DecodeUri(audio_account_name->second)});
 
-  auto video_path_components = GetPathComponents(video_path->second);
-  auto audio_path_components = GetPathComponents(audio_path->second);
-
   auto stop_token_or =
       MakeUniqueStopTokenOr(video_account.stop_token(),
                             audio_account.stop_token(), std::move(stop_token));
 
   auto [video_item, audio_item] = co_await WhenAll(
-      GetItemByPathComponents(video_account.provider().get(),
-                              video_path_components, stop_token_or->GetToken()),
-      GetItemByPathComponents(audio_account.provider().get(),
-                              audio_path_components,
-                              stop_token_or->GetToken()));
+      GetItemById(video_account.provider().get(), video_id->second,
+                  stop_token_or->GetToken()),
+      GetItemById(audio_account.provider().get(), audio_id->second,
+                  stop_token_or->GetToken()));
 
   auto video_file = std::get<AbstractCloudProvider::File>(video_item);
   auto audio_file = std::get<AbstractCloudProvider::File>(audio_item);
