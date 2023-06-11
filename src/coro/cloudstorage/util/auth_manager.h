@@ -18,7 +18,7 @@ class RefreshToken {
   using AuthToken = typename Auth::AuthToken;
 
   template <typename F>
-  explicit RefreshToken(F&& f) : impl_(std::forward<F>(f)) {}
+  explicit RefreshToken(F f) : impl_(std::move(f)) {}
 
   Task<AuthToken> operator()(AuthToken auth_token,
                              stdx::stop_token stop_token) const {
@@ -35,7 +35,7 @@ class AuthorizeRequest {
   using AuthToken = typename Auth::AuthToken;
 
   template <typename F>
-  explicit AuthorizeRequest(F&& f) : impl_(std::forward<F>(f)) {}
+  explicit AuthorizeRequest(F f) : impl_(std::move(f)) {}
 
   http::Request<std::string> operator()(http::Request<std::string> request,
                                         AuthToken auth_token) const {

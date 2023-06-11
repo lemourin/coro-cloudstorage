@@ -6,6 +6,7 @@
 #include <variant>
 
 #include "coro/cloudstorage/util/assets.h"
+#include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/auth_manager.h"
 #include "coro/cloudstorage/util/crypto_utils.h"
 #include "coro/cloudstorage/util/fetch_json.h"
@@ -57,14 +58,21 @@ class OpenStack {
       std::string endpoint;
       std::string token;
       std::string bucket;
+      std::string auth_endpoint;
+      std::string user;
+      std::string key;
     };
+
+    static Task<AuthToken> RefreshAccessToken(const coro::http::Http& http,
+                                              AuthToken auth_token,
+                                              stdx::stop_token stop_token);
   };
 
   static constexpr std::string_view kId = "openstack";
   static inline constexpr auto& kIcon = util::kOpenStackIcon;
 
-  OpenStack(const coro::http::Http* http, Auth::AuthToken auth_token)
-      : http_(http), auth_token_(std::move(auth_token)) {}
+  OpenStack(const coro::http::Http* http, Auth::AuthToken auth_token,
+            util::OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated);
 
   Task<GeneralData> GetGeneralData(stdx::stop_token) const;
 
@@ -101,10 +109,7 @@ class OpenStack {
   static nlohmann::json ToJson(const Item&);
 
  private:
-  Task<nlohmann::json> FetchJson(http::Request<std::string> request,
-                                 stdx::stop_token stop_token) const;
-  template <typename Request>
-  Task<http::Response<>> FetchOk(Request, stdx::stop_token stop_token) const;
+  const auto& auth_token() const { return auth_manager_.GetAuthToken(); }
 
   Task<> RemoveItemImpl(std::string_view id, stdx::stop_token stop_token);
 
@@ -122,7 +127,7 @@ class OpenStack {
   std::string GetEndpoint(std::string_view endpoint) const;
 
   const coro::http::Http* http_;
-  Auth::AuthToken auth_token_;
+  util::AuthManager<Auth> auth_manager_;
 };
 
 class OpenStack::Auth::AuthHandler {

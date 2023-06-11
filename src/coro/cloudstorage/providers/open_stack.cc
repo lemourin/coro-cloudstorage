@@ -36,9 +36,43 @@ ItemT ToItemImpl(const nlohmann::json& json) {
 
 }  // namespace
 
+auto OpenStack::Auth::RefreshAccessToken(const coro::http::Http& http,
+                                         AuthToken auth_token,
+                                         stdx::stop_token stop_token)
+    -> Task<AuthToken> {
+  auto response = co_await http.FetchOk(
+      http::Request<std::string>{.url = auth_token.auth_endpoint,
+                                 .headers = {{"X-Auth-User", auth_token.user},
+                                             {"X-Auth-Key", auth_token.key}}},
+      std::move(stop_token));
+  co_return Auth::AuthToken{
+      .endpoint = http::GetHeader(response.headers, "X-Storage-Url").value(),
+      .token = http::GetHeader(response.headers, "X-Auth-Token").value(),
+      .bucket = std::move(auth_token.bucket),
+      .auth_endpoint = std::move(auth_token.auth_endpoint),
+      .user = std::move(auth_token.user),
+      .key = std::move(auth_token.key)};
+}
+
+OpenStack::OpenStack(
+    const coro::http::Http* http, Auth::AuthToken auth_token,
+    util::OnAuthTokenUpdated<Auth::AuthToken> on_auth_token_updated)
+    : http_(http),
+      auth_manager_(
+          http, auth_token, std::move(on_auth_token_updated),
+          util::RefreshToken<Auth>(
+              [http](Auth::AuthToken auth_token, stdx::stop_token stop_token) {
+                return Auth::RefreshAccessToken(*http, std::move(auth_token),
+                                                std::move(stop_token));
+              }),
+          util::AuthorizeRequest<Auth>{[](http::Request<std::string> request,
+                                          Auth::AuthToken auth_token) {
+            return AuthorizeRequest(std::move(request), std::move(auth_token));
+          }}) {}
+
 auto OpenStack::GetGeneralData(stdx::stop_token) const -> Task<GeneralData> {
   GeneralData data{.username =
-                       StrCat(auth_token_.bucket, '@', auth_token_.endpoint)};
+                       StrCat(auth_token().bucket, '@', auth_token().endpoint)};
   co_return data;
 }
 
@@ -50,7 +84,7 @@ auto OpenStack::ListDirectoryPage(Directory directory,
                                   std::optional<std::string> page_token,
                                   stdx::stop_token stop_token)
     -> Task<PageData> {
-  auto response = co_await FetchJson(
+  auto response = co_await auth_manager_.FetchJson(
       Request{.url = GetEndpoint(StrCat(
                   '/', '?',
                   http::FormDataToString({{"format", "json"},
@@ -69,7 +103,7 @@ auto OpenStack::ListDirectoryPage(Directory directory,
 
 Generator<std::string> OpenStack::GetFileContent(File file, http::Range range,
                                                  stdx::stop_token stop_token) {
-  auto response = co_await FetchOk(
+  auto response = co_await auth_manager_.Fetch(
       Request{.url = GetEndpoint(StrCat('/', http::EncodeUri(file.id))),
               .headers = {http::ToRangeHeader(range)}},
       std::move(stop_token));
@@ -87,7 +121,7 @@ auto OpenStack::CreateDirectory(Directory parent, std::string_view name,
     new_id += '/';
   }
   new_id += name;
-  co_await FetchOk(
+  co_await auth_manager_.Fetch(
       Request{.url = GetEndpoint(StrCat('/', http::EncodeUri(new_id))),
               .method = http::Method::kPut,
               .headers = {{"Content-Type", "application/directory"},
@@ -133,7 +167,7 @@ Task<ItemT> OpenStack::RenameItem(ItemT item, std::string new_name,
 template <typename ItemT>
 Task<ItemT> OpenStack::GetItem(std::string_view id,
                                stdx::stop_token stop_token) {
-  auto json = co_await FetchJson(
+  auto json = co_await auth_manager_.FetchJson(
       Request{.url = StrCat(GetEndpoint("/"), '?',
                             http::FormDataToString({{"format", "json"},
                                                     {"prefix", id},
@@ -159,13 +193,14 @@ auto OpenStack::CreateFile(Directory parent, std::string_view name,
     request.headers.emplace_back("Content-Length",
                                  std::to_string(*content.size));
   }
-  co_await FetchOk(std::move(request), stop_token);
+  co_await http_->FetchOk(AuthorizeRequest(std::move(request), auth_token()),
+                          stop_token);
   co_return co_await GetItem<File>(new_id, std::move(stop_token));
 }
 
 Task<> OpenStack::RemoveItemImpl(std::string_view id,
                                  stdx::stop_token stop_token) {
-  co_await FetchJson(
+  co_await auth_manager_.Fetch(
       Request{.url = GetEndpoint(StrCat('/', http::EncodeUriPath(id))),
               .method = http::Method::kDelete,
               .headers = {{"Content-Length", "0"}}},
@@ -193,9 +228,8 @@ Task<> OpenStack::MoveItemImpl(const ItemT& source,
       .url = GetEndpoint(StrCat('/', http::EncodeUri(source.id))),
       .method = http::Method::kCopy,
       .headers = {{"Content-Length", "0"},
-                  {"Destination", StrCat('/', auth_token_.bucket, '/',
-                                         http::EncodeUri(destination))}}};
-  co_await FetchOk(std::move(request), stop_token);
+                  {"Destination", GetEndpoint(http::EncodeUri(destination))}}};
+  co_await auth_manager_.Fetch(std::move(request), stop_token);
   co_await RemoveItemImpl(source.id, std::move(stop_token));
 }
 
@@ -207,7 +241,7 @@ Task<> OpenStack::Visit(ItemT item, const F& func,
 }
 
 std::string OpenStack::GetEndpoint(std::string_view endpoint) const {
-  return StrCat(auth_token_.endpoint, '/', auth_token_.bucket, endpoint);
+  return StrCat(auth_token().endpoint, '/', auth_token().bucket, endpoint);
 }
 
 auto OpenStack::ToItem(const nlohmann::json& json) -> Item {
@@ -239,24 +273,6 @@ nlohmann::json OpenStack::ToJson(const Item& item) {
       item);
 }
 
-Task<nlohmann::json> OpenStack::FetchJson(http::Request<std::string> request,
-                                          stdx::stop_token stop_token) const {
-  request = AuthorizeRequest(std::move(request), auth_token_);
-  co_return co_await ::coro::cloudstorage::util::FetchJson(
-      *http_, std::move(request), std::move(stop_token));
-}
-
-template <typename Request>
-Task<http::Response<>> OpenStack::FetchOk(Request request,
-                                          stdx::stop_token stop_token) const {
-  auto response = co_await http_->Fetch(
-      AuthorizeRequest(std::move(request), auth_token_), stop_token);
-  if (response.status / 100 != 2) {
-    throw http::HttpException(response.status);
-  }
-  co_return response;
-}
-
 auto OpenStack::Auth::AuthHandler::operator()(http::Request<> request,
                                               stdx::stop_token stop_token) const
     -> Task<std::variant<http::Response<>, Auth::AuthToken>> {
@@ -284,15 +300,13 @@ auto OpenStack::Auth::AuthHandler::operator()(http::Request<> request,
     } else {
       throw CloudException("missing credentials");
     }
-    auto response = co_await http_->FetchOk(
-        http::Request<std::string>{.url = std::move(auth_endpoint),
-                                   .headers = {{"X-Auth-User", std::move(user)},
-                                               {"X-Auth-Key", std::move(key)}}},
-        std::move(stop_token));
-    co_return Auth::AuthToken{
-        .endpoint = http::GetHeader(response.headers, "X-Storage-Url").value(),
-        .token = http::GetHeader(response.headers, "X-Auth-Token").value(),
-        .bucket = std::move(bucket)};
+    AuthToken auth_token;
+    auth_token.auth_endpoint = std::move(auth_endpoint);
+    auth_token.bucket = std::move(bucket);
+    auth_token.user = std::move(user);
+    auth_token.key = std::move(key);
+    co_return co_await Auth::RefreshAccessToken(*http_, std::move(auth_token),
+                                                std::move(stop_token));
   } else {
     co_return http::Response<>{.status = 200, .body = GenerateLoginPage()};
   }

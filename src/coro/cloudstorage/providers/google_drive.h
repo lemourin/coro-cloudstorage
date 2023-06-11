@@ -143,8 +143,8 @@ class GoogleDrive {
 };
 
 namespace util {
-template <>
 
+template <>
 GoogleDrive::Auth::AuthData GetAuthData<GoogleDrive>(
     const nlohmann::json& json);
 
