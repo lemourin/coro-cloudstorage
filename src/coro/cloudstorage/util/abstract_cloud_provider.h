@@ -31,6 +31,7 @@ class AbstractCloudProvider {
     kPCloud,
     kWebDAV,
     kYandexDisk,
+    kOpenStack,
   };
 
   class Auth {

@@ -365,9 +365,9 @@ Task<ItemT> AmazonS3::GetItem(std::string_view id,
   }
 }
 
-Task<std::variant<http::Response<>, AmazonS3::Auth::AuthToken>>
-AmazonS3::Auth::AuthHandler::operator()(http::Request<> request,
-                                        stdx::stop_token stop_token) const {
+auto AmazonS3::Auth::AuthHandler::operator()(http::Request<> request,
+                                             stdx::stop_token stop_token) const
+    -> Task<std::variant<http::Response<>, Auth::AuthToken>> {
   if (request.method == http::Method::kPost) {
     auto query =
         http::ParseQuery(co_await http::GetBody(std::move(*request.body)));

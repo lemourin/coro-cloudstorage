@@ -212,6 +212,7 @@ add_resource_library(
         kLocalDriveLoginHtml ../assets/html/local_login.html
         kWebdavLoginHtml ../assets/html/webdav_login.html
         kAmazonS3LoginHtml ../assets/html/amazons3_login.html
+        kOpenStackLoginHtml ../assets/html/open_stack_login.html
         kDashPlayerHtml ../assets/html/dash_player.html
         kItemEntryHtml ../assets/html/item_entry.html
         kProviderEntryHtml ../assets/html/provider_entry.html
@@ -229,6 +230,7 @@ add_resource_library(
         kMegaIcon ../assets/providers/mega.png
         kAmazonS3Icon ../assets/providers/amazons3.png
         kLocalDriveIcon ../assets/providers/local.png
+        kOpenStackIcon ../assets/providers/openstack.png
         kLayoutCss ../assets/styles/layout.css
         kColorsLightCss ../assets/styles/colors_light.css
         kColorsDarkCss ../assets/styles/colors_dark.css

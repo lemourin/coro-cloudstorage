@@ -9,6 +9,7 @@
 #include "coro/cloudstorage/providers/local_filesystem.h"
 #include "coro/cloudstorage/providers/mega.h"
 #include "coro/cloudstorage/providers/one_drive.h"
+#include "coro/cloudstorage/providers/open_stack.h"
 #include "coro/cloudstorage/providers/pcloud.h"
 #include "coro/cloudstorage/providers/webdav.h"
 #include "coro/cloudstorage/providers/yandex_disk.h"
@@ -338,8 +339,8 @@ std::unique_ptr<AbstractCloudFactory> CloudFactory::CreateCloudFactory(
       return create.operator()<WebDAV>();
     case AbstractCloudProvider::Type::kYandexDisk:
       return create.operator()<YandexDisk>();
-    default:
-      throw CloudException("Invalid CloudProvider type.");
+    case AbstractCloudProvider::Type::kOpenStack:
+      return create.operator()<OpenStack>();
   }
 }
 
@@ -365,7 +366,8 @@ CloudFactory::GetSupportedCloudProviders() const {
       Type::kDropbox,         Type::kGoogleDrive,
       Type::kLocalFileSystem, Type::kMega,
       Type::kOneDrive,        Type::kPCloud,
-      Type::kWebDAV,          Type::kYandexDisk};
+      Type::kWebDAV,          Type::kYandexDisk,
+      Type::kOpenStack};
 
   return types;
 }

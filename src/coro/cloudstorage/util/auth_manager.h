@@ -103,12 +103,12 @@ class AuthManager {
 
   const AuthToken& GetAuthToken() const { return auth_token_; }
 
+ private:
   void OnAuthTokenUpdated(AuthToken auth_token) {
     auth_token_ = std::move(auth_token);
     on_auth_token_updated_(auth_token_);
   }
 
- private:
   Task<> RefreshAuthToken(stdx::stop_token stop_token) {
     if (!current_auth_refresh_) {
       current_auth_refresh_.emplace(RefreshToken{this});

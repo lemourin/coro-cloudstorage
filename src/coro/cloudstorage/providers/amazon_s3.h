@@ -138,7 +138,7 @@ class AmazonS3::Auth::AuthHandler {
  public:
   explicit AuthHandler(const coro::http::Http* http) : http_(http) {}
 
-  Task<std::variant<http::Response<>, AmazonS3::Auth::AuthToken>> operator()(
+  Task<std::variant<http::Response<>, Auth::AuthToken>> operator()(
       http::Request<> request, stdx::stop_token stop_token) const;
 
  private:

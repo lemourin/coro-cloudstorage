@@ -5,6 +5,7 @@
 #include <string>
 #include <variant>
 
+#include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/auth_manager.h"
 #include "coro/cloudstorage/util/crypto_utils.h"
 #include "coro/cloudstorage/util/fetch_json.h"
@@ -19,6 +20,10 @@ namespace coro::cloudstorage {
 class OpenStack {
  public:
   using Request = http::Request<std::string>;
+
+  struct GeneralData {
+    std::string username;
+  };
 
   struct ItemData {
     std::string id;
@@ -46,7 +51,7 @@ class OpenStack {
   };
 
   struct Auth {
-    struct AuthData {};
+    class AuthHandler;
 
     struct AuthToken {
       std::string endpoint;
@@ -55,16 +60,13 @@ class OpenStack {
     };
   };
 
-  struct AuthorizeRequest {
-    template <typename Request>
-    Request operator()(Request request, Auth::AuthToken token) const {
-      request.headers.emplace_back("X-Auth-Token", token.token);
-      return request;
-    }
-  };
+  static constexpr std::string_view kId = "openstack";
+  static inline constexpr auto& kIcon = util::kOpenStackIcon;
 
-  OpenStack(util::AuthManager<Auth> auth_manager, const coro::http::Http* http)
-      : auth_manager_(std::move(auth_manager)), http_(http) {}
+  OpenStack(const coro::http::Http* http, Auth::AuthToken auth_token)
+      : http_(http), auth_token_(std::move(auth_token)) {}
+
+  Task<GeneralData> GetGeneralData(stdx::stop_token) const;
 
   Task<Directory> GetRoot(stdx::stop_token) const;
 
@@ -95,14 +97,15 @@ class OpenStack {
   Task<File> CreateFile(Directory parent, std::string_view name,
                         FileContent content, stdx::stop_token stop_token);
 
-  const Auth::AuthToken& auth_token() const {
-    return auth_manager_.GetAuthToken();
-  }
-
   static Item ToItem(const nlohmann::json&);
   static nlohmann::json ToJson(const Item&);
 
  private:
+  Task<nlohmann::json> FetchJson(http::Request<std::string> request,
+                                 stdx::stop_token stop_token) const;
+  template <typename Request>
+  Task<http::Response<>> FetchOk(Request, stdx::stop_token stop_token) const;
+
   Task<> RemoveItemImpl(std::string_view id, stdx::stop_token stop_token);
 
   template <typename Item>
@@ -118,8 +121,19 @@ class OpenStack {
 
   std::string GetEndpoint(std::string_view endpoint) const;
 
-  util::AuthManager<Auth> auth_manager_;
   const coro::http::Http* http_;
+  Auth::AuthToken auth_token_;
+};
+
+class OpenStack::Auth::AuthHandler {
+ public:
+  explicit AuthHandler(const http::Http* http) : http_(http) {}
+
+  Task<std::variant<http::Response<>, Auth::AuthToken>> operator()(
+      http::Request<> request, stdx::stop_token stop_token) const;
+
+ private:
+  const http::Http* http_;
 };
 
 namespace util {
