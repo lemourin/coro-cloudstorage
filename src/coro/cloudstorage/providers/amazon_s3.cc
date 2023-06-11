@@ -46,11 +46,11 @@ std::string GetAuthorization(
   std::string current_date = GetDate(current_time);
   std::string time = GetDateAndTime(current_time);
   std::string scope =
-      util::StrCat(current_date, "/", auth_token.region, "/s3/aws4_request");
+      StrCat(current_date, '/', auth_token.region, "/s3/aws4_request");
   std::stringstream canonical_request;
   auto uri = http::ParseUri(url);
-  canonical_request << http::MethodToString(method) << "\n"
-                    << uri.path.value_or("") << "\n";
+  canonical_request << http::MethodToString(method) << '\n'
+                    << uri.path.value_or("") << '\n';
   std::vector<std::pair<std::string, std::string>> query_params;
   for (const auto& [key, value] : http::ParseQuery(uri.query.value_or(""))) {
     query_params.emplace_back(http::EncodeUri(key), http::EncodeUri(value));
@@ -61,11 +61,11 @@ std::string GetAuthorization(
     if (first) {
       first = false;
     } else {
-      canonical_request << "&";
+      canonical_request << '&';
     }
-    canonical_request << key << "=" << value;
+    canonical_request << key << '=' << value;
   }
-  canonical_request << "\n";
+  canonical_request << '\n';
   std::vector<std::pair<std::string, std::string>> header_params;
   for (const auto& [key, value] : headers) {
     header_params.emplace_back(http::ToLowerCase(key),
@@ -73,16 +73,16 @@ std::string GetAuthorization(
   }
   std::sort(header_params.begin(), header_params.end());
   for (const auto& [key, value] : header_params) {
-    canonical_request << key << ":" << value << "\n";
+    canonical_request << key << ':' << value << '\n';
   }
-  canonical_request << "\n";
+  canonical_request << '\n';
   first = true;
   std::stringstream headers_str;
   for (const auto& [key, value] : header_params) {
     if (first) {
       first = false;
     } else {
-      headers_str << ";";
+      headers_str << ';';
     }
     headers_str << key;
   }
@@ -90,8 +90,8 @@ std::string GetAuthorization(
 
   std::stringstream string_to_sign;
   string_to_sign << "AWS4-HMAC-SHA256\n"
-                 << time << "\n"
-                 << scope << "\n"
+                 << time << '\n'
+                 << scope << '\n'
                  << ToHex(GetSHA256(std::move(canonical_request).str()));
 
   std::string signature = ToHex(GetHMACSHA256(
@@ -107,7 +107,7 @@ std::string GetAuthorization(
 
   std::stringstream authorization_header;
   authorization_header << "AWS4-HMAC-SHA256 Credential="
-                       << auth_token.access_key_id << "/" << scope
+                       << auth_token.access_key_id << '/' << scope
                        << ",SignedHeaders=" << std::move(headers_str).str()
                        << ",Signature=" << signature;
 
@@ -184,7 +184,7 @@ Task<AmazonS3::Auth::AuthToken> GetAuthToken(const coro::http::Http& http,
       .endpoint = std::move(endpoint),
       .region = "us-east-1"};
   http::Request<std::string> request{
-      .url = util::StrCat(auth_token.endpoint, "/", "?", "location=")};
+      .url = StrCat(auth_token.endpoint, '/', '?', "location=")};
   AuthorizeRequest(auth_token, request);
   auto response = co_await http.Fetch(std::move(request), stop_token);
   pugi::xml_document document =
@@ -196,8 +196,8 @@ Task<AmazonS3::Auth::AuthToken> GetAuthToken(const coro::http::Http& http,
     auth_token.region = node.child_value();
   }
   request = http::Request<std::string>{
-      .url = util::StrCat(
-          auth_token.endpoint, "/", "?",
+      .url = StrCat(
+          auth_token.endpoint, '/', '?',
           http::FormDataToString(
               {{"list-type", "2"}, {"prefix", ""}, {"delimiter", "/"}}))};
   AuthorizeRequest(auth_token, request);
@@ -270,8 +270,8 @@ auto AmazonS3::ListDirectoryPage(Directory directory,
   if (page_token) {
     params.emplace_back("continuation-token", std::move(*page_token));
   }
-  Request request{.url =
-                      GetEndpoint("/") + "?" + http::FormDataToString(params)};
+  Request request{
+      .url = StrCat(GetEndpoint("/"), '?', http::FormDataToString(params))};
   pugi::xml_document response =
       co_await FetchXml(std::move(request), std::move(stop_token));
   co_return ToPageData(directory, response);
@@ -291,11 +291,11 @@ Task<ItemT> AmazonS3::RenameItem(ItemT item, std::string new_name,
                                  stdx::stop_token stop_token) {
   auto destination_path = util::GetDirectoryPath(item.id);
   if (!destination_path.empty()) {
-    destination_path += "/";
+    destination_path += '/';
   }
   destination_path += new_name;
   if constexpr (std::is_same_v<ItemT, Directory>) {
-    destination_path += "/";
+    destination_path += '/';
   }
   co_await Move(item, destination_path, stop_token);
   co_return co_await GetItem<ItemT>(destination_path, std::move(stop_token));
@@ -304,9 +304,9 @@ Task<ItemT> AmazonS3::RenameItem(ItemT item, std::string new_name,
 auto AmazonS3::CreateDirectory(Directory parent, std::string name,
                                stdx::stop_token stop_token) const
     -> Task<Directory> {
-  auto id = util::StrCat(parent.id, name, "/");
+  auto id = StrCat(parent.id, name, '/');
   auto request =
-      Request{.url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(id))),
+      Request{.url = GetEndpoint(util::StrCat('/', http::EncodeUriPath(id))),
               .method = http::Method::kPut,
               .headers = {{"Content-Length", "0"}}};
   co_await Fetch(std::move(request), std::move(stop_token));
@@ -331,7 +331,7 @@ Task<ItemT> AmazonS3::MoveItem(ItemT source, Directory destination,
                                stdx::stop_token stop_token) {
   auto destination_path = util::StrCat(destination.id, source.name);
   if constexpr (std::is_same_v<ItemT, Directory>) {
-    destination_path += "/";
+    destination_path += '/';
   }
   co_await Move(source, destination_path, stop_token);
   co_return co_await GetItem<ItemT>(destination_path, std::move(stop_token));
@@ -342,7 +342,7 @@ auto AmazonS3::CreateFile(Directory parent, std::string_view name,
                           stdx::stop_token stop_token) const -> Task<File> {
   auto new_id = util::StrCat(parent.id, name);
   auto request = http::Request<>{
-      .url = GetEndpoint(StrCat("/", http::EncodeUriPath(new_id))),
+      .url = GetEndpoint(StrCat('/', http::EncodeUriPath(new_id))),
       .method = http::Method::kPut,
       .headers = {{"Content-Length", std::to_string(content.size)}},
       .body = std::move(content.data)};
@@ -416,7 +416,7 @@ Task<> AmazonS3::Visit(ItemT item, const F& func, stdx::stop_token stop_token) {
 Task<> AmazonS3::RemoveItemImpl(std::string_view id,
                                 stdx::stop_token stop_token) const {
   co_await Fetch(
-      Request{.url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(id))),
+      Request{.url = GetEndpoint(StrCat('/', http::EncodeUriPath(id))),
               .method = http::Method::kDelete,
               .headers = {{"Content-Length", "0"}}},
       std::move(stop_token));
@@ -440,13 +440,13 @@ template <typename ItemT>
 Task<> AmazonS3::MoveItemImpl(const ItemT& source, std::string_view destination,
                               stdx::stop_token stop_token) const {
   Request request{
-      .url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(destination))),
+      .url = GetEndpoint(StrCat('/', http::EncodeUriPath(destination))),
       .method = http::Method::kPut,
       .headers = {{"Content-Length", "0"}}};
   if constexpr (!std::is_same_v<ItemT, Directory>) {
     request.headers.emplace_back(
         "X-Amz-Copy-Source",
-        http::EncodeUriPath(util::StrCat(auth_token_.bucket, "/", source.id)));
+        http::EncodeUriPath(StrCat(auth_token_.bucket, '/', source.id)));
   }
   co_await Fetch(std::move(request), stop_token);
   co_await RemoveItemImpl(source.id, std::move(stop_token));
