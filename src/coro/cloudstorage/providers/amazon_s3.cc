@@ -208,6 +208,9 @@ Task<AmazonS3::Auth::AuthToken> GetAuthToken(const coro::http::Http& http,
   }
   document = GetXmlDocument(std::move(body));
   auth_token.bucket = document.document_element().child_value("Name");
+  if (auth_token.bucket.empty()) {
+    throw CloudException("Can't determine s3 bucket.");
+  }
   co_return auth_token;
 }
 
@@ -250,8 +253,11 @@ auto AmazonS3::GetItem(std::string id, stdx::stop_token stop_token) const
 }
 
 auto AmazonS3::GetGeneralData(stdx::stop_token) const -> Task<GeneralData> {
-  GeneralData data{.username =
-                       http::ParseUri(auth_token_.endpoint).host.value()};
+  std::string host = http::ParseUri(auth_token_.endpoint).host.value();
+  GeneralData data{
+      .username =
+          StrCat(auth_token_.bucket,
+                 host.ends_with("amazonaws.com") ? "" : StrCat('@', host))};
   co_return data;
 }
 

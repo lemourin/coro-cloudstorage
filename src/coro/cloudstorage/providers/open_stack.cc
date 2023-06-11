@@ -71,8 +71,9 @@ OpenStack::OpenStack(
           }}) {}
 
 auto OpenStack::GetGeneralData(stdx::stop_token) const -> Task<GeneralData> {
-  GeneralData data{.username =
-                       StrCat(auth_token().bucket, '@', auth_token().endpoint)};
+  GeneralData data{
+      .username = StrCat(auth_token().bucket, '@',
+                         http::ParseUri(auth_token().endpoint).host.value())};
   co_return data;
 }
 
