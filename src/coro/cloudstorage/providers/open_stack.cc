@@ -229,7 +229,8 @@ Task<> OpenStack::MoveItemImpl(const ItemT& source,
       .url = GetEndpoint(StrCat('/', http::EncodeUri(source.id))),
       .method = http::Method::kCopy,
       .headers = {{"Content-Length", "0"},
-                  {"Destination", GetEndpoint(http::EncodeUri(destination))}}};
+                  {"Destination", StrCat('/', auth_token().bucket, '/',
+                                         http::EncodeUri(destination))}}};
   co_await auth_manager_.Fetch(std::move(request), stop_token);
   co_await RemoveItemImpl(source.id, std::move(stop_token));
 }
