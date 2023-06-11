@@ -20,7 +20,7 @@ T FromString(std::string sv) {
 
 template <>
 inline std::string FromString(std::string sv) {
-  return std::move(sv);
+  return sv;
 }
 
 template <>
@@ -72,8 +72,6 @@ std::vector<T> SplitString(const T& string, C delim) {
 }
 
 std::string ErrorToString(int error_code);
-
-std::string_view TrimWhitespace(std::string_view);
 
 template <typename T1, typename T2>
 std::string_view ToStringView(T1 begin, T2 end) {

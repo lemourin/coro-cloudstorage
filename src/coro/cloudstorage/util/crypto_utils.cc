@@ -35,14 +35,4 @@ std::string GetHMACSHA256(std::string_view key, std::string_view message) {
   return result;
 }
 
-std::string GetHMACSHA1(std::string_view key, std::string_view message) {
-  ::CryptoPP::HMAC<::CryptoPP::SHA1> hmac(
-      reinterpret_cast<const uint8_t*>(key.data()), key.length());
-  std::string result(hmac.DigestSize(), 0);
-  hmac.CalculateDigest(reinterpret_cast<uint8_t*>(result.data()),
-                       reinterpret_cast<const uint8_t*>(message.data()),
-                       message.size());
-  return result;
-}
-
 }  // namespace coro::cloudstorage::util

@@ -109,7 +109,7 @@ Generator<std::string> GetWebDavResponse(
             {.path = util::StrCat(path, http::EncodeUri(name)),
              .name = name,
              .is_directory = std::visit(
-                 []<typename T>(const T& d) {
+                 []<typename T>(const T&) {
                    return std::is_same_v<T, AbstractCloudProvider::Directory>;
                  },
                  item),

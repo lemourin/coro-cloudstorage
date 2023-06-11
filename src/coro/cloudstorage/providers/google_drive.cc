@@ -152,7 +152,7 @@ auto GoogleDrive::ListDirectoryPage(Directory directory,
                                                std::move(stop_token));
   std::vector<Item> result;
   for (const json& item : data["files"]) {
-    result.emplace_back(std::move(ToItem(item)));
+    result.emplace_back(ToItem(item));
   }
   co_return PageData{
       .items = std::move(result),

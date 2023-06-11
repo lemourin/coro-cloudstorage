@@ -226,30 +226,36 @@ Generator<std::string> LocalFileSystem::GetFileContent(
 }
 
 template <typename ItemT>
-Task<ItemT> LocalFileSystem::RenameItem(ItemT item, std::string new_name,
-                                        stdx::stop_token stop_token) {
+Task<ItemT> LocalFileSystem::RenameItem(ItemT /*item*/,
+                                        std::string /*new_name*/,
+                                        stdx::stop_token /*stop_token*/) {
   throw RuntimeError("unimplemented");
 }
 
-auto LocalFileSystem::CreateDirectory(Directory parent, std::string name,
-                                      stdx::stop_token stop_token)
+auto LocalFileSystem::CreateDirectory(Directory /*parent*/,
+                                      std::string /*name*/,
+                                      stdx::stop_token /*stop_token*/)
     -> Task<Directory> {
   throw RuntimeError("unimplemented");
 }
 
-Task<> LocalFileSystem::RemoveItem(Item item, stdx::stop_token stop_token) {
+Task<> LocalFileSystem::RemoveItem(Item /*item*/,
+                                   stdx::stop_token /*stop_token*/) {
   throw RuntimeError("unimplemented");
 }
 
 template <typename ItemT>
-Task<ItemT> LocalFileSystem::MoveItem(ItemT source, Directory destination,
-                                      stdx::stop_token stop_token) {
+Task<ItemT> LocalFileSystem::MoveItem(ItemT /*source*/,
+                                      Directory /*destination*/,
+                                      stdx::stop_token /*stop_token*/) {
   throw RuntimeError("unimplemented");
 }
 
-auto LocalFileSystem::CreateFile(Directory parent, std::string_view name,
-                                 FileContent content,
-                                 stdx::stop_token stop_token) -> Task<File> {
+auto LocalFileSystem::CreateFile(Directory /*parent*/,
+                                 std::string_view /*name*/,
+                                 FileContent /*content*/,
+                                 stdx::stop_token /*stop_token*/)
+    -> Task<File> {
   throw RuntimeError("unimplemented");
 }
 

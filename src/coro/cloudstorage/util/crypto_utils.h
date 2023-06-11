@@ -9,7 +9,6 @@ namespace coro::cloudstorage::util {
 std::string GetSHA256(std::string_view message);
 std::string ToHex(std::string_view message);
 std::string GetHMACSHA256(std::string_view key, std::string_view message);
-std::string GetHMACSHA1(std::string_view key, std::string_view message);
 
 }  // namespace coro::cloudstorage::util
 

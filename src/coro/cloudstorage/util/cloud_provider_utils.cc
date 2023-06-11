@@ -1,9 +1,6 @@
 #include "coro/cloudstorage/util/cloud_provider_utils.h"
 
-#include <nlohmann/json.hpp>
-
 #include "coro/cloudstorage/util/generator_utils.h"
-#include "coro/cloudstorage/util/string_utils.h"
 
 namespace coro::cloudstorage::util {
 
@@ -128,8 +125,7 @@ GetItemThumbnailWithFallback<AbstractCloudProvider::File>(
 template <>
 Task<AbstractCloudProvider::Thumbnail>
 GetItemThumbnailWithFallback<AbstractCloudProvider::Directory>(
-    const ThumbnailGenerator* thumbnail_generator,
-    const AbstractCloudProvider* provider,
+    const ThumbnailGenerator*, const AbstractCloudProvider* provider,
     AbstractCloudProvider::Directory directory, ThumbnailQuality quality,
     http::Range range, stdx::stop_token stop_token) {
   return provider->GetItemThumbnail(std::move(directory), quality, range,

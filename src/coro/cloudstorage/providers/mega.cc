@@ -1,7 +1,6 @@
 #include "coro/cloudstorage/providers/mega.h"
 
 #include <cryptopp/aes.h>
-#include <cryptopp/cryptlib.h>
 #include <cryptopp/modes.h>
 #include <cryptopp/pwdbased.h>
 #include <cryptopp/sha.h>
@@ -14,7 +13,6 @@
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
 #include "coro/cloudstorage/util/cloud_provider_utils.h"
-#include "coro/cloudstorage/util/string_utils.h"
 
 namespace coro::cloudstorage {
 
@@ -210,7 +208,7 @@ std::vector<uint8_t> BlockTransform(Cipher& cipher, std::string_view message) {
         util::StrCat("invalid message length ", message.size()));
   }
   std::vector<uint8_t> decrypted(message.size());
-  for (int i = 0; i < message.size(); i += 16) {
+  for (size_t i = 0; i < message.size(); i += 16) {
     cipher.ProcessData(reinterpret_cast<uint8_t*>(decrypted.data() + i),
                        reinterpret_cast<const uint8_t*>(message.data() + i),
                        16);
@@ -494,7 +492,7 @@ Generator<std::string> GetEncodedStream(std::span<const uint8_t, 16> key,
     co_yield EncodeChunk(key, compkey, position, chunk);
     position += static_cast<int64_t>(chunk.size());
     chunk = util::StrCat(carry_over, chunk);
-    for (int i = 0; i + 16 < chunk.size(); i += 16) {
+    for (size_t i = 0; i + 16 < chunk.size(); i += 16) {
       cipher.ProcessData(cbc_mac.data(),
                          reinterpret_cast<const uint8_t*>(chunk.data() + i),
                          16);

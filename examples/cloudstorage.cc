@@ -83,7 +83,7 @@ Task<> CoMain(CloudFactoryContext* factory_context, Promise<void>* quit) {
   }
 }
 
-void SignalHandler(int signal) {
+void SignalHandler(int /*signal*/) {
   gEventLoop.RunOnEventLoop([] { gQuit.SetValue(); });
 }
 

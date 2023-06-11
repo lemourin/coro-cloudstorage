@@ -8,8 +8,9 @@ check_cxx_source_compiles(
     "
     #include <string.h>
     int main() {
-      const char* ret = strerror_r(0, NULL, 0);
-      return 0;
+      char buf;
+      const char* ret = strerror_r(0, &buf, 1);
+      return ret ? 0 : 1;
     }
     "
     CORO_CLOUDSTORAGE_HAVE_GLIBC_STRERROR_R
@@ -22,8 +23,9 @@ check_cxx_source_compiles(
     "
     #include <string.h>
     int main() {
-      int err = strerror_r(0, NULL, 0);
-      return 0;
+      char buf;
+      int err = strerror_r(0, &buf, 1);
+      return err;
     }
     "
     CORO_CLOUDSTORAGE_HAVE_STRERROR_R
