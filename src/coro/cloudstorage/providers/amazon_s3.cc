@@ -279,9 +279,9 @@ auto AmazonS3::ListDirectoryPage(Directory directory,
 
 Generator<std::string> AmazonS3::GetFileContent(
     File file, http::Range range, stdx::stop_token stop_token) const {
-  auto request = Request{
-      .url = GetEndpoint(util::StrCat("/", http::EncodeUriPath(file.id))),
-      .headers = {ToRangeHeader(range)}};
+  auto request =
+      Request{.url = GetEndpoint(StrCat('/', http::EncodeUriPath(file.id))),
+              .headers = {ToRangeHeader(range)}};
   auto response = co_await Fetch(std::move(request), std::move(stop_token));
   FOR_CO_AWAIT(std::string & body, response.body) { co_yield std::move(body); }
 }

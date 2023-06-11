@@ -323,6 +323,9 @@ nlohmann::json ToJson<OpenStack::Auth::AuthToken>(
   json["endpoint"] = token.endpoint;
   json["token"] = token.token;
   json["bucket"] = token.bucket;
+  json["auth_endpoint"] = token.auth_endpoint;
+  json["user"] = token.user;
+  json["key"] = token.key;
   return json;
 }
 
@@ -333,6 +336,9 @@ OpenStack::Auth::AuthToken ToAuthToken<OpenStack::Auth::AuthToken>(
   token.endpoint = json.at("endpoint");
   token.token = json.at("token");
   token.bucket = json.at("bucket");
+  token.auth_endpoint = json.at("auth_endpoint");
+  token.user = json.at("user");
+  token.key = json.at("key");
   return token;
 }
 
