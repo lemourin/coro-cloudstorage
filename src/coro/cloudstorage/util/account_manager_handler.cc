@@ -457,7 +457,7 @@ CloudProviderAccount AccountManagerHandler::Impl::CreateAccount(
 Task<CloudProviderAccount> AccountManagerHandler::Impl::Create(
     AbstractCloudProvider::Auth::AuthToken auth_token,
     stdx::stop_token stop_token) {
-  int version = ++version_;
+  int64_t version = ++version_;
   auto username = std::make_shared<std::optional<std::string>>(std::nullopt);
   auto provider = factory_->Create(
       auth_token, OnAuthTokenChanged{settings_manager_, username});

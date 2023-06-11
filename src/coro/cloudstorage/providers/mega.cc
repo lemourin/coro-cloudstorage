@@ -101,10 +101,11 @@ auto ToBytes(std::span<const uint32_t, Size> span) {
     }
     return result;
   } else {
-    std::array<uint8_t, Size * 4> result;
+    std::array<uint8_t, Size * 4> result{};
     for (size_t i = 0; i < span.size(); i++) {
       result[4 * i] = span[i] >> 24;
-      result[4 * i + 1] = (span[i] & ((1u << 24) - 1)) >> 16;
+      result[4 * i + 1] =
+          static_cast<uint8_t>((span[i] & ((1u << 24) - 1)) >> 16);
       result[4 * i + 2] = (span[i] & ((1u << 16) - 1)) >> 8;
       result[4 * i + 3] = (span[i] & ((1u << 8) - 1));
     }

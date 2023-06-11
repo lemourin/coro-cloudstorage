@@ -36,7 +36,7 @@ struct DbAuthToken {
 };
 
 uint16_t GetPort(std::string_view redirect_uri) {
-  return http::ParseUri(redirect_uri).port.value_or(80);
+  return static_cast<uint16_t>(http::ParseUri(redirect_uri).port.value_or(80));
 }
 
 auto CreateStorage(std::string path) {

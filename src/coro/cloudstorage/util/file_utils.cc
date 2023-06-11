@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <memory>
+#include <array>
 
 #include "coro/cloudstorage/util/string_utils.h"
 
