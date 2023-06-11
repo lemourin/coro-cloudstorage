@@ -11,10 +11,6 @@
     "client_id": "ktryxp68ae5cicj",
     "client_secret": "6evu94gcxnmyr59"
   },
-  "hubic": {
-    "client_id": "api_hubic_kHQ5NUmE2yAAeiWfXPwQy2T53M6RP2fe",
-    "client_secret": "Xk1ezMMSGNeU4r0wv3jutleYX9XvXmgg8XVElJjqoDvlDw0KsC9U2tkSxJxYof8V"
-  },
   "mega": {
     "api_key": "ZVhB0Czb",
     "app_name": "coro-cloudstorage"

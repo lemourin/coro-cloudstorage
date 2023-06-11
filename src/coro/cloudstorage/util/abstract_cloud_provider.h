@@ -25,7 +25,6 @@ class AbstractCloudProvider {
     kBox,
     kDropbox,
     kGoogleDrive,
-    kHubiC,
     kLocalFileSystem,
     kMega,
     kOneDrive,

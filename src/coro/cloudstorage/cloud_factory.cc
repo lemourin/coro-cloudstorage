@@ -6,7 +6,6 @@
 #include "coro/cloudstorage/providers/box.h"
 #include "coro/cloudstorage/providers/dropbox.h"
 #include "coro/cloudstorage/providers/google_drive.h"
-#include "coro/cloudstorage/providers/hubic.h"
 #include "coro/cloudstorage/providers/local_filesystem.h"
 #include "coro/cloudstorage/providers/mega.h"
 #include "coro/cloudstorage/providers/one_drive.h"
@@ -327,8 +326,6 @@ std::unique_ptr<AbstractCloudFactory> CloudFactory::CreateCloudFactory(
       return create.operator()<Dropbox>();
     case AbstractCloudProvider::Type::kGoogleDrive:
       return create.operator()<GoogleDrive>();
-    case AbstractCloudProvider::Type::kHubiC:
-      return create.operator()<HubiC>();
     case AbstractCloudProvider::Type::kLocalFileSystem:
       return create.operator()<LocalFileSystem>();
     case AbstractCloudProvider::Type::kMega:
@@ -364,10 +361,11 @@ CloudFactory::GetSupportedCloudProviders() const {
   using Type = AbstractCloudProvider::Type;
 
   static std::vector<AbstractCloudProvider::Type> types = {
-      Type::kAmazonS3,    Type::kBox,       Type::kDropbox,
-      Type::kGoogleDrive, Type::kHubiC,     Type::kLocalFileSystem,
-      Type::kMega,        Type::kOneDrive,  Type::kPCloud,
-      Type::kWebDAV,      Type::kYandexDisk};
+      Type::kAmazonS3,        Type::kBox,
+      Type::kDropbox,         Type::kGoogleDrive,
+      Type::kLocalFileSystem, Type::kMega,
+      Type::kOneDrive,        Type::kPCloud,
+      Type::kWebDAV,          Type::kYandexDisk};
 
   return types;
 }

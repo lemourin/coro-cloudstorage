@@ -49,7 +49,6 @@ target_sources(coro-cloudstorage PRIVATE
     coro/cloudstorage/providers/box.cc
     coro/cloudstorage/providers/mega.cc
     coro/cloudstorage/providers/yandex_disk.cc
-    coro/cloudstorage/providers/hubic.cc
     coro/cloudstorage/providers/pcloud.cc
     coro/cloudstorage/providers/amazon_s3.cc
     coro/cloudstorage/providers/dropbox.cc
@@ -101,7 +100,6 @@ target_sources(coro-cloudstorage
         coro/cloudstorage/providers/open_stack.h
         coro/cloudstorage/providers/google_drive.h
         coro/cloudstorage/providers/pcloud.h
-        coro/cloudstorage/providers/hubic.h
         coro/cloudstorage/providers/dropbox.h
         coro/cloudstorage/providers/local_filesystem.h
         coro/cloudstorage/providers/one_drive.h
@@ -231,7 +229,6 @@ add_resource_library(
         kMegaIcon ../assets/providers/mega.png
         kAmazonS3Icon ../assets/providers/amazons3.png
         kLocalDriveIcon ../assets/providers/local.png
-        kHubiCIcon ../assets/providers/hubic.png
         kLayoutCss ../assets/styles/layout.css
         kColorsLightCss ../assets/styles/colors_light.css
         kColorsDarkCss ../assets/styles/colors_dark.css
