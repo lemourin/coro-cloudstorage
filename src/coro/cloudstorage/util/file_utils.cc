@@ -2,7 +2,6 @@
 
 #include <cstdlib>
 #include <memory>
-#include <utility>
 
 #include "coro/cloudstorage/util/string_utils.h"
 
@@ -248,17 +247,17 @@ Task<> WriteFile(coro::util::ThreadPool* thread_pool, std::FILE* file,
 Generator<std::string> ReadFile(coro::util::ThreadPool* thread_pool,
                                 std::FILE* file) {
   const int kBufferSize = 4096;
-  char buffer[kBufferSize];
+  std::array<char, kBufferSize> buffer;
   if (co_await thread_pool->Do(Fseek, file, 0, SEEK_SET) != 0) {
     throw std::runtime_error("fseek failed");
   }
   while (feof(file) == 0) {
     size_t size =
-        co_await thread_pool->Do(fread, &buffer, 1, kBufferSize, file);
+        co_await thread_pool->Do(fread, buffer.data(), 1, kBufferSize, file);
     if (ferror(file) != 0) {
       throw std::runtime_error("read error");
     }
-    co_yield std::string(buffer, size);
+    co_yield std::string(buffer.data(), size);
   }
 }
 

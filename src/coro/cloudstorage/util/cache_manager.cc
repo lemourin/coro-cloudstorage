@@ -19,7 +19,6 @@ using ::sqlite_orm::make_table;
 using ::sqlite_orm::on;
 using ::sqlite_orm::order_by;
 using ::sqlite_orm::primary_key;
-using ::sqlite_orm::select;
 using ::sqlite_orm::where;
 
 struct DbItem {
@@ -56,7 +55,7 @@ struct DbImage {
 };
 
 auto CreateStorage(std::string path) {
-  auto storage = sqlite_orm::make_storage(
+  auto storage = make_storage(
       std::move(path),
       make_table("item", make_column("account_type", &DbItem::account_type),
                  make_column("account_username", &DbItem::account_username),

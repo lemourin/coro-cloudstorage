@@ -240,7 +240,7 @@ Task<ItemT> OneDrive::MoveItem(ItemT source, Directory destination,
 auto OneDrive::CreateFile(Directory parent, std::string_view name,
                           FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
-  if (content.size <= 4 * 1024 * 1024) {
+  if (content.size <= 4LL * 1024 * 1024) {
     std::string body = co_await http::GetBody(std::move(content.data));
     http::Request<std::string> request{
         .url = GetEndpoint("/me/drive/items/") + parent.id + ":/" +
@@ -259,12 +259,12 @@ auto OneDrive::CreateFile(Directory parent, std::string_view name,
     int64_t offset = 0;
     while (true) {
       auto chunk_size = std::min<size_t>(
-          60 * 1024 * 1024, static_cast<size_t>(content.size - offset));
+          60LL * 1024 * 1024, static_cast<size_t>(content.size - offset));
       FileContent chunk{.data = util::Take(content.data, it, chunk_size),
                         .size = static_cast<int64_t>(chunk_size)};
       auto response = co_await WriteChunk(*http_, session, std::move(chunk),
                                           offset, content.size, stop_token);
-      offset += chunk_size;
+      offset += static_cast<int64_t>(chunk_size);
       if (offset >= content.size) {
         co_return ToItemImpl<File>(response);
       }

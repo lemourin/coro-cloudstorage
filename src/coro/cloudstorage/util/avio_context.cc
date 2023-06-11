@@ -56,9 +56,9 @@ std::unique_ptr<AVIOContext, AVIOContextDeleter> CreateIOContext(
             }
             auto buffer = co_await http::GetBody(util::Take(
                 *data->generator, *data->it, static_cast<size_t>(buf_size)));
-            data->offset += buffer.size();
+            data->offset += static_cast<int64_t>(buffer.size());
             memcpy(buf, buffer.data(), buffer.size());
-            if (buffer.size() == 0) {
+            if (buffer.empty()) {
               co_return AVERROR_EOF;
             }
             co_return static_cast<int>(buffer.size());
@@ -71,7 +71,7 @@ std::unique_ptr<AVIOContext, AVIOContextDeleter> CreateIOContext(
       },
       /*write_packet=*/nullptr,
       [](void* opaque, int64_t offset, int whence) -> int64_t {
-        auto data = reinterpret_cast<Context*>(opaque);
+        auto* data = reinterpret_cast<Context*>(opaque);
         whence &= ~AVSEEK_FORCE;
         if (whence == AVSEEK_SIZE) {
           return data->file.size.value_or(AVERROR(ENOSYS));

@@ -303,7 +303,7 @@ CloudFactory::CloudFactory(const coro::util::EventLoop* event_loop,
       thumbnail_generator_(thumbnail_generator),
       muxer_(muxer),
       random_number_generator_(random_number_generator),
-      auth_data_(auth_data) {
+      auth_data_(std::move(auth_data)) {
   for (auto type : GetSupportedCloudProviders()) {
     factory_.emplace_back(CreateCloudFactory(type));
   }

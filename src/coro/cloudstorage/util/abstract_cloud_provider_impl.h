@@ -188,7 +188,7 @@ class AbstractCloudProviderImpl : public AbstractCloudProvider,
       auto new_id = FromString<ItemIdTypeT<CloudProviderT>>(std::move(id));
       auto item = co_await provider()->GetItem(std::move(new_id),
                                                std::move(stop_token));
-      co_return std::visit([](auto&& i) { return Item(Convert(std::move(i))); },
+      co_return std::visit([](auto i) { return Item(Convert(std::move(i))); },
                            std::move(item));
     } else {
       throw std::runtime_error("not implemented");

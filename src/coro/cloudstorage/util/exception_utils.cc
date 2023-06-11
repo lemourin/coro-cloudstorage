@@ -4,7 +4,7 @@
 
 namespace coro::cloudstorage::util {
 
-ErrorMetadata GetErrorMetadata(std::exception_ptr exception) {
+ErrorMetadata GetErrorMetadata(const std::exception_ptr& exception) {
   try {
     std::rethrow_exception(exception);
   } catch (const http::HttpException& e) {

@@ -9,7 +9,7 @@ namespace {
 
 using ::coro::RunTask;
 
-constexpr const int64_t kThumbnailTimeToLive = 60 * 60;
+constexpr const int64_t kThumbnailTimeToLive = 60LL * 60;
 
 Task<> UpdateDirectoryListCache(
     CacheManager::AccountKey account, CacheManager* cache_manager,
@@ -187,7 +187,7 @@ Task<VersionedThumbnail> CloudProviderAccount::GetItemThumbnailWithFallback(
           co_await cache_manager->Put(std::move(account_key),
                                       CacheManager::ImageKey{item.id, quality},
                                       image_data, std::move(stop_token));
-          int64_t size = image_data.image_bytes.size();
+          int64_t size = static_cast<int64_t>(image_data.image_bytes.size());
           std::string data(image_data.image_bytes.begin(),
                            image_data.image_bytes.end());
           updated->SetValue(AbstractCloudProvider::Thumbnail{
@@ -199,7 +199,7 @@ Task<VersionedThumbnail> CloudProviderAccount::GetItemThumbnailWithFallback(
         }
       });
     }
-    int64_t size = image_data->image_bytes.size();
+    int64_t size = static_cast<int64_t>(image_data->image_bytes.size());
     std::string data(image_data->image_bytes.begin(),
                      image_data->image_bytes.end());
     updated->SetValue(std::nullopt);

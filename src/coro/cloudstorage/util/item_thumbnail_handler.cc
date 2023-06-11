@@ -37,8 +37,8 @@ http::Response<> GetStaticIcon(const Item& item, int http_code) {
   std::vector<std::pair<std::string, std::string>> headers = {
       {"Location", StrCat("/static/", GetIconName(item), ".svg")}};
   if (http_code == 301) {
-    headers.push_back({"Cache-Control", "private"});
-    headers.push_back({"Cache-Control", "max-age=604800"});
+    headers.emplace_back("Cache-Control", "private");
+    headers.emplace_back("Cache-Control", "max-age=604800");
   }
   return http::Response<>{.status = http_code, .headers = std::move(headers)};
 }
@@ -115,7 +115,7 @@ Task<http::Response<>> ItemThumbnailHandler::operator()(
   auto item = co_await account_.GetItemById(item_id, stop_token);
   co_return co_await std::visit(
       [account = account_, quality, range,
-       stop_token = std::move(stop_token)](auto&& item) mutable {
+       stop_token = std::move(stop_token)](auto item) mutable {
         return GetItemThumbnail(account, std::move(item), quality, range,
                                 std::move(stop_token));
       },

@@ -16,7 +16,8 @@ struct ErrorMetadata {
   std::optional<stdx::stacktrace> stacktrace;
 };
 
-ErrorMetadata GetErrorMetadata(std::exception_ptr = std::current_exception());
+ErrorMetadata GetErrorMetadata(
+    const std::exception_ptr& = std::current_exception());
 
 }  // namespace coro::cloudstorage::util
 

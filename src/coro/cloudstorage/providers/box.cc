@@ -15,10 +15,8 @@ constexpr std::string_view kEndpoint = "https://api.box.com/2.0";
 
 using AuthManager = ::coro::cloudstorage::util::AuthManager<Box::Auth>;
 
-using ::coro::cloudstorage::util::CreateAbstractCloudProviderImpl;
 using ::coro::cloudstorage::util::ListDirectory;
 using ::coro::cloudstorage::util::StrCat;
-using ::coro::cloudstorage::util::Take;
 
 std::string GetEndpoint(std::string_view path) {
   return StrCat(kEndpoint, path);
@@ -54,7 +52,7 @@ Generator<std::string> GetUploadStream(Box::Directory parent,
         << "\r\n\r\n"
         << request.dump() << "\r\n"
         << "--" << kSeparator << "\r\n"
-        << "Content-Disposition: form-data; name=\"file\"; filename=\""
+        << R"(Content-Disposition: form-data; name="file"; filename=")"
         << http::EncodeUri(name) << "\"\r\n"
         << "Content-Type: application/octet-stream\r\n\r\n";
   co_yield chunk.str();
@@ -150,7 +148,7 @@ auto Box::GetItem(ItemId id, stdx::stop_token stop_token) -> Task<Item> {
       {"fields", std::string(kFileProperties)}};
   std::string type = id.type == ItemId::Type::kDirectory ? "folders" : "files";
   Request request{.url = StrCat(GetEndpoint(StrCat('/', type, '/', id.id)), '?',
-                                http::FormDataToString(std::move(params)))};
+                                http::FormDataToString(params))};
   auto json = co_await auth_manager_.FetchJson(std::move(request),
                                                std::move(stop_token));
   co_return ToItem(json);
@@ -173,8 +171,7 @@ auto Box::ListDirectoryPage(Directory directory,
     params.emplace_back("offset", std::move(*page_token));
   }
   Request request{.url = StrCat(GetEndpoint("/folders/"), directory.id.id,
-                                "/items?",
-                                http::FormDataToString(std::move(params)))};
+                                "/items?", http::FormDataToString(params))};
   auto json = co_await auth_manager_.FetchJson(std::move(request),
                                                std::move(stop_token));
   PageData result;

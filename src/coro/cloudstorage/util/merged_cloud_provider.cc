@@ -26,13 +26,14 @@ T ToItemImpl(MergedCloudProvider::AccountId account_id, Entry entry) {
 }  // namespace
 
 bool MergedCloudProvider::IsFileContentSizeRequired(const Directory &d) const {
-  auto *account = GetAccount(d.account_id);
+  const auto *account = GetAccount(d.account_id);
   return account->provider->IsFileContentSizeRequired(d.item);
 }
 
 void MergedCloudProvider::AddAccount(std::string id,
                                      std::shared_ptr<AbstractCloudProvider> p) {
-  accounts_.push_back(Account{.id = std::move(id), .provider = std::move(p)});
+  accounts_.emplace_back(
+      Account{.id = std::move(id), .provider = std::move(p)});
 }
 
 void MergedCloudProvider::RemoveAccount(

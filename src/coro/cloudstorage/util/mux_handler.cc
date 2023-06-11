@@ -91,8 +91,7 @@ Task<http::Response<>> MuxHandler::operator()(
   auto video_file = std::get<AbstractCloudProvider::File>(video_item);
   auto audio_file = std::get<AbstractCloudProvider::File>(audio_item);
 
-  bool is_seekable =
-      seekable != query.end() ? seekable->second == "true" : false;
+  bool is_seekable = seekable != query.end() && seekable->second == "true";
   Generator<std::string> content =
       (*muxer_)(video_account.provider().get(), video_file,
                 audio_account.provider().get(), audio_file,

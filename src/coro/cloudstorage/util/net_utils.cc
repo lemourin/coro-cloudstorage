@@ -34,13 +34,13 @@ std::vector<std::string> GetHostAddresses() {
 
   while (current) {
     if (current->ifa_addr && current->ifa_addr->sa_family == AF_INET) {
-      char buffer[INET_ADDRSTRLEN] = {};
+      std::array<char, INET_ADDRSTRLEN> buffer = {};
       const auto* address = reinterpret_cast<sockaddr_in*>(current->ifa_addr);
-      if (evutil_inet_ntop(AF_INET, &address->sin_addr, buffer,
+      if (evutil_inet_ntop(AF_INET, &address->sin_addr, buffer.data(),
                            sizeof(buffer)) == nullptr) {
         throw http::HttpException(errno, "inet_ntop");
       }
-      result.emplace_back(buffer);
+      result.emplace_back(buffer.data());
     }
     current = current->ifa_next;
   }
