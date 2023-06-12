@@ -176,12 +176,13 @@ class CloudFactoryUtil {
     namespace di = boost::di;
 
     auto auth_injector = [&] {
+      auto auth_token_updated_injector = di::make_injector(
+          di::bind<util::OnAuthTokenUpdated<AuthToken>>().to([&](const auto&) {
+            return util::OnAuthTokenUpdated<AuthToken>(on_token_updated);
+          }));
       if constexpr (HasAuthData<Auth>) {
         return di::make_injector(
-            di::bind<util::OnAuthTokenUpdated<AuthToken>>().to(
-                [&](const auto&) {
-                  return util::OnAuthTokenUpdated<AuthToken>(on_token_updated);
-                }),
+            std::move(auth_token_updated_injector),
             di::bind<util::RefreshToken<Auth>>().to([](const auto& injector) {
               return util::RefreshToken<Auth>(
                   injector.template create<RefreshTokenImpl<Auth>>());
@@ -192,7 +193,7 @@ class CloudFactoryUtil {
                       injector.template create<AuthorizeRequestImpl<Auth>>());
                 }));
       } else {
-        return di::make_injector();
+        return auth_token_updated_injector;
       }
     }();
     auto injector = di::make_injector(di::bind<AuthToken>().to(auth_token),
@@ -341,6 +342,8 @@ std::unique_ptr<AbstractCloudFactory> CloudFactory::CreateCloudFactory(
       return create.operator()<YandexDisk>();
     case AbstractCloudProvider::Type::kOpenStack:
       return create.operator()<OpenStack>();
+    default:
+      throw CloudException("Unsupported AbstractCloudProvider::Type.");
   }
 }
 

@@ -11,7 +11,7 @@ template <typename AuthToken>
 class OnAuthTokenUpdated {
  public:
   template <typename F>
-  explicit OnAuthTokenUpdated(F&& func) : impl_(std::forward<F>(func)) {}
+  explicit OnAuthTokenUpdated(F func) : impl_(std::move(func)) {}
 
   void operator()(const AuthToken& auth_token) { impl_(auth_token); }
 
