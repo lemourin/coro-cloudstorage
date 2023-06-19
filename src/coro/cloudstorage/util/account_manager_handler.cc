@@ -25,12 +25,10 @@ using ::coro::util::MakeUniqueStopTokenOr;
 
 struct OnAuthTokenChanged {
   void operator()(AbstractCloudProvider::Auth::AuthToken auth_token) {
-    if (*account_id) {
-      d->SaveToken(std::move(auth_token), **account_id);
-    }
+    d->SaveToken(std::move(auth_token), username);
   }
   SettingsManager* d;
-  std::shared_ptr<std::optional<std::string>> account_id;
+  std::string username;
 };
 
 std::string GetAuthUrl(AbstractCloudProvider::Type type,
@@ -135,7 +133,6 @@ class AccountManagerHandler::Impl {
 
   struct Handler {
     std::optional<CloudProviderAccount> account;
-    std::string prefix;
     stdx::any_invocable<Task<http::Response<>>(http::Request<>,
                                                stdx::stop_token)>
         handler;
@@ -161,7 +158,7 @@ class AccountManagerHandler::Impl {
       AbstractCloudProvider::Auth::AuthToken auth_token,
       stdx::stop_token stop_token);
 
-  std::unique_ptr<Handler> ChooseHandler(std::string_view path);
+  std::optional<Handler> ChooseHandler(std::string_view path);
 
   Generator<std::string> GetHomePage() const;
 
@@ -192,10 +189,7 @@ AccountManagerHandler::Impl::Impl(const AbstractCloudFactory* factory,
   for (auto auth_token : settings_manager_->LoadTokenData()) {
     auto id = std::move(auth_token.id);
     OnCloudProviderCreated(accounts_.emplace_back(CreateAccount(
-        factory_->Create(auth_token,
-                         OnAuthTokenChanged{
-                             settings_manager_,
-                             std::make_shared<std::optional<std::string>>(id)}),
+        factory_->Create(auth_token, OnAuthTokenChanged{settings_manager_, id}),
         id, version_++)));
   }
 }
@@ -320,83 +314,70 @@ auto AccountManagerHandler::Impl::GetWebDAVResponse(
 }
 
 auto AccountManagerHandler::Impl::ChooseHandler(std::string_view path)
-    -> std::unique_ptr<Handler> {
-  std::vector<Handler> handlers;
-  handlers.emplace_back(
-      Handler{.prefix = "/static/", .handler = StaticFileHandler{factory_}});
-  handlers.emplace_back(Handler{
-      .prefix = "/size",
-      .handler =
-          GetSizeHandler{std::span<const CloudProviderAccount>(accounts_)}});
-  handlers.emplace_back(Handler{.prefix = "/settings",
-                                .handler = SettingsHandler(settings_manager_)});
-  handlers.emplace_back(
-      Handler{.prefix = "/settings/theme-toggle", .handler = ThemeHandler{}});
-  handlers.emplace_back(
-      Handler{.prefix = "/mux/",
-              .handler = MuxHandler{
-                  muxer_, std::span<const CloudProviderAccount>(accounts_)}});
+    -> std::optional<Handler> {
+  if (path.starts_with("/static/")) {
+    return Handler{.handler = StaticFileHandler{factory_}};
+  } else if (path.starts_with("/size")) {
+    return Handler{.handler = GetSizeHandler{
+                       std::span<const CloudProviderAccount>(accounts_)}};
+  } else if (path.starts_with("/settings/theme-toggle")) {
+    return Handler{.handler = ThemeHandler{}};
+  } else if (path.starts_with("/settings")) {
+    return Handler{.handler = SettingsHandler(settings_manager_)};
+  } else if (path.starts_with("/mux")) {
+    return Handler{
+        .handler = MuxHandler{
+            muxer_, std::span<const CloudProviderAccount>(accounts_)}};
+  } else {
+    for (AbstractCloudProvider::Type type :
+         factory_->GetSupportedCloudProviders()) {
+      if (path.starts_with(StrCat("/auth/", factory_->GetAuth(type).GetId()))) {
+        return Handler{.handler = AuthHandler{type, this}};
+      }
+    }
 
-  for (AbstractCloudProvider::Type type :
-       factory_->GetSupportedCloudProviders()) {
-    handlers.emplace_back(
-        Handler{.prefix = util::StrCat(
-                    "/auth/", http::EncodeUri(factory_->GetAuth(type).GetId())),
-                .handler = AuthHandler{type, this}});
-  }
-
-  for (const auto& account : accounts_) {
-    handlers.emplace_back(
-        Handler{.account = account,
-                .prefix = StrCat("/list/", account.type(), '/',
-                                 http::EncodeUri(account.username())),
-                .handler = ListDirectoryHandler(
-                    account,
-                    [account_id = account.id()](std::string_view item_id) {
-                      return StrCat("/list/", account_id.type, '/',
-                                    http::EncodeUri(account_id.username), '/',
-                                    http::EncodeUri(item_id));
-                    },
-                    [account_id = account.id()](std::string_view item_id) {
-                      return StrCat("/thumbnail/", account_id.type, '/',
-                                    http::EncodeUri(account_id.username), '/',
-                                    http::EncodeUri(item_id));
-                    },
-                    [account_id = account.id()](std::string_view item_id) {
-                      return StrCat("/content/", account_id.type, '/',
-                                    http::EncodeUri(account_id.username), '/',
-                                    http::EncodeUri(item_id));
-                    })});
-    handlers.emplace_back(
-        Handler{.account = account,
-                .prefix = StrCat("/webdav/", account.type(), '/',
-                                 http::EncodeUri(account.username())),
-                .handler = WebDAVHandler(account.provider().get())});
-    handlers.emplace_back(
-        Handler{.account = account,
-                .prefix = StrCat("/thumbnail/", account.type(), '/',
-                                 http::EncodeUri(account.username())),
-                .handler = ItemThumbnailHandler{account}});
-    handlers.emplace_back(
-        Handler{.account = account,
-                .prefix = StrCat("/content/", account.type(), '/',
-                                 http::EncodeUri(account.username())),
-                .handler = ItemContentHandler{account}});
-    handlers.emplace_back(
-        Handler{.account = account,
-                .prefix = StrCat("/remove/", account.type(), '/',
-                                 http::EncodeUri(account.username())),
-                .handler = OnRemoveHandler{.d = this, .account = account}});
-  }
-
-  std::optional<Handler> best = std::nullopt;
-  for (auto& handler : handlers) {
-    if (path.starts_with(handler.prefix) &&
-        (!best || handler.prefix.length() > best->prefix.length())) {
-      best = std::move(handler);
+    for (const auto& account : accounts_) {
+      auto account_path_prefix = [&](std::string_view prefix) {
+        return StrCat(prefix, account.type(), '/',
+                      http::EncodeUri(account.username()));
+      };
+      if (path.starts_with(account_path_prefix("/list/"))) {
+        return Handler{
+            .account = account,
+            .handler = ListDirectoryHandler(
+                account,
+                [account_id = account.id()](std::string_view item_id) {
+                  return StrCat("/list/", account_id.type, '/',
+                                http::EncodeUri(account_id.username), '/',
+                                http::EncodeUri(item_id));
+                },
+                [account_id = account.id()](std::string_view item_id) {
+                  return StrCat("/thumbnail/", account_id.type, '/',
+                                http::EncodeUri(account_id.username), '/',
+                                http::EncodeUri(item_id));
+                },
+                [account_id = account.id()](std::string_view item_id) {
+                  return StrCat("/content/", account_id.type, '/',
+                                http::EncodeUri(account_id.username), '/',
+                                http::EncodeUri(item_id));
+                })};
+      } else if (path.starts_with(account_path_prefix("/webdav/"))) {
+        return Handler{.account = account,
+                       .handler = WebDAVHandler(account.provider().get())};
+      } else if (path.starts_with(account_path_prefix("/thumbnail/"))) {
+        return Handler{.account = account,
+                       .handler = ItemThumbnailHandler(account)};
+      } else if (path.starts_with(account_path_prefix("/content/"))) {
+        return Handler{.account = account,
+                       .handler = ItemContentHandler{account}};
+      } else if (path.starts_with(account_path_prefix("/remove/"))) {
+        return Handler{
+            .account = account,
+            .handler = OnRemoveHandler{.d = this, .account = account}};
+      }
     }
   }
-  return best ? std::make_unique<Handler>(*std::move(best)) : nullptr;
+  return std::nullopt;
 }
 
 Generator<std::string> AccountManagerHandler::Impl::GetHomePage() const {
@@ -458,9 +439,7 @@ Task<CloudProviderAccount> AccountManagerHandler::Impl::Create(
     AbstractCloudProvider::Auth::AuthToken auth_token,
     stdx::stop_token stop_token) {
   int64_t version = ++version_;
-  auto username = std::make_shared<std::optional<std::string>>(std::nullopt);
-  auto provider = factory_->Create(
-      auth_token, OnAuthTokenChanged{settings_manager_, username});
+  auto provider = factory_->Create(auth_token, [](const auto&) {});
   auto general_data = co_await provider->GetGeneralData(std::move(stop_token));
   RemoveCloudProvider([&](const auto& entry) {
     return entry.version_ < version &&
@@ -468,11 +447,12 @@ Task<CloudProviderAccount> AccountManagerHandler::Impl::Create(
                CloudProviderAccount::Id{.type = std::string(provider->GetId()),
                                         .username = general_data.username};
   });
+  provider = factory_->Create(
+      auth_token, OnAuthTokenChanged(settings_manager_, general_data.username));
   auto d = accounts_.emplace_back(
       CreateAccount(std::move(provider), general_data.username, version));
-  OnCloudProviderCreated(d);
   settings_manager_->SaveToken(std::move(auth_token), general_data.username);
-  *username = std::move(general_data.username);
+  OnCloudProviderCreated(d);
   co_return d;
 }
 
