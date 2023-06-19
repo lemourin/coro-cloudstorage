@@ -1,11 +1,16 @@
 #include "coro/cloudstorage/util/webdav_handler.h"
 
+#include <iostream>
+
 #include "coro/cloudstorage/util/cloud_provider_utils.h"
 #include "coro/cloudstorage/util/string_utils.h"
+#include "coro/util/regex.h"
 
 namespace coro::cloudstorage::util {
 
 namespace {
+
+namespace re = coro::util::re;
 
 using Request = http::Request<>;
 using Response = http::Response<>;
@@ -99,14 +104,16 @@ Generator<std::string> GetWebDavResponse(
   ElementData current_element_data{
       .path = path, .name = directory.name, .is_directory = true};
   co_yield GetElement(current_element_data);
-  if (coro::http::GetHeader(request.headers, "Depth") == "1") {
+  if (http::GetHeader(request.headers, "Depth").value_or("1") == "1") {
     FOR_CO_AWAIT(const auto& page, page_data) {
       for (const auto& item : page.items) {
-        auto name = std::visit([](auto item) { return item.name; }, item);
+        auto id = std::visit([](const auto& item) { return item.id; }, item);
+        auto name =
+            std::visit([](const auto& item) { return item.name; }, item);
         auto timestamp =
             std::visit([](const auto& item) { return item.timestamp; }, item);
         ElementData element_data(
-            {.path = util::StrCat(path, http::EncodeUri(name)),
+            {.path = StrCat(path, http::EncodeUri(name)),
              .name = name,
              .is_directory = std::visit(
                  []<typename T>(const T&) {
@@ -224,6 +231,7 @@ auto WebDAVHandler::operator()(Request request,
                                stdx::stop_token stop_token) const
     -> Task<Response> {
   auto uri = http::ParseUri(request.url);
+  auto* provider = account_.provider().get();
   auto path = GetEffectivePath(uri.path.value());
   if (request.method == http::Method::kMkcol) {
     if (path.empty()) {
@@ -231,9 +239,9 @@ auto WebDAVHandler::operator()(Request request,
     }
     auto parent_path = GetDirectoryPath(path);
     co_return co_await std::visit(
-        CreateDirectoryF{provider_, path.back(), stop_token},
+        CreateDirectoryF{provider, path.back(), stop_token},
         co_await GetItemByPathComponents(
-            provider_,
+            provider,
             std::vector<std::string>(parent_path.begin(), parent_path.end()),
             stop_token));
   } else if (request.method == http::Method::kPut) {
@@ -242,18 +250,18 @@ auto WebDAVHandler::operator()(Request request,
     }
     auto parent_path = GetDirectoryPath(path);
     co_return co_await std::visit(
-        CreateFileF{provider_, path.back(), std::move(request), stop_token},
+        CreateFileF{provider, path.back(), std::move(request), stop_token},
         co_await GetItemByPathComponents(
-            provider_,
+            provider,
             std::vector<std::string>(parent_path.begin(), parent_path.end()),
             stop_token));
   } else {
     co_return co_await std::visit(
         [&](const auto& d) {
-          return HandleExistingItem(provider_, std::move(request), path, d,
+          return HandleExistingItem(provider, std::move(request), path, d,
                                     stop_token);
         },
-        co_await GetItemByPathComponents(provider_, path, stop_token));
+        co_await GetItemByPathComponents(provider, path, stop_token));
   }
 }
 

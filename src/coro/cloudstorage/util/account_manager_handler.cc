@@ -188,7 +188,8 @@ auto AccountManagerHandler::HandleRequest(http::Request<> request,
   } else if (*path == "/" || *path == "") {
     co_return http::Response<>{.status = 200, .body = GetHomePage()};
   }
-  if (path->starts_with("/list") && request.method == http::Method::kPropfind) {
+  if (path->starts_with("/webdav") &&
+      request.method == http::Method::kPropfind) {
     co_return GetWebDAVResponse(*path, request.headers);
   }
   co_return http::Response<>{.status = 302, .headers = {{"Location", "/"}}};
@@ -214,7 +215,7 @@ auto AccountManagerHandler::GetWebDAVResponse(
       }
       for (std::string_view type : account_type) {
         responses.push_back(
-            GetElement(ElementData{.path = StrCat("/list/", type, '/'),
+            GetElement(ElementData{.path = StrCat("/webdav/", type, '/'),
                                    .name = std::string(type),
                                    .is_directory = true}));
       }
@@ -223,7 +224,7 @@ auto AccountManagerHandler::GetWebDAVResponse(
       for (const auto& account : accounts_) {
         if (account.type() == type) {
           responses.push_back(GetElement(
-              ElementData{.path = StrCat("/list/", type, '/',
+              ElementData{.path = StrCat("/webdav/", type, '/',
                                          http::EncodeUri(account.username())),
                           .name = std::string(type),
                           .is_directory = true}));
@@ -263,11 +264,14 @@ auto AccountManagerHandler::ChooseHandler(std::string_view path)
     }
 
     for (const auto& account : accounts_) {
-      auto account_path_prefix = [&](std::string_view prefix) {
-        return StrCat(prefix, account.type(), '/',
-                      http::EncodeUri(account.username()), '/');
+      auto match = [&](std::string_view prefix) {
+        std::string account_prefix =
+            StrCat(prefix, account.type(), '/',
+                   http::EncodeUri(account.username()), '/');
+        return path.starts_with(account_prefix) ||
+               StrCat(path, '/') == account_prefix;
       };
-      if (path.starts_with(account_path_prefix("/list/"))) {
+      if (match("/list/")) {
         return Handler{
             .account = account,
             .handler = ListDirectoryHandler(
@@ -287,16 +291,15 @@ auto AccountManagerHandler::ChooseHandler(std::string_view path)
                                 http::EncodeUri(account_id.username), '/',
                                 http::EncodeUri(item_id));
                 })};
-      } else if (path.starts_with(account_path_prefix("/webdav/"))) {
-        return Handler{.account = account,
-                       .handler = WebDAVHandler(account.provider().get())};
-      } else if (path.starts_with(account_path_prefix("/thumbnail/"))) {
+      } else if (match("/webdav/")) {
+        return Handler{.account = account, .handler = WebDAVHandler(account)};
+      } else if (match("/thumbnail/")) {
         return Handler{.account = account,
                        .handler = ItemThumbnailHandler(account)};
-      } else if (path.starts_with(account_path_prefix("/content/"))) {
+      } else if (match("/content/")) {
         return Handler{.account = account,
                        .handler = ItemContentHandler{account}};
-      } else if (path.starts_with(account_path_prefix("/remove/"))) {
+      } else if (match("/remove/")) {
         return Handler{
             .account = account,
             .handler = OnRemoveHandler{.d = this, .account = account}};
