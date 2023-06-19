@@ -431,8 +431,8 @@ void AccountManagerHandler::Impl::RemoveCloudProvider(const F& predicate) {
 CloudProviderAccount AccountManagerHandler::Impl::CreateAccount(
     std::unique_ptr<AbstractCloudProvider> provider, std::string username,
     int64_t version) {
-  return CloudProviderAccount(username, version, std::move(provider),
-                              cache_manager_, clock_, thumbnail_generator_);
+  return {std::move(username), version, std::move(provider),
+          cache_manager_,      clock_,  thumbnail_generator_};
 }
 
 Task<CloudProviderAccount> AccountManagerHandler::Impl::Create(
@@ -448,7 +448,7 @@ Task<CloudProviderAccount> AccountManagerHandler::Impl::Create(
                                         .username = general_data.username};
   });
   provider = factory_->Create(
-      auth_token, OnAuthTokenChanged(settings_manager_, general_data.username));
+      auth_token, OnAuthTokenChanged{settings_manager_, general_data.username});
   auto d = accounts_.emplace_back(
       CreateAccount(std::move(provider), general_data.username, version));
   settings_manager_->SaveToken(std::move(auth_token), general_data.username);
