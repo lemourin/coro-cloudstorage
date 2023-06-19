@@ -233,7 +233,7 @@ Task<VersionedThumbnail> CloudProviderAccount::GetItemThumbnailWithFallback(
                 .size = thumbnail.size,
                 .mime_type = std::move(thumbnail.mime_type)},
         .update_time = current_time,
-        .updated = std::move(updated)};
+        .updated = updated};
   } catch (...) {
     updated->SetException(std::current_exception());
     throw;
