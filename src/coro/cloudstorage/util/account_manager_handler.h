@@ -65,11 +65,12 @@ class AccountManagerHandler {
                         AccountListener account_listener,
                         SettingsManager* settings_manager,
                         CacheManager* cache_manager);
-  AccountManagerHandler(AccountManagerHandler&&) noexcept;
-
+  AccountManagerHandler(AccountManagerHandler&&) noexcept = default;
+  AccountManagerHandler(const AccountManagerHandler&) = delete;
   ~AccountManagerHandler();
 
-  AccountManagerHandler& operator=(AccountManagerHandler&&) noexcept;
+  AccountManagerHandler& operator=(const AccountManagerHandler&) = delete;
+  AccountManagerHandler& operator=(AccountManagerHandler&&) noexcept = default;
 
   Task<http::Response<>> operator()(http::Request<> request,
                                     stdx::stop_token stop_token);
@@ -77,9 +78,61 @@ class AccountManagerHandler {
   void Quit();
 
  private:
-  class Impl;
+  struct AuthHandler {
+    Task<http::Response<>> operator()(http::Request<> request,
+                                      stdx::stop_token stop_token) const;
 
-  std::unique_ptr<Impl> impl_;
+    AbstractCloudProvider::Type type;
+    AccountManagerHandler* d;
+  };
+
+  struct OnRemoveHandler {
+    Task<http::Response<>> operator()(http::Request<> request,
+                                      stdx::stop_token stop_token) const;
+    AccountManagerHandler* d;
+    CloudProviderAccount account;
+  };
+
+  struct Handler {
+    std::optional<CloudProviderAccount> account;
+    stdx::any_invocable<Task<http::Response<>>(http::Request<>,
+                                               stdx::stop_token)>
+        handler;
+  };
+
+  Task<http::Response<>> HandleRequest(http::Request<> request,
+                                       coro::stdx::stop_token stop_token);
+
+  http::Response<> GetWebDAVResponse(
+      std::string_view path,
+      std::span<const std::pair<std::string, std::string>> headers) const;
+
+  template <typename F>
+  void RemoveCloudProvider(const F& predicate);
+
+  void OnCloudProviderCreated(CloudProviderAccount account);
+
+  CloudProviderAccount CreateAccount(
+      std::unique_ptr<AbstractCloudProvider> provider, std::string username,
+      int64_t version);
+
+  Task<CloudProviderAccount> Create(
+      AbstractCloudProvider::Auth::AuthToken auth_token,
+      stdx::stop_token stop_token);
+
+  std::optional<Handler> ChooseHandler(std::string_view path);
+
+  Generator<std::string> GetHomePage() const;
+
+  const AbstractCloudFactory* factory_;
+  const ThumbnailGenerator* thumbnail_generator_;
+  const Muxer* muxer_;
+  const Clock* clock_;
+  AccountListener account_listener_;
+  SettingsManager* settings_manager_;
+  CacheManager* cache_manager_;
+  std::vector<CloudProviderAccount> accounts_;
+  int64_t version_ = 0;
 };
 
 }  // namespace coro::cloudstorage::util
