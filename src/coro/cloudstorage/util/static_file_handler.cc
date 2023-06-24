@@ -29,7 +29,7 @@ Task<Response> StaticFileHandler::operator()(Request request,
 
   for (auto type : factory_->GetSupportedCloudProviders()) {
     const auto& auth = factory_->GetAuth(type);
-    if (request.url == util::StrCat("/static/", auth.GetId(), ".png")) {
+    if (request.url == StrCat("/static/", auth.GetId(), ".png")) {
       content = auth.GetIcon();
     }
   }
@@ -37,7 +37,7 @@ Task<Response> StaticFileHandler::operator()(Request request,
   if (content) {
     mime_type = "image/png";
   } else if (request.url == "/static/layout.css") {
-    content = util::kLayoutCss;
+    content = kLayoutCss;
     mime_type = "text/css";
   } else if (request.url == "/static/colors.css" ||
              request.url == "/static/user-trash.svg" ||
@@ -50,67 +50,67 @@ Task<Response> StaticFileHandler::operator()(Request request,
              request.url == "/static/go-previous.svg") {
     co_return Resolve(theme, request.url);
   } else if (request.url == "/static/colors-light.css") {
-    content = util::kColorsLightCss;
+    content = kColorsLightCss;
     mime_type = "text/css";
   } else if (request.url == "/static/colors-dark.css") {
-    content = util::kColorsDarkCss;
+    content = kColorsDarkCss;
     mime_type = "text/css";
   } else if (request.url == "/static/user-trash-light.svg") {
-    content = util::kTrashIcon;
+    content = kTrashIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/user-trash-dark.svg") {
-    content = util::kDarkTrashIcon;
+    content = kDarkTrashIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/audio-x-generic-light.svg") {
-    content = util::kAudioIcon;
+    content = kAudioIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/audio-x-generic-dark.svg") {
-    content = util::kDarkAudioIcon;
+    content = kDarkAudioIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/image-x-generic-light.svg") {
-    content = util::kImageIcon;
+    content = kImageIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/image-x-generic-dark.svg") {
-    content = util::kDarkImageIcon;
+    content = kDarkImageIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/unknown-light.svg") {
-    content = util::kUnknownIcon;
+    content = kUnknownIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/unknown-dark.svg") {
-    content = util::kDarkUnknownIcon;
+    content = kDarkUnknownIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/video-x-generic-light.svg") {
-    content = util::kVideoIcon;
+    content = kVideoIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/video-x-generic-dark.svg") {
-    content = util::kDarkVideoIcon;
+    content = kDarkVideoIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/folder-light.svg") {
-    content = util::kFolderIcon;
+    content = kFolderIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/folder-dark.svg") {
-    content = util::kDarkFolderIcon;
+    content = kDarkFolderIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/configure-settings-light.svg") {
-    content = util::kSettingsIcon;
+    content = kSettingsIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/configure-settings-dark.svg") {
-    content = util::kDarkSettingsIcon;
+    content = kDarkSettingsIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/go-previous-light.svg") {
-    content = util::kGoBackIcon;
+    content = kGoBackIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/go-previous-dark.svg") {
-    content = util::kDarkGoBackIcon;
+    content = kDarkGoBackIcon;
     mime_type = "image/svg+xml";
   } else if (request.url == "/static/account_list_main.js") {
-    content = util::kAccountListMainJs;
+    content = kAccountListMainJs;
     mime_type = "text/javascript;charset=UTF-8";
   } else if (request.url == "/static/settings_main.js") {
-    content = util::kSettingsMainJs;
+    content = kSettingsMainJs;
     mime_type = "text/javascript;charset=UTF-8";
   } else if (request.url == "/static/favicon.ico") {
-    content = util::kFavIcon;
+    content = kFavIcon;
     mime_type = "image/x-icon";
   }
   if (!content) {
