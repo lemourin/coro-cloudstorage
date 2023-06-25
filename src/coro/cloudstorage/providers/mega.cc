@@ -813,11 +813,10 @@ auto Mega::SetThumbnail(File file, std::string thumbnail,
   command["h"] = ToHandle(file.id);
   nlohmann::json url_response =
       co_await DoCommand(std::move(command), stop_token);
-  auto response = co_await http_->Fetch(
-      http::Request<std::string>{.url = url_response["p"],
-                                 .method = http::Method::kPost,
-                                 .body = std::move(encoded)},
-      stop_token);
+  http::Request<std::string> request{.url = url_response["p"],
+                                     .method = http::Method::kPost,
+                                     .body = std::move(encoded)};
+  auto response = co_await http_->Fetch(std::move(request), stop_token);
   if (response.status / 100 != 2) {
     throw http::HttpException(response.status);
   }
@@ -966,11 +965,11 @@ Task<nlohmann::json> Mega::DoCommand(nlohmann::json command,
                                      stdx::stop_token stop_token) {
   nlohmann::json body;
   body.emplace_back(std::move(command));
+  http::Request<std::string> request{.url = util::StrCat(kApiEndpoint, "/cs"),
+                                     .method = http::Method::kPost,
+                                     .body = body.dump()};
   nlohmann::json response = co_await FetchJsonWithBackoff(
-      http::Request<std::string>{.url = util::StrCat(kApiEndpoint, "/cs"),
-                                 .method = http::Method ::kPost,
-                                 .body = body.dump()},
-      kRetryCount, std::move(stop_token));
+      std::move(request), kRetryCount, std::move(stop_token));
   co_return response.at(0);
 }
 
@@ -1099,12 +1098,12 @@ Task<> Mega::PollEvents(std::string ssn, stdx::stop_token stop_token) noexcept {
       if (backoff_ms > 0) {
         co_await event_loop_->Wait(backoff_ms, stop_token);
       }
+      http::Request<std::string> request{
+          .url = util::StrCat(kApiEndpoint, "/sc", '?',
+                              http::FormDataToString({{"sn", ssn}})),
+          .method = http::Method::kPost};
       nlohmann::json json = co_await FetchJsonWithBackoff(
-          http::Request<std::string>{
-              .url = util::StrCat(kApiEndpoint, "/sc", "?",
-                                  http::FormDataToString({{"sn", ssn}})),
-              .method = http::Method::kPost},
-          kRetryCount, stop_token);
+          std::move(request), kRetryCount, stop_token);
       if (json.contains("w")) {
         co_await http_->Fetch(std::string(json["w"]), stop_token);
         continue;

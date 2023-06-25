@@ -40,11 +40,12 @@ auto OpenStack::Auth::RefreshAccessToken(const coro::http::Http& http,
                                          AuthToken auth_token,
                                          stdx::stop_token stop_token)
     -> Task<AuthToken> {
-  auto response = co_await http.FetchOk(
-      http::Request<std::string>{.url = auth_token.auth_endpoint,
-                                 .headers = {{"X-Auth-User", auth_token.user},
-                                             {"X-Auth-Key", auth_token.key}}},
-      std::move(stop_token));
+  http::Request<std::string> request{
+      .url = auth_token.auth_endpoint,
+      .headers = {{"X-Auth-User", auth_token.user},
+                  {"X-Auth-Key", auth_token.key}}};
+  auto response =
+      co_await http.FetchOk(std::move(request), std::move(stop_token));
   co_return Auth::AuthToken{
       .endpoint = http::GetHeader(response.headers, "X-Storage-Url").value(),
       .token = http::GetHeader(response.headers, "X-Auth-Token").value(),
@@ -85,13 +86,14 @@ auto OpenStack::ListDirectoryPage(Directory directory,
                                   std::optional<std::string> page_token,
                                   stdx::stop_token stop_token)
     -> Task<PageData> {
-  auto response = co_await auth_manager_.FetchJson(
-      Request{.url = GetEndpoint(StrCat(
-                  '/', '?',
-                  http::FormDataToString({{"format", "json"},
-                                          {"marker", page_token.value_or("")},
-                                          {"path", directory.id}})))},
-      std::move(stop_token));
+  Request request{
+      .url = GetEndpoint(
+          StrCat('/', '?',
+                 http::FormDataToString({{"format", "json"},
+                                         {"marker", page_token.value_or("")},
+                                         {"path", directory.id}})))};
+  auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                   std::move(stop_token));
   PageData page_data;
   for (const auto& item : response) {
     if (!item.contains("subdir")) {
@@ -104,16 +106,16 @@ auto OpenStack::ListDirectoryPage(Directory directory,
 
 Generator<std::string> OpenStack::GetFileContent(File file, http::Range range,
                                                  stdx::stop_token stop_token) {
-  auto response = co_await auth_manager_.Fetch(
-      Request{.url = GetEndpoint(StrCat('/', http::EncodeUri(file.id))),
-              .headers = {http::ToRangeHeader(range)}},
-      std::move(stop_token));
+  Request request{.url = GetEndpoint(StrCat('/', http::EncodeUri(file.id))),
+                  .headers = {http::ToRangeHeader(range)}};
+  auto response =
+      co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
   FOR_CO_AWAIT(std::string & chunk, response.body) {
     co_yield std::move(chunk);
   }
 }
 
-auto OpenStack::CreateDirectory(Directory parent, std::string_view name,
+auto OpenStack::CreateDirectory(Directory parent, std::string name,
                                 stdx::stop_token stop_token)
     -> Task<Directory> {
   std::string new_id;
@@ -122,12 +124,11 @@ auto OpenStack::CreateDirectory(Directory parent, std::string_view name,
     new_id += '/';
   }
   new_id += name;
-  co_await auth_manager_.Fetch(
-      Request{.url = GetEndpoint(StrCat('/', http::EncodeUri(new_id))),
-              .method = http::Method::kPut,
-              .headers = {{"Content-Type", "application/directory"},
-                          {"Content-Length", "0"}}},
-      stop_token);
+  Request request{.url = GetEndpoint(StrCat('/', http::EncodeUri(new_id))),
+                  .method = http::Method::kPut,
+                  .headers = {{"Content-Type", "application/directory"},
+                              {"Content-Length", "0"}}};
+  co_await auth_manager_.Fetch(std::move(request), stop_token);
   co_return co_await GetItem<Directory>(new_id, std::move(stop_token));
 }
 
@@ -166,19 +167,19 @@ Task<ItemT> OpenStack::RenameItem(ItemT item, std::string new_name,
 }
 
 template <typename ItemT>
-Task<ItemT> OpenStack::GetItem(std::string_view id,
-                               stdx::stop_token stop_token) {
-  auto json = co_await auth_manager_.FetchJson(
-      Request{.url = StrCat(GetEndpoint("/"), '?',
-                            http::FormDataToString({{"format", "json"},
-                                                    {"prefix", id},
-                                                    {"delimiter", "/"},
-                                                    {"limit", "1"}}))},
-      std::move(stop_token));
+Task<ItemT> OpenStack::GetItem(std::string id, stdx::stop_token stop_token) {
+  Request request{.url =
+                      StrCat(GetEndpoint("/"), '?',
+                             http::FormDataToString({{"format", "json"},
+                                                     {"prefix", std::move(id)},
+                                                     {"delimiter", "/"},
+                                                     {"limit", "1"}}))};
+  auto json = co_await auth_manager_.FetchJson(std::move(request),
+                                               std::move(stop_token));
   co_return ToItemImpl<ItemT>(json[0]);
 }
 
-auto OpenStack::CreateFile(Directory parent, std::string_view name,
+auto OpenStack::CreateFile(Directory parent, std::string name,
                            FileContent content, stdx::stop_token stop_token)
     -> Task<File> {
   auto new_id = parent.id;
@@ -201,11 +202,10 @@ auto OpenStack::CreateFile(Directory parent, std::string_view name,
 
 Task<> OpenStack::RemoveItemImpl(std::string_view id,
                                  stdx::stop_token stop_token) {
-  co_await auth_manager_.Fetch(
-      Request{.url = GetEndpoint(StrCat('/', http::EncodeUriPath(id))),
-              .method = http::Method::kDelete,
-              .headers = {{"Content-Length", "0"}}},
-      std::move(stop_token));
+  Request request{.url = GetEndpoint(StrCat('/', http::EncodeUriPath(id))),
+                  .method = http::Method::kDelete,
+                  .headers = {{"Content-Length", "0"}}};
+  co_await auth_manager_.Fetch(std::move(request), std::move(stop_token));
 }
 
 template <typename ItemT>

@@ -63,28 +63,28 @@ Generator<std::string> GetUploadStream(Box::Directory parent,
 template <typename T>
 Task<T> RenameItemImpl(AuthManager* auth_manager, std::string endpoint, T item,
                        std::string new_name, stdx::stop_token stop_token) {
-  nlohmann::json request;
-  request["name"] = std::move(new_name);
-  auto response = co_await auth_manager->FetchJson(
-      http::Request<std::string>{
-          .url = GetEndpoint(StrCat(endpoint, item.id.id)),
-          .method = http::Method::kPut,
-          .body = request.dump()},
-      std::move(stop_token));
+  nlohmann::json body;
+  body["name"] = std::move(new_name);
+  http::Request<std::string> request{
+      .url = GetEndpoint(StrCat(endpoint, item.id.id)),
+      .method = http::Method::kPut,
+      .body = body.dump()};
+  auto response = co_await auth_manager->FetchJson(std::move(request),
+                                                   std::move(stop_token));
   co_return ToItemImpl<T>(response);
 }
 
 template <typename T>
 Task<T> MoveItemImpl(AuthManager* auth_manager, std::string endpoint, T source,
                      Box::Directory destination, stdx::stop_token stop_token) {
-  nlohmann::json request;
-  request["parent"]["id"] = std::move(destination.id.id);
-  auto response = co_await auth_manager->FetchJson(
-      http::Request<std::string>{
-          .url = GetEndpoint(StrCat(endpoint, source.id.id)),
-          .method = http::Method::kPut,
-          .body = request.dump()},
-      std::move(stop_token));
+  nlohmann::json body;
+  body["parent"]["id"] = std::move(destination.id.id);
+  http::Request<std::string> request{
+      .url = GetEndpoint(StrCat(endpoint, source.id.id)),
+      .method = http::Method::kPut,
+      .body = body.dump()};
+  auto response = co_await auth_manager->FetchJson(std::move(request),
+                                                   std::move(stop_token));
   co_return ToItemImpl<T>(response);
 }
 
@@ -155,8 +155,9 @@ auto Box::GetItem(ItemId id, stdx::stop_token stop_token) -> Task<Item> {
 }
 
 auto Box::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
-  auto json = co_await auth_manager_.FetchJson(
-      Request{.url = GetEndpoint("/users/me")}, std::move(stop_token));
+  Request request{.url = GetEndpoint("/users/me")};
+  auto json = co_await auth_manager_.FetchJson(std::move(request),
+                                               std::move(stop_token));
   co_return GeneralData{.username = json["login"],
                         .space_used = json["space_used"],
                         .space_total = json["space_amount"]};
@@ -214,14 +215,14 @@ auto Box::RenameItem(File item, std::string new_name,
 
 auto Box::CreateDirectory(Directory parent, std::string name,
                           stdx::stop_token stop_token) -> Task<Directory> {
-  json request;
-  request["name"] = std::move(name);
-  request["parent"]["id"] = std::move(parent.id.id);
-  auto response =
-      co_await auth_manager_.FetchJson(Request{.url = GetEndpoint("/folders"),
-                                               .method = http::Method::kPost,
-                                               .body = request.dump()},
-                                       std::move(stop_token));
+  json body;
+  body["name"] = std::move(name);
+  body["parent"]["id"] = std::move(parent.id.id);
+  Request request{.url = GetEndpoint("/folders"),
+                  .method = http::Method::kPost,
+                  .body = body.dump()};
+  auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                   std::move(stop_token));
   co_return ToItemImpl<Directory>(response);
 }
 

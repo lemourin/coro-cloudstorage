@@ -235,13 +235,13 @@ auto AmazonS3::GetRoot(stdx::stop_token) const -> Task<Directory> {
 
 auto AmazonS3::GetItem(std::string id, stdx::stop_token stop_token) const
     -> Task<Item> {
-  pugi::xml_document response = co_await FetchXml(
-      Request{.url = StrCat(GetEndpoint("/"), '?',
-                            http::FormDataToString({{"list-type", "2"},
-                                                    {"prefix", id},
-                                                    {"delimiter", "/"},
-                                                    {"max-keys", "1"}}))},
-      std::move(stop_token));
+  Request request{.url = StrCat(GetEndpoint("/"), '?',
+                                http::FormDataToString({{"list-type", "2"},
+                                                        {"prefix", id},
+                                                        {"delimiter", "/"},
+                                                        {"max-keys", "1"}}))};
+  pugi::xml_document response =
+      co_await FetchXml(std::move(request), std::move(stop_token));
   auto file = ToFile(response.document_element().child("Contents"));
   if (!file.id.ends_with('/')) {
     co_return file;
@@ -353,13 +353,13 @@ auto AmazonS3::CreateFile(Directory parent, std::string_view name,
 template <typename ItemT>
 Task<ItemT> AmazonS3::GetItem(std::string_view id,
                               stdx::stop_token stop_token) const {
-  pugi::xml_document response = co_await FetchXml(
-      Request{.url = StrCat(GetEndpoint("/"), '?',
-                            http::FormDataToString({{"list-type", "2"},
-                                                    {"prefix", id},
-                                                    {"delimiter", "/"},
-                                                    {"max-keys", "1"}}))},
-      std::move(stop_token));
+  Request request{.url = StrCat(GetEndpoint("/"), '?',
+                                http::FormDataToString({{"list-type", "2"},
+                                                        {"prefix", id},
+                                                        {"delimiter", "/"},
+                                                        {"max-keys", "1"}}))};
+  pugi::xml_document response =
+      co_await FetchXml(std::move(request), std::move(stop_token));
   if constexpr (std::is_same_v<ItemT, Directory>) {
     auto file = ToFile(response.document_element().child("Contents"));
     ItemT directory;
@@ -415,11 +415,10 @@ Task<> AmazonS3::Visit(ItemT item, const F& func, stdx::stop_token stop_token) {
 
 Task<> AmazonS3::RemoveItemImpl(std::string_view id,
                                 stdx::stop_token stop_token) const {
-  co_await Fetch(
-      Request{.url = GetEndpoint(StrCat('/', http::EncodeUriPath(id))),
-              .method = http::Method::kDelete,
-              .headers = {{"Content-Length", "0"}}},
-      std::move(stop_token));
+  Request request{.url = GetEndpoint(StrCat('/', http::EncodeUriPath(id))),
+                  .method = http::Method::kDelete,
+                  .headers = {{"Content-Length", "0"}}};
+  co_await Fetch(std::move(request), std::move(stop_token));
 }
 
 template <typename ItemT>

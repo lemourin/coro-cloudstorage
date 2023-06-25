@@ -85,7 +85,7 @@ class OpenStack {
   Generator<std::string> GetFileContent(File file, http::Range range,
                                         stdx::stop_token stop_token);
 
-  Task<Directory> CreateDirectory(Directory parent, std::string_view name,
+  Task<Directory> CreateDirectory(Directory parent, std::string name,
                                   stdx::stop_token stop_token);
 
   template <typename Item>
@@ -100,10 +100,10 @@ class OpenStack {
                         stdx::stop_token stop_token);
 
   template <typename Item>
-  Task<Item> GetItem(std::string_view id, stdx::stop_token stop_token);
+  Task<Item> GetItem(std::string id, stdx::stop_token stop_token);
 
-  Task<File> CreateFile(Directory parent, std::string_view name,
-                        FileContent content, stdx::stop_token stop_token);
+  Task<File> CreateFile(Directory parent, std::string name, FileContent content,
+                        stdx::stop_token stop_token);
 
   static Item ToItem(const nlohmann::json&);
   static nlohmann::json ToJson(const Item&);
