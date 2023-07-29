@@ -332,7 +332,7 @@ std::string EncodeFrame(std::unique_ptr<AVFrame, AVFrameDeleter> input_frame,
   context->pix_fmt = AVPixelFormat(frame->format);
   context->width = frame->width;
   context->height = frame->height;
-  context->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
+  context->strict_std_compliance = FF_COMPLIANCE_NORMAL;
   CheckAVError(avcodec_open2(context.get(), codec, nullptr), "avcodec_open2");
   auto packet = CreatePacket();
   bool frame_sent = false;
@@ -360,7 +360,7 @@ std::string EncodeFrame(std::unique_ptr<AVFrame, AVFrameDeleter> input_frame,
       }
     } else {
       result +=
-          std::string(reinterpret_cast<char*>(packet->data), packet->size);
+          std::string_view(reinterpret_cast<char*>(packet->data), packet->size);
     }
   }
   return result;
