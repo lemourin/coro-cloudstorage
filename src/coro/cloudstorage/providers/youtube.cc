@@ -80,16 +80,14 @@ YouTube::ThumbnailData GetThumbnailData(const nlohmann::json& json) {
   return data;
 }
 
-namespace js {
-
-struct Function {
+struct JsFunction {
   std::string name;
   std::vector<std::string> args;
   std::string source;
 };
 
-Function GetFunction(std::string_view document,
-                     std::string_view function_name) {
+JsFunction GetFunction(std::string_view document,
+                       std::string_view function_name) {
   re::match_results<std::string_view::iterator> match;
   if (re::regex_search(
           document.begin(), document.end(), match,
@@ -98,16 +96,16 @@ Function GetFunction(std::string_view document,
               R"(\s*=\s*function\s*)\(([^\)]*)\)\s*(\{(?!\};)[\s\S]+?\};))")})) {
     auto args = util::SplitString(match[1].str(), ',');
     for (auto& arg : args) {
-      arg = util::TrimWhitespace(arg);
+      arg = http::TrimWhitespace(arg);
     }
-    return Function{std::string(function_name), std::move(args),
-                    match[2].str()};
+    return JsFunction{std::string(function_name), std::move(args),
+                      match[2].str()};
   } else {
     throw CloudException(StrCat("function ", function_name, " not found"));
   }
 }
 
-std::vector<std::string> Split(std::string_view text, char delimiter) {
+std::vector<std::string> Split(std::string_view text, char /*delimiter*/) {
   std::vector<std::string> result;
   std::string current;
   int balance = 0;
@@ -120,7 +118,7 @@ std::vector<std::string> Split(std::string_view text, char delimiter) {
       current += c;
     } else if (c == ',') {
       if (balance == 0) {
-        result.emplace_back(util::TrimWhitespace(current));
+        result.emplace_back(http::TrimWhitespace(current));
         current.clear();
       } else {
         current += c;
@@ -134,8 +132,6 @@ std::vector<std::string> Split(std::string_view text, char delimiter) {
   }
   return result;
 }
-
-}  // namespace js
 
 int ToInt(const std::string& str) { return std::lround(std::stod(str)); }
 
@@ -165,7 +161,7 @@ void RemoveElement(Container& container, int shift) {
 std::string Decrypt(std::string input, std::string key,
                     std::string_view cipher_chars) {
   int h = cipher_chars.length();
-  for (int i = 0; i < input.size(); i++) {
+  for (size_t i = 0; i < input.size(); i++) {
     int i1 = cipher_chars.find(input[i]);
     int i2 = cipher_chars.find(key[i]);
     input[i] = cipher_chars[(i1 - i2 + i + h--) % cipher_chars.length()];
@@ -174,11 +170,11 @@ std::string Decrypt(std::string input, std::string key,
   return input;
 }
 
-std::string GetNewCipher(const js::Function& function, std::string nsig) {
-  auto input = js::Split(
+std::string GetNewCipher(const JsFunction& function, std::string nsig) {
+  auto input = Split(
       Find(function.source, {re::regex(R"(\w\s*=\s*\[([\s\S]*)\];)")}).value(),
       ',');
-  for (std::string_view command : js::Split(
+  for (std::string_view command : Split(
            Find(function.source, {re::regex(R"(try\s*\{([\s\S]*)\}\s*catch)")})
                .value(),
            ',')) {
@@ -215,7 +211,6 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
       }
     } else if (re::regex_search(command.begin(), command.end(), match,
                                 re::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\]\))"))) {
-      int a = ToInt(match[1].str());
       int b = ToInt(match[2].str());
       std::string_view nd_argument = input.at(b);
       if (nd_argument == "null") {
@@ -230,8 +225,6 @@ std::string GetNewCipher(const js::Function& function, std::string nsig) {
             command.begin(), command.end(), match,
             re::regex(
                 R"(\w+\[(\d+)\]\(\w+\[(\d+)\],\s*\w+\[(\d+)\],\s*\w+\[(\d+)\]\(\)\))"))) {
-      int a = ToInt(match[1].str());
-      int b = ToInt(match[2].str());
       int c = ToInt(match[3].str());
       int d = ToInt(match[4].str());
       const std::string& key = input.at(c);
@@ -404,11 +397,13 @@ std::string GenerateDashManifest(std::string_view path, std::string_view name,
         << "/>";
       r << "</SegmentBase>";
       r << "<BaseURL>"
-        << util::StrCat(
-               path, http::EncodeUri(
-                         ToStream(StreamDirectory{{.name = std::string(name)}},
-                                  stream)
-                             .name))
+        << StrCat(path,
+                  http::EncodeUri(
+                      ToStream(StreamDirectory{{.name = std::string(name)},
+                                               /*video_id=*/"",
+                                               /*timestamp=*/0L},
+                               stream)
+                          .name))
         << "</BaseURL>";
       r << "</Representation>";
     }
@@ -500,10 +495,40 @@ GetNewDescrambler(std::string_view page_data) {
   if (!nsig_function_name) {
     return std::nullopt;
   }
-  return [nsig_function = js::GetFunction(page_data, *nsig_function_name)](
+  return [nsig_function = GetFunction(page_data, *nsig_function_name)](
              std::string_view nsig) {
     return GetNewCipher(nsig_function, std::string(nsig));
   };
+}
+
+template <typename T>
+T ToItem(const nlohmann::json& json) {
+  T item;
+  item.id = json["id"];
+  item.name = json["name"];
+  return item;
+}
+
+nlohmann::json ToJson(const YouTube::ThumbnailData& thumbnail) {
+  nlohmann::json json;
+  if (thumbnail.high_quality_url) {
+    json["high_quality_url"] = *thumbnail.high_quality_url;
+  }
+  if (thumbnail.default_quality_url) {
+    json["default_quality_url"] = *thumbnail.default_quality_url;
+  }
+  return json;
+}
+
+YouTube::ThumbnailData ToThumbnailData(const nlohmann::json& json) {
+  YouTube::ThumbnailData data;
+  if (auto it = json.find("high_quality_url"); it != json.end()) {
+    data.high_quality_url = *it;
+  }
+  if (auto it = json.find("default_quality_url"); it != json.end()) {
+    data.default_quality_url = *it;
+  }
+  return data;
 }
 
 }  // namespace
@@ -560,10 +585,15 @@ auto YouTube::GetRoot(stdx::stop_token) -> Task<RootDirectory> {
   co_return d;
 }
 
+auto YouTube::GetItem(std::string id, stdx::stop_token /*stop_token*/)
+    -> Task<Item> {
+  throw CloudException(StrCat("not implemented for ", id));
+}
+
 auto YouTube::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
-  json json = co_await auth_manager_.FetchJson(
-      Request{.url = "https://openidconnect.googleapis.com/v1/userinfo"},
-      std::move(stop_token));
+  Request request{.url = "https://openidconnect.googleapis.com/v1/userinfo"};
+  json json = co_await auth_manager_.FetchJson(std::move(request),
+                                               std::move(stop_token));
   GeneralData result{.username = json["email"]};
   co_return result;
 }
@@ -817,6 +847,8 @@ auto YouTube::GetItemThumbnailImpl(ItemT item, ThumbnailQuality quality,
         return std::move(item.thumbnail.high_quality_url
                              ? item.thumbnail.high_quality_url
                              : item.thumbnail.default_quality_url);
+      default:
+        throw RuntimeError("Unexpected quality.");
     }
   }();
   if (!url) {
@@ -884,6 +916,103 @@ auto YouTube::GetStreamData::operator()(std::string video_id,
     }
   }
   co_return result;
+}
+
+auto YouTube::ToItem(const nlohmann::json& json) -> Item {
+  switch (static_cast<ItemId::Type>(int(json["type"]))) {
+    case ItemId::Type::DashManifest: {
+      auto item = ::coro::cloudstorage::ToItem<DashManifest>(json);
+      item.video_id = json["video_id"];
+      item.timestamp = json["timestamp"];
+      item.thumbnail = ToThumbnailData(json["thumbnail"]);
+      return item;
+    }
+    case ItemId::Type::RootDirectory: {
+      auto item = ::coro::cloudstorage::ToItem<RootDirectory>(json);
+      item.presentation = static_cast<Presentation>(int(json["presentation"]));
+      return item;
+    }
+    case ItemId::Type::Stream: {
+      auto item = ::coro::cloudstorage::ToItem<Stream>(json);
+      item.video_id = json["video_id"];
+      item.mime_type = json["mime_type"];
+      item.size = json["size"];
+      item.itag = json["itag"];
+      return item;
+    }
+    case ItemId::Type::MuxedStreamWebm: {
+      auto item = ::coro::cloudstorage::ToItem<MuxedStreamWebm>(json);
+      item.video_id = json["video_id"];
+      item.timestamp = json["timestamp"];
+      item.thumbnail = ToThumbnailData(json["thumbnail"]);
+      return item;
+    }
+    case ItemId::Type::MuxedStreamMp4: {
+      auto item = ::coro::cloudstorage::ToItem<MuxedStreamWebm>(json);
+      item.video_id = json["video_id"];
+      item.timestamp = json["timestamp"];
+      item.thumbnail = ToThumbnailData(json["thumbnail"]);
+      return item;
+    }
+    case ItemId::Type::StreamDirectory: {
+      auto item = ::coro::cloudstorage::ToItem<StreamDirectory>(json);
+      item.video_id = json["video_id"];
+      item.timestamp = json["timestamp"];
+      return item;
+    }
+    case ItemId::Type::Playlist: {
+      auto item = ::coro::cloudstorage::ToItem<Playlist>(json);
+      item.playlist_id = json["playlist_id"];
+      item.presentation = static_cast<Presentation>(int(json["presentation"]));
+      return item;
+    }
+    default:
+      throw CloudException("Unrecognized YouTube::Item type.");
+  }
+}
+
+nlohmann::json YouTube::ToJson(const Item& item) {
+  return std::visit(
+      []<typename T>(const T& d) {
+        nlohmann::json json;
+        json["id"] = d.id;
+        json["name"] = d.name;
+        if constexpr (std::is_same_v<T, DashManifest>) {
+          json["type"] = ItemId::Type::DashManifest;
+          json["video_id"] = d.video_id;
+          json["timestamp"] = d.timestamp;
+          json["thumbnail"] = ::coro::cloudstorage::ToJson(d.thumbnail);
+        } else if constexpr (std::is_same_v<T, RootDirectory>) {
+          json["type"] = "root";
+          json["presentation"] = static_cast<int>(d.presentation);
+        } else if constexpr (std::is_same_v<T, Stream>) {
+          json["type"] = ItemId::Type::Stream;
+          json["video_id"] = d.video_id;
+          json["mime_type"] = d.mime_type;
+          json["size"] = d.size;
+          json["itag"] = d.itag;
+        } else if constexpr (std::is_same_v<T, MuxedStreamWebm>) {
+          json["type"] = ItemId::Type::MuxedStreamWebm;
+          json["video_id"] = d.video_id;
+          json["timestamp"] = d.timestamp;
+          json["thumbnail"] = ::coro::cloudstorage::ToJson(d.thumbnail);
+        } else if constexpr (std::is_same_v<T, MuxedStreamMp4>) {
+          json["type"] = ItemId::Type::MuxedStreamWebm;
+          json["video_id"] = d.video_id;
+          json["timestamp"] = d.timestamp;
+          json["thumbnail"] = ::coro::cloudstorage::ToJson(d.thumbnail);
+        } else if constexpr (std::is_same_v<T, StreamDirectory>) {
+          json["type"] = ItemId::Type::StreamDirectory;
+          json["video_id"] = d.video_id;
+          json["timestamp"] = d.timestamp;
+        } else if constexpr (std::is_same_v<T, Playlist>) {
+          json["type"] = ItemId::Type::Playlist;
+          json["playlist_id"] = d.playlist_id;
+          json["presentation"] = static_cast<int>(d.presentation);
+        }
+        return json;
+      },
+      item);
 }
 
 namespace util {

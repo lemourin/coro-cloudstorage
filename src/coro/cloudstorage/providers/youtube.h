@@ -31,6 +31,19 @@ class YouTube {
 
   enum class Presentation { kDash, kStream, kMuxedStreamWebm, kMuxedStreamMp4 };
 
+  struct ItemId {
+    enum class Type {
+      RootDirectory,
+      StreamDirectory,
+      Playlist,
+      MuxedStreamWebm,
+      MuxedStreamMp4,
+      Stream,
+      DashManifest,
+    } type;
+    std::string id;
+  };
+
   struct ItemData {
     std::string id;
     std::string name;
@@ -125,6 +138,8 @@ class YouTube {
 
   Task<RootDirectory> GetRoot(stdx::stop_token);
 
+  Task<Item> GetItem(std::string id, stdx::stop_token stop_token);
+
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token);
 
   Task<PageData> ListDirectoryPage(StreamDirectory directory,
@@ -162,6 +177,9 @@ class YouTube {
   Task<Thumbnail> GetItemThumbnail(MuxedStreamWebm item, util::ThumbnailQuality,
                                    http::Range range,
                                    stdx::stop_token stop_token);
+
+  static Item ToItem(const nlohmann::json&);
+  static nlohmann::json ToJson(const Item&);
 
  private:
   template <typename MuxedStream>

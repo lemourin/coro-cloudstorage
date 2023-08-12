@@ -379,19 +379,12 @@ CloudFactory::GetSupportedCloudProviders() const {
   using Type = AbstractCloudProvider::Type;
 
   static std::vector<AbstractCloudProvider::Type> types = {
-<<<<<<< HEAD
       Type::kAmazonS3,        Type::kBox,
       Type::kDropbox,         Type::kGoogleDrive,
       Type::kLocalFileSystem, Type::kMega,
       Type::kOneDrive,        Type::kPCloud,
       Type::kWebDAV,          Type::kYandexDisk,
-      Type::kOpenStack};
-=======
-      Type::kAmazonS3,    Type::kBox,        Type::kDropbox,
-      Type::kGoogleDrive, Type::kHubiC,      Type::kLocalFileSystem,
-      Type::kMega,        Type::kOneDrive,   Type::kPCloud,
-      Type::kWebDAV,      Type::kYandexDisk, Type::kYouTube};
->>>>>>> 294f000 (src: adjusted to refactor.)
+      Type::kOpenStack,       Type::kYouTube};
 
   return types;
 }
