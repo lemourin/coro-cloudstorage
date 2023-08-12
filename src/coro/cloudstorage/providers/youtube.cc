@@ -7,7 +7,6 @@
 #include <vector>
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
-#include "coro/cloudstorage/util/string_utils.h"
 #include "coro/util/regex.h"
 
 namespace coro::cloudstorage {
@@ -245,9 +244,8 @@ std::string GetNewCipher(const JsFunction& function, std::string nsig) {
 }
 
 template <typename MuxedStreamT>
-MuxedStreamT ToMuxedStream(std::string_view directory_id, json item) {
+MuxedStreamT ToMuxedStream(YouTube::ItemId id, json item) {
   MuxedStreamT stream;
-  stream.video_id = item["snippet"]["resourceId"]["videoId"];
   stream.timestamp =
       http::ParseTime(std::string(item["snippet"]["publishedAt"]));
   stream.name = StrCat(std::string(item["snippet"]["title"]), [] {
@@ -257,7 +255,7 @@ MuxedStreamT ToMuxedStream(std::string_view directory_id, json item) {
       return ".webm";
     }
   }());
-  stream.id = StrCat(directory_id, http::EncodeUri(stream.name));
+  stream.id = std::move(id);
   stream.thumbnail = GetThumbnailData(item["snippet"]["thumbnails"]);
   return stream;
 }
@@ -277,19 +275,19 @@ YouTube::Stream ToStream(const StreamDirectory& directory, json d) {
       mime_type.begin() +
           static_cast<std::string::difference_type>(mime_type.find(';')));
   YouTube::Stream stream;
-  stream.video_id = directory.video_id;
   if (d.contains("qualityLabel")) {
     stream.name += StrCat("[", std::string(d["qualityLabel"]), "]");
   }
   if (d.contains("audioQuality")) {
     stream.name += StrCat("[", std::string(d["audioQuality"]), "]");
   }
-  stream.name += StrCat("[", static_cast<int>(d["itag"]), "] ", directory.name,
-                        ".", extension);
+  stream.name += StrCat('[', static_cast<int>(d["itag"]), "] ", directory.name,
+                        '.', extension);
   stream.mime_type = std::move(mime_type);
   stream.size = std::stoll(std::string(d["contentLength"]));
-  stream.id = directory.id + stream.name;
-  stream.itag = d["itag"];
+  stream.id = {.type = YouTube::ItemId::Type::kStream,
+               .id = directory.id.id,
+               .itag = d["itag"]};
   return stream;
 }
 
@@ -400,7 +398,6 @@ std::string GenerateDashManifest(std::string_view path, std::string_view name,
         << StrCat(path,
                   http::EncodeUri(
                       ToStream(StreamDirectory{{.name = std::string(name)},
-                                               /*video_id=*/"",
                                                /*timestamp=*/0L},
                                stream)
                           .name))
@@ -504,7 +501,8 @@ GetNewDescrambler(std::string_view page_data) {
 template <typename T>
 T ToItem(const nlohmann::json& json) {
   T item;
-  item.id = json["id"];
+  item.id.type = static_cast<YouTube::ItemId::Type>(int(json["type"]));
+  item.id.id = json["id"];
   item.name = json["name"];
   return item;
 }
@@ -580,14 +578,18 @@ nlohmann::json YouTube::StreamData::GetBestAudio(
 
 auto YouTube::GetRoot(stdx::stop_token) -> Task<RootDirectory> {
   RootDirectory d = {};
-  d.id = "/";
-  d.presentation = Presentation::kDash;
+  d.id = {.type = ItemId::Type::kRootDirectory,
+          .id = "root",
+          .presentation = Presentation::kDash};
   co_return d;
 }
 
-auto YouTube::GetItem(std::string id, stdx::stop_token /*stop_token*/)
+auto YouTube::GetItem(ItemId id, stdx::stop_token /*stop_token*/)
     -> Task<Item> {
-  throw CloudException(StrCat("not implemented for ", id));
+  switch (id.type) {
+    default:
+      throw CloudException(StrCat("not implemented for ", id.id));
+  }
 }
 
 auto YouTube::GetGeneralData(stdx::stop_token stop_token) -> Task<GeneralData> {
@@ -602,7 +604,7 @@ auto YouTube::ListDirectoryPage(StreamDirectory directory,
                                 std::optional<std::string> page_token,
                                 stdx::stop_token stop_token) -> Task<PageData> {
   PageData result;
-  StreamData data = co_await stream_cache_.Get(directory.video_id, stop_token);
+  StreamData data = co_await stream_cache_.Get(directory.id.id, stop_token);
   for (const auto& formats : {data.adaptive_formats, data.formats}) {
     for (const auto& d : formats) {
       if (!d.contains("contentLength")) {
@@ -620,44 +622,48 @@ auto YouTube::ListDirectoryPage(Playlist directory,
   PageData result;
   std::vector<std::pair<std::string, std::string>> headers{
       {"part", "snippet"},
-      {"playlistId", directory.playlist_id},
+      {"playlistId", directory.id.id},
       {"maxResults", "50"}};
   if (page_token) {
     headers.emplace_back("pageToken", *page_token);
   }
-  Request request = {.url = GetEndpoint("/playlistItems") + "?" +
-                            http::FormDataToString(headers)};
+  Request request = {.url = StrCat(GetEndpoint("/playlistItems"), '?',
+                                   http::FormDataToString(headers))};
   auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                    std::move(stop_token));
   for (const auto& item : response["items"]) {
-    switch (directory.presentation) {
+    switch (directory.id.presentation) {
       case Presentation::kMuxedStreamMp4: {
-        result.items.emplace_back(
-            ToMuxedStream<MuxedStreamMp4>(directory.id, item));
+        result.items.emplace_back(ToMuxedStream<MuxedStreamMp4>(
+            {.type = ItemId::Type::kMuxedStreamMp4,
+             .id = item["snippet"]["resourceId"]["videoId"]},
+            item));
         break;
       }
       case Presentation::kMuxedStreamWebm: {
-        result.items.emplace_back(
-            ToMuxedStream<MuxedStreamWebm>(directory.id, item));
+        result.items.emplace_back(ToMuxedStream<MuxedStreamWebm>(
+            {.type = ItemId::Type::kMuxedStreamWebm,
+             .id = item["snippet"]["resourceId"]["videoId"]},
+            item));
         break;
       }
       case Presentation::kStream: {
         StreamDirectory streams;
-        streams.video_id = item["snippet"]["resourceId"]["videoId"];
         streams.timestamp =
             http::ParseTime(std::string(item["snippet"]["publishedAt"]));
         streams.name = std::string(item["snippet"]["title"]);
-        streams.id = directory.id + http::EncodeUri(streams.name) + "/";
+        streams.id = {.type = ItemId::Type::kStreamDirectory,
+                      .id = item["snippet"]["resourceId"]["videoId"]};
         result.items.emplace_back(std::move(streams));
         break;
       }
       case Presentation::kDash: {
         DashManifest file;
-        file.video_id = item["snippet"]["resourceId"]["videoId"];
         file.timestamp =
             http::ParseTime(std::string(item["snippet"]["publishedAt"]));
-        file.name = std::string(item["snippet"]["title"]) + ".mpd";
-        file.id = directory.id + http::EncodeUri(file.name);
+        file.name = StrCat(item["snippet"]["title"], ".mpd");
+        file.id = {.type = ItemId::Type::kDashManifest,
+                   .id = item["snippet"]["resourceId"]["videoId"]};
         file.thumbnail = GetThumbnailData(item["snippet"]["thumbnails"]);
         result.items.emplace_back(std::move(file));
         break;
@@ -675,28 +681,36 @@ auto YouTube::ListDirectoryPage(RootDirectory directory,
                                 stdx::stop_token stop_token) -> Task<PageData> {
   PageData result;
   Request request = {
-      .url = GetEndpoint("/channels") + "?" +
-             http::FormDataToString({{"mine", "true"},
-                                     {"part", "contentDetails,snippet"},
-                                     {"maxResults", "50"}})};
+      .url = StrCat(GetEndpoint("/channels"), '?',
+                    http::FormDataToString({{"mine", "true"},
+                                            {"part", "contentDetails,snippet"},
+                                            {"maxResults", "50"}}))};
   auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                    std::move(stop_token));
   for (const auto& [key, value] :
        response["items"][0]["contentDetails"]["relatedPlaylists"].items()) {
     result.items.emplace_back(
-        Playlist{{.id = directory.id + key + "/", .name = key},
-                 value,
-                 directory.presentation});
+        Playlist{{.id = {.type = ItemId::Type::kPlaylist,
+                         .id = value,
+                         .presentation = directory.id.presentation},
+                  .name = key}});
   }
-  if (directory.presentation == Presentation::kDash) {
-    result.items.emplace_back(RootDirectory{
-        {.id = "/streams/", .name = "streams"}, Presentation::kStream});
+  if (directory.id.presentation == Presentation::kDash) {
     result.items.emplace_back(
-        RootDirectory{{.id = "/muxed-webm/", .name = "muxed-webm"},
-                      Presentation::kMuxedStreamWebm});
+        RootDirectory{{.id = {.type = ItemId::Type::kRootDirectory,
+                              .id = "streams",
+                              .presentation = Presentation::kStream},
+                       .name = "streams"}});
     result.items.emplace_back(
-        RootDirectory{{.id = "/muxed-mp4/", .name = "muxed-mp4"},
-                      Presentation::kMuxedStreamMp4});
+        RootDirectory{{.id = {.type = ItemId::Type::kRootDirectory,
+                              .id = "muxed-webm",
+                              .presentation = Presentation::kMuxedStreamWebm},
+                       .name = "muxed-webm"}});
+    result.items.emplace_back(
+        RootDirectory{{.id = {.type = ItemId::Type::kRootDirectory,
+                              .id = "muxed-mp4",
+                              .presentation = Presentation::kMuxedStreamMp4},
+                       .name = "muxed-mp4"}});
   }
   co_return result;
 }
@@ -735,12 +749,12 @@ Generator<std::string> YouTube::GetFileContent(DashManifest file,
                                                http::Range range,
                                                stdx::stop_token stop_token) {
   StreamData data =
-      co_await stream_cache_.Get(file.video_id, std::move(stop_token));
+      co_await stream_cache_.Get(file.id.id, std::move(stop_token));
   auto strip_extension = [](std::string_view str) {
     return std::string(str.substr(0, str.size() - 4));
   };
   std::string dash_manifest = GenerateDashManifest(
-      util::StrCat("../streams", strip_extension(file.id), "/"),
+      StrCat("../streams", strip_extension(file.id.id), "/"),
       strip_extension(file.name), data.adaptive_formats);
   if ((range.end && range.end >= DashManifest::size) ||
       range.start >= DashManifest::size) {
@@ -781,16 +795,16 @@ Generator<std::string> YouTube::GetMuxedFileContent(
   if (range.start != 0 || range.end) {
     throw CloudException("partial read unsupported");
   }
-  StreamData data = co_await stream_cache_.Get(file.video_id, stop_token);
+  StreamData data = co_await stream_cache_.Get(file.id.id, stop_token);
   Stream video_stream{};
-  video_stream.video_id = file.video_id;
   auto best_video = data.GetBestVideo(StrCat("video/", type));
-  video_stream.itag = best_video["itag"];
+  video_stream.id.id = file.id.id;
+  video_stream.id.itag = best_video["itag"];
   video_stream.size = std::stoll(std::string(best_video["contentLength"]));
   Stream audio_stream{};
-  audio_stream.video_id = std::move(file.video_id);
+  audio_stream.id.id = std::move(file.id.id);
   auto best_audio = data.GetBestAudio(StrCat("audio/", type));
-  audio_stream.itag = best_audio["itag"];
+  audio_stream.id.itag = best_audio["itag"];
   audio_stream.size = std::stoll(std::string(best_audio["contentLength"]));
   auto impl = CreateAbstractCloudProviderImpl(this);
   FOR_CO_AWAIT(std::string & chunk,
@@ -808,13 +822,13 @@ Generator<std::string> YouTube::GetMuxedFileContent(
 Generator<std::string> YouTube::GetFileContentImpl(
     Stream file, http::Range range, stdx::stop_token stop_token) {
   std::string video_url =
-      co_await GetVideoUrl(file.video_id, file.itag, stop_token);
+      co_await GetVideoUrl(file.id.id, file.id.itag, stop_token);
   Request request{.url = std::move(video_url),
                   .headers = {http::ToRangeHeader(range)}};
   auto response = co_await http_->Fetch(std::move(request), stop_token);
   if (response.status / 100 == 4) {
-    stream_cache_.Invalidate(file.video_id);
-    video_url = co_await GetVideoUrl(file.video_id, file.itag, stop_token);
+    stream_cache_.Invalidate(file.id.id);
+    video_url = co_await GetVideoUrl(file.id.id, file.id.itag, stop_token);
     Request retry_request{.url = std::move(video_url),
                           .headers = {http::ToRangeHeader(range)}};
     response = co_await http_->Fetch(std::move(retry_request), stop_token);
@@ -882,9 +896,9 @@ Task<std::string> YouTube::GetVideoUrl(std::string video_id, int64_t itag,
         if (auto it = params.find("n");
             it != params.end() && data.new_descrambler) {
           it->second = (*data.new_descrambler)(it->second);
-          url = util::StrCat(uri.scheme.value_or("https"), "://",
-                             uri.host.value_or(""), uri.path.value_or(""), "?",
-                             http::FormDataToString(params));
+          url = StrCat(uri.scheme.value_or("https"), "://",
+                       uri.host.value_or(""), uri.path.value_or(""), '?',
+                       http::FormDataToString(params));
         }
       }
     }
@@ -920,50 +934,46 @@ auto YouTube::GetStreamData::operator()(std::string video_id,
 
 auto YouTube::ToItem(const nlohmann::json& json) -> Item {
   switch (static_cast<ItemId::Type>(int(json["type"]))) {
-    case ItemId::Type::DashManifest: {
+    case ItemId::Type::kDashManifest: {
       auto item = ::coro::cloudstorage::ToItem<DashManifest>(json);
-      item.video_id = json["video_id"];
       item.timestamp = json["timestamp"];
       item.thumbnail = ToThumbnailData(json["thumbnail"]);
       return item;
     }
-    case ItemId::Type::RootDirectory: {
+    case ItemId::Type::kRootDirectory: {
       auto item = ::coro::cloudstorage::ToItem<RootDirectory>(json);
-      item.presentation = static_cast<Presentation>(int(json["presentation"]));
+      item.id.presentation =
+          static_cast<Presentation>(int(json["presentation"]));
       return item;
     }
-    case ItemId::Type::Stream: {
+    case ItemId::Type::kStream: {
       auto item = ::coro::cloudstorage::ToItem<Stream>(json);
-      item.video_id = json["video_id"];
+      item.id.itag = json["itag"];
       item.mime_type = json["mime_type"];
       item.size = json["size"];
-      item.itag = json["itag"];
       return item;
     }
-    case ItemId::Type::MuxedStreamWebm: {
+    case ItemId::Type::kMuxedStreamWebm: {
       auto item = ::coro::cloudstorage::ToItem<MuxedStreamWebm>(json);
-      item.video_id = json["video_id"];
       item.timestamp = json["timestamp"];
       item.thumbnail = ToThumbnailData(json["thumbnail"]);
       return item;
     }
-    case ItemId::Type::MuxedStreamMp4: {
+    case ItemId::Type::kMuxedStreamMp4: {
       auto item = ::coro::cloudstorage::ToItem<MuxedStreamWebm>(json);
-      item.video_id = json["video_id"];
       item.timestamp = json["timestamp"];
       item.thumbnail = ToThumbnailData(json["thumbnail"]);
       return item;
     }
-    case ItemId::Type::StreamDirectory: {
+    case ItemId::Type::kStreamDirectory: {
       auto item = ::coro::cloudstorage::ToItem<StreamDirectory>(json);
-      item.video_id = json["video_id"];
       item.timestamp = json["timestamp"];
       return item;
     }
-    case ItemId::Type::Playlist: {
+    case ItemId::Type::kPlaylist: {
       auto item = ::coro::cloudstorage::ToItem<Playlist>(json);
-      item.playlist_id = json["playlist_id"];
-      item.presentation = static_cast<Presentation>(int(json["presentation"]));
+      item.id.presentation =
+          static_cast<Presentation>(int(json["presentation"]));
       return item;
     }
     default:
@@ -975,40 +985,28 @@ nlohmann::json YouTube::ToJson(const Item& item) {
   return std::visit(
       []<typename T>(const T& d) {
         nlohmann::json json;
-        json["id"] = d.id;
+        json["type"] = d.id.type;
+        json["id"] = d.id.id;
         json["name"] = d.name;
         if constexpr (std::is_same_v<T, DashManifest>) {
-          json["type"] = ItemId::Type::DashManifest;
-          json["video_id"] = d.video_id;
           json["timestamp"] = d.timestamp;
           json["thumbnail"] = ::coro::cloudstorage::ToJson(d.thumbnail);
         } else if constexpr (std::is_same_v<T, RootDirectory>) {
-          json["type"] = "root";
-          json["presentation"] = static_cast<int>(d.presentation);
+          json["presentation"] = static_cast<int>(d.id.presentation);
         } else if constexpr (std::is_same_v<T, Stream>) {
-          json["type"] = ItemId::Type::Stream;
-          json["video_id"] = d.video_id;
+          json["itag"] = d.id.itag;
           json["mime_type"] = d.mime_type;
           json["size"] = d.size;
-          json["itag"] = d.itag;
         } else if constexpr (std::is_same_v<T, MuxedStreamWebm>) {
-          json["type"] = ItemId::Type::MuxedStreamWebm;
-          json["video_id"] = d.video_id;
           json["timestamp"] = d.timestamp;
           json["thumbnail"] = ::coro::cloudstorage::ToJson(d.thumbnail);
         } else if constexpr (std::is_same_v<T, MuxedStreamMp4>) {
-          json["type"] = ItemId::Type::MuxedStreamWebm;
-          json["video_id"] = d.video_id;
           json["timestamp"] = d.timestamp;
           json["thumbnail"] = ::coro::cloudstorage::ToJson(d.thumbnail);
         } else if constexpr (std::is_same_v<T, StreamDirectory>) {
-          json["type"] = ItemId::Type::StreamDirectory;
-          json["video_id"] = d.video_id;
           json["timestamp"] = d.timestamp;
         } else if constexpr (std::is_same_v<T, Playlist>) {
-          json["type"] = ItemId::Type::Playlist;
-          json["playlist_id"] = d.playlist_id;
-          json["presentation"] = static_cast<int>(d.presentation);
+          json["presentation"] = static_cast<int>(d.id.presentation);
         }
         return json;
       },
@@ -1026,6 +1024,38 @@ template <>
 auto AbstractCloudProvider::Create<YouTube>(YouTube p)
     -> std::unique_ptr<AbstractCloudProvider> {
   return CreateAbstractCloudProvider(std::move(p));
+}
+
+YouTube::ItemId FromStringT<YouTube::ItemId>::operator()(
+    std::string item_id) const {
+  nlohmann::json json = nlohmann::json::from_cbor(http::FromBase64(item_id));
+  YouTube::ItemId id;
+  id.type = static_cast<YouTube::ItemId::Type>(int(json["type"]));
+  id.id = json["id"];
+  if (id.type == YouTube::ItemId::Type::kStream) {
+    id.itag = json["itag"];
+  }
+  if (id.type == YouTube::ItemId::Type::kRootDirectory ||
+      id.type == YouTube::ItemId::Type::kPlaylist) {
+    id.presentation = json["presentation"];
+  }
+  return id;
+}
+
+std::string ToString(const YouTube::ItemId& id) {
+  std::string output;
+  nlohmann::json json;
+  json["type"] = id.type;
+  json["id"] = id.id;
+  if (id.type == YouTube::ItemId::Type::kStream) {
+    json["itag"] = id.itag;
+  }
+  if (id.type == YouTube::ItemId::Type::kRootDirectory ||
+      id.type == YouTube::ItemId::Type::kPlaylist) {
+    json["presentation"] = id.presentation;
+  }
+  nlohmann::json::to_cbor(json, output);
+  return http::ToBase64(output);
 }
 
 }  // namespace util

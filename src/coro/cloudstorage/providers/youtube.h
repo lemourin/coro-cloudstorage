@@ -33,19 +33,21 @@ class YouTube {
 
   struct ItemId {
     enum class Type {
-      RootDirectory,
-      StreamDirectory,
-      Playlist,
-      MuxedStreamWebm,
-      MuxedStreamMp4,
-      Stream,
-      DashManifest,
+      kRootDirectory,
+      kStreamDirectory,
+      kPlaylist,
+      kMuxedStreamWebm,
+      kMuxedStreamMp4,
+      kStream,
+      kDashManifest,
     } type;
     std::string id;
+    int64_t itag;
+    Presentation presentation;
   };
 
   struct ItemData {
-    std::string id;
+    ItemId id;
     std::string name;
   };
 
@@ -54,23 +56,16 @@ class YouTube {
     std::optional<std::string> high_quality_url;
   };
 
-  struct RootDirectory : ItemData {
-    Presentation presentation;
-  };
+  struct RootDirectory : ItemData {};
 
   struct StreamDirectory : ItemData {
-    std::string video_id;
     int64_t timestamp;
   };
 
-  struct Playlist : ItemData {
-    std::string playlist_id;
-    Presentation presentation;
-  };
+  struct Playlist : ItemData {};
 
   struct MuxedStreamWebm : ItemData {
     static constexpr std::string_view mime_type = "application/octet-stream";
-    std::string video_id;
     int64_t timestamp;
     ThumbnailData thumbnail;
   };
@@ -78,16 +73,13 @@ class YouTube {
   struct MuxedStreamMp4 : MuxedStreamWebm {};
 
   struct Stream : ItemData {
-    std::string video_id;
     std::string mime_type;
     int64_t size;
-    int64_t itag;
   };
 
   struct DashManifest : ItemData {
     static constexpr std::string_view mime_type = "application/dash+xml";
     static constexpr int64_t size = 32384;
-    std::string video_id;
     int64_t timestamp;
     ThumbnailData thumbnail;
   };
@@ -138,7 +130,7 @@ class YouTube {
 
   Task<RootDirectory> GetRoot(stdx::stop_token);
 
-  Task<Item> GetItem(std::string id, stdx::stop_token stop_token);
+  Task<Item> GetItem(ItemId id, stdx::stop_token stop_token);
 
   Task<GeneralData> GetGeneralData(stdx::stop_token stop_token);
 
@@ -215,6 +207,14 @@ class YouTube {
 namespace util {
 template <>
 YouTube::Auth::AuthData GetAuthData<YouTube>(const nlohmann::json&);
+
+template <>
+struct FromStringT<YouTube::ItemId> {
+  YouTube::ItemId operator()(std::string id) const;
+};
+
+std::string ToString(const YouTube::ItemId& id);
+
 }  // namespace util
 
 }  // namespace coro::cloudstorage
