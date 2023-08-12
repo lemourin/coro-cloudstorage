@@ -329,7 +329,13 @@ auto AccountManagerHandler::ChooseHandler(std::string_view path)
       } else if (match("/dash/")) {
         return Handler{
             .account = account,
-            .handler = DashHandler(CreateItemUrlProvider(account.id()))};
+            .handler = DashHandler(
+                CreateItemUrlProvider(account.id()),
+                [account_id = account.id()](std::string_view item_id) {
+                  return StrCat("/thumbnail/", account_id.type, '/',
+                                http::EncodeUri(account_id.username), '/',
+                                http::EncodeUri(item_id), '?', "quality=high");
+                })};
       } else if (match("/content/")) {
         return Handler{.account = account,
                        .handler = ItemContentHandler{account}};

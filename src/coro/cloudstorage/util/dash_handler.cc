@@ -12,12 +12,13 @@ namespace {
 
 namespace re = coro::util::re;
 
-Generator<std::string> GetDashPlayer(std::string path) {
+Generator<std::string> GetDashPlayer(std::string path,
+                                     std::string thumbnail_url) {
   std::stringstream stream;
   stream << "<source src='" << path << "'>";
-  std::string content =
-      fmt::format(fmt::runtime(kDashPlayerHtml), fmt::arg("poster", ""),
-                  fmt::arg("source", std::move(stream).str()));
+  std::string content = fmt::format(
+      fmt::runtime(kDashPlayerHtml), fmt::arg("poster", thumbnail_url),
+      fmt::arg("source", std::move(stream).str()));
   co_yield std::move(content);
 }
 
@@ -35,7 +36,9 @@ Task<http::Response<>> DashHandler::operator()(
       http::DecodeUri(ToStringView(results[1].begin(), results[1].end())));
 
   co_return http::Response<>{
-      .status = 200, .body = GetDashPlayer(content_url_generator_(item_id))};
+      .status = 200,
+      .body = GetDashPlayer(content_url_generator_(item_id),
+                            thumbnail_url_generator_(item_id))};
 }
 
 }  // namespace coro::cloudstorage::util
