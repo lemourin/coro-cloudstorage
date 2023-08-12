@@ -9,6 +9,7 @@
 #include "coro/cloudstorage/providers/google_drive.h"
 #include "coro/cloudstorage/util/assets.h"
 #include "coro/cloudstorage/util/avio_context.h"
+#include "coro/cloudstorage/util/item_url_provider.h"
 #include "coro/cloudstorage/util/muxer.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/http/http.h"
@@ -122,10 +123,11 @@ class YouTube {
   static inline constexpr auto& kIcon = util::kYouTubeIcon;
 
   YouTube(AuthManager auth_manager, const http::Http* http,
-          const util::Muxer* muxer)
+          const util::Muxer* muxer, util::ItemUrlProvider item_url_provider)
       : auth_manager_(std::move(auth_manager)),
         http_(http),
         muxer_(muxer),
+        item_url_provider_(std::move(item_url_provider)),
         stream_cache_(32, GetStreamData{*http}) {}
 
   Task<RootDirectory> GetRoot(stdx::stop_token);
@@ -201,6 +203,7 @@ class YouTube {
   AuthManager auth_manager_;
   const http::Http* http_;
   const util::Muxer* muxer_;
+  util::ItemUrlProvider item_url_provider_;
   mutable coro::util::LRUCache<std::string, GetStreamData> stream_cache_;
 };
 

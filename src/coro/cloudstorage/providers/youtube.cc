@@ -306,7 +306,8 @@ nlohmann::json GetConfig(std::string_view page_data) {
   }
 }
 
-std::string GenerateDashManifest(std::string_view path, std::string_view name,
+std::string GenerateDashManifest(const util::ItemUrlProvider& item_url_provider,
+                                 std::string_view video_id,
                                  const json& stream_data) {
   std::stringstream r;
   int64_t duration = 0;
@@ -395,12 +396,10 @@ std::string GenerateDashManifest(std::string_view path, std::string_view name,
         << "/>";
       r << "</SegmentBase>";
       r << "<BaseURL>"
-        << StrCat(path,
-                  http::EncodeUri(
-                      ToStream(StreamDirectory{{.name = std::string(name)},
-                                               /*timestamp=*/0L},
-                               stream)
-                          .name))
+        << item_url_provider(util::ToString(
+               YouTube::ItemId{.type = YouTube::ItemId::Type::kStream,
+                               .id = std::string(video_id),
+                               .itag = stream["itag"]}))
         << "</BaseURL>";
       r << "</Representation>";
     }
@@ -754,8 +753,7 @@ Generator<std::string> YouTube::GetFileContent(DashManifest file,
     return std::string(str.substr(0, str.size() - 4));
   };
   std::string dash_manifest = GenerateDashManifest(
-      StrCat("../streams", strip_extension(file.id.id), "/"),
-      strip_extension(file.name), data.adaptive_formats);
+      item_url_provider_, file.id.id, data.adaptive_formats);
   if ((range.end && range.end >= DashManifest::size) ||
       range.start >= DashManifest::size) {
     throw http::HttpException(http::HttpException::kRangeNotSatisfiable);
