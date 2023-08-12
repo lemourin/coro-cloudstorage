@@ -131,7 +131,7 @@ AccountManagerHandler::AccountManagerHandler(
   for (auto auth_token : settings_manager_->LoadTokenData()) {
     CloudProviderAccount::Id provider_id{
         std::string(CreateCloudProvider(factory_, auth_token)->GetId()),
-        std::move(auth_token.id)};
+        auth_token.id};
     OnCloudProviderCreated(accounts_.emplace_back(CreateAccount(
         factory_->Create(
             auth_token,
