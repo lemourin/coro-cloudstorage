@@ -222,11 +222,6 @@ auto ToIV(std::span<const uint8_t, 32> compkey) {
   return ToBytes(MakeConstSpan(std::array<uint32_t, 4>{a32[4], a32[5], 0, 0}));
 }
 
-auto ToMAC(std::span<const uint8_t, 32> compkey) {
-  auto a32 = ToA32(compkey);
-  return ToBytes(MakeConstSpan(std::array<uint32_t, 2>{a32[6], a32[7]}));
-}
-
 std::optional<std::string_view> GetAttribute(std::string_view attr, int index) {
   auto search = util::StrCat(":", index, "*");
   if (auto it = attr.find(search); it != std::string_view::npos) {
