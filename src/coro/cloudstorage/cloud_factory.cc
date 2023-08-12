@@ -210,6 +210,7 @@ class CloudFactoryUtil {
         di::bind<coro::http::Http>.to(http_),
         di::bind<coro::util::EventLoop>().to(event_loop_),
         di::bind<coro::util::ThreadPool>().to(thread_pool_),
+        di::bind<coro::cloudstorage::util::Muxer>().to(muxer_),
         di::bind<coro::cloudstorage::util::RandomNumberGenerator>().to(
             random_number_generator_));
 
