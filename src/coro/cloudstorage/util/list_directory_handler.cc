@@ -30,27 +30,26 @@ std::string GetItemEntry(
         list_url_generator,
     const stdx::any_invocable<std::string(std::string_view item_id) const>&
         thumbnail_url_generator,
-    const stdx::any_invocable<std::string(std::string_view item_id) const>&
-        content_url_generator) {
+    const stdx::any_invocable<std::string(const AbstractCloudProvider::File&)
+                                  const>& content_url_generator) {
   return std::visit(
-      [&]<typename Item>(const Item& item) {
+      [&]<typename Item>(const Item& d) {
         return fmt::format(
-            fmt::runtime(kItemEntryHtml), fmt::arg("name", item.name),
-            fmt::arg("size", SizeToString(item.size)),
-            fmt::arg("timestamp", TimeStampToString(item.timestamp)),
+            fmt::runtime(kItemEntryHtml), fmt::arg("name", d.name),
+            fmt::arg("size", SizeToString(d.size)),
+            fmt::arg("timestamp", TimeStampToString(d.timestamp)),
             fmt::arg(
                 "url",
                 [&] {
                   if constexpr (std::is_same_v<
                                     Item, AbstractCloudProvider::Directory>) {
-                    return std::cref(list_url_generator);
+                    return list_url_generator(d.id);
                   } else {
-                    return std::cref(content_url_generator);
+                    return content_url_generator(d);
                   }
-                }()(item.id)),
-            fmt::arg(
-                "thumbnail_url",
-                RewriteThumbnailUrl(host, thumbnail_url_generator(item.id))));
+                }()),
+            fmt::arg("thumbnail_url",
+                     RewriteThumbnailUrl(host, thumbnail_url_generator(d.id))));
       },
       item);
 }

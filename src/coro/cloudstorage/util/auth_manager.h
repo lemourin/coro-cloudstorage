@@ -8,6 +8,7 @@
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/http/http.h"
 #include "coro/shared_promise.h"
+#include "coro/stdx/any_invocable.h"
 #include "coro/stdx/stop_source.h"
 
 namespace coro::cloudstorage::util {

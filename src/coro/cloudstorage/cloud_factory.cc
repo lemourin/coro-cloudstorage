@@ -22,6 +22,8 @@ namespace di = boost::di;
 
 using ::coro::cloudstorage::util::AbstractCloudFactory;
 using ::coro::cloudstorage::util::AbstractCloudProvider;
+using ::coro::cloudstorage::util::ItemUrlProvider;
+using ::coro::cloudstorage::util::OnAuthTokenUpdated;
 
 template <typename Auth>
 concept HasAuthData = requires(typename Auth::AuthData* d) {
@@ -171,15 +173,15 @@ class CloudFactoryUtil {
         random_number_generator_(random_number_generator),
         auth_data_(auth_data) {}
 
-  template <typename OnTokenUpdated>
-  auto Create(AuthToken auth_token, OnTokenUpdated on_token_updated) const {
+  auto Create(AuthToken auth_token,
+              util::OnAuthTokenUpdated<AuthToken> on_token_updated,
+              ItemUrlProvider item_url_provider) const {
     namespace di = boost::di;
 
     auto auth_injector = [&] {
-      auto auth_token_updated_injector = di::make_injector(
-          di::bind<util::OnAuthTokenUpdated<AuthToken>>().to([&](const auto&) {
-            return util::OnAuthTokenUpdated<AuthToken>(on_token_updated);
-          }));
+      auto auth_token_updated_injector =
+          di::make_injector(di::bind<util::OnAuthTokenUpdated<AuthToken>>().to(
+              std::move(on_token_updated)));
       if constexpr (HasAuthData<Auth>) {
         return di::make_injector(
             std::move(auth_token_updated_injector),
@@ -196,8 +198,10 @@ class CloudFactoryUtil {
         return auth_token_updated_injector;
       }
     }();
-    auto injector = di::make_injector(di::bind<AuthToken>().to(auth_token),
-                                      GetConfig(), std::move(auth_injector));
+    auto injector = di::make_injector(
+        di::bind<AuthToken>().to(auth_token),
+        di::bind<ItemUrlProvider>().to(std::move(item_url_provider)),
+        GetConfig(), std::move(auth_injector));
     return injector.template create<CloudProvider>();
   }
 
@@ -260,16 +264,19 @@ class CloudFactoryImpl : public AbstractCloudFactory {
 
   std::unique_ptr<AbstractCloudProvider> Create(
       AbstractCloudProvider::Auth::AuthToken auth_token,
-      std::function<void(const AbstractCloudProvider::Auth::AuthToken&)>
-          on_token_updated) const override {
-    auto provider =
-        util_.Create(std::any_cast<AuthToken&&>(std::move(auth_token.impl)),
-                     [type = auth_token.type,
-                      on_token_updated = std::move(on_token_updated)](
-                         const AuthToken& auth_token) mutable {
-                       on_token_updated(AbstractCloudProvider::Auth::AuthToken{
-                           .type = type, .impl = auth_token});
-                     });
+      OnAuthTokenUpdated<AbstractCloudProvider::Auth::AuthToken>
+          on_token_updated,
+      ItemUrlProvider item_url_provider) const override {
+    auto provider = util_.Create(
+        std::any_cast<AuthToken&&>(std::move(auth_token.impl)),
+        OnAuthTokenUpdated<AuthToken>(
+            [type = auth_token.type,
+             on_token_updated = std::move(on_token_updated)](
+                const AuthToken& auth_token) mutable {
+              on_token_updated(AbstractCloudProvider::Auth::AuthToken{
+                  .type = type, .impl = auth_token});
+            }),
+        std::move(item_url_provider));
     return AbstractCloudProvider::Create(std::move(provider));
   }
 
@@ -350,10 +357,13 @@ std::unique_ptr<AbstractCloudFactory> CloudFactory::CreateCloudFactory(
 
 std::unique_ptr<AbstractCloudProvider> CloudFactory::Create(
     AbstractCloudProvider::Auth::AuthToken auth_token,
-    std::function<void(const AbstractCloudProvider::Auth::AuthToken&)>
-        on_token_updated) const {
-  return factory_[static_cast<int>(auth_token.type)]->Create(
-      std::move(auth_token), std::move(on_token_updated));
+    util::OnAuthTokenUpdated<AbstractCloudProvider::Auth::AuthToken>
+        on_token_updated,
+    util::ItemUrlProvider item_url_provider) const {
+  auto type = static_cast<int>(auth_token.type);
+  return factory_[type]->Create(std::move(auth_token),
+                                std::move(on_token_updated),
+                                std::move(item_url_provider));
 }
 
 const AbstractCloudProvider::Auth& CloudFactory::GetAuth(

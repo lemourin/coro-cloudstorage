@@ -1,9 +1,8 @@
 #ifndef CORO_CLOUDSTORAGE_ON_AUTH_TOKEN_UPDATED_H
 #define CORO_CLOUDSTORAGE_ON_AUTH_TOKEN_UPDATED_H
 
+#include <functional>
 #include <utility>
-
-#include "coro/stdx/any_invocable.h"
 
 namespace coro::cloudstorage::util {
 
@@ -16,7 +15,7 @@ class OnAuthTokenUpdated {
   void operator()(const AuthToken& auth_token) { impl_(auth_token); }
 
  private:
-  stdx::any_invocable<void(const AuthToken&)> impl_;
+  std::function<void(const AuthToken&)> impl_;
 };
 
 }  // namespace coro::cloudstorage::util

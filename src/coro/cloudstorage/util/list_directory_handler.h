@@ -19,7 +19,7 @@ class ListDirectoryHandler {
           list_url_generator,
       stdx::any_invocable<std::string(std::string_view item_id) const>
           thumbnail_url_generator,
-      stdx::any_invocable<std::string(std::string_view item_id) const>
+      stdx::any_invocable<std::string(const AbstractCloudProvider::File&) const>
           content_url_generator)
       : account_(std::move(account)),
         list_url_generator_(std::move(list_url_generator)),
@@ -40,7 +40,7 @@ class ListDirectoryHandler {
       list_url_generator_;
   stdx::any_invocable<std::string(std::string_view id) const>
       thumbnail_url_generator_;
-  stdx::any_invocable<std::string(std::string_view item_id) const>
+  stdx::any_invocable<std::string(const AbstractCloudProvider::File&) const>
       content_url_generator_;
 };
 

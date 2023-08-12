@@ -28,8 +28,9 @@ class CloudFactory : public util::AbstractCloudFactory {
 
   std::unique_ptr<util::AbstractCloudProvider> Create(
       util::AbstractCloudProvider::Auth::AuthToken auth_token,
-      std::function<void(const util::AbstractCloudProvider::Auth::AuthToken&)>
-          on_token_updated) const override;
+      util::OnAuthTokenUpdated<util::AbstractCloudProvider::Auth::AuthToken>
+          on_token_updated,
+      util::ItemUrlProvider item_url_provider) const override;
 
   const util::AbstractCloudProvider::Auth& GetAuth(
       util::AbstractCloudProvider::Type) const override;

@@ -3,6 +3,7 @@
 #include <fmt/core.h>
 
 #include "coro/cloudstorage/util/assets.h"
+#include "coro/cloudstorage/util/dash_handler.h"
 #include "coro/cloudstorage/util/exception_utils.h"
 #include "coro/cloudstorage/util/generator_utils.h"
 #include "coro/cloudstorage/util/get_size_handler.h"
@@ -10,6 +11,7 @@
 #include "coro/cloudstorage/util/item_thumbnail_handler.h"
 #include "coro/cloudstorage/util/list_directory_handler.h"
 #include "coro/cloudstorage/util/mux_handler.h"
+#include "coro/cloudstorage/util/on_auth_token_updated.h"
 #include "coro/cloudstorage/util/settings_handler.h"
 #include "coro/cloudstorage/util/static_file_handler.h"
 #include "coro/cloudstorage/util/theme_handler.h"
@@ -94,6 +96,24 @@ Generator<std::string> Validate(Generator<std::string> body, Args...) {
   }
 }
 
+auto CreateItemUrlProvider(CloudProviderAccount::Id id) {
+  return ItemUrlProvider([id = std::move(id)](std::string_view item_id) {
+    return StrCat("/content/", id.type, '/', http::EncodeUri(id.username), '/',
+                  item_id);
+  });
+}
+
+auto CreateCloudProvider(const AbstractCloudFactory* factory,
+                         AbstractCloudProvider::Auth::AuthToken auth_token) {
+  return factory->Create(
+      auth_token,
+      OnAuthTokenUpdated<AbstractCloudProvider::Auth::AuthToken>(
+          [](const auto&) {}),
+      ItemUrlProvider([](std::string_view) -> std::string {
+        throw CloudException("unimplemented");
+      }));
+}
+
 }  // namespace
 
 AccountManagerHandler::AccountManagerHandler(
@@ -109,10 +129,16 @@ AccountManagerHandler::AccountManagerHandler(
       settings_manager_(settings_manager),
       cache_manager_(cache_manager) {
   for (auto auth_token : settings_manager_->LoadTokenData()) {
-    auto id = std::move(auth_token.id);
+    CloudProviderAccount::Id provider_id{
+        std::string(CreateCloudProvider(factory_, auth_token)->GetId()),
+        std::move(auth_token.id)};
     OnCloudProviderCreated(accounts_.emplace_back(CreateAccount(
-        factory_->Create(auth_token, OnAuthTokenChanged{settings_manager_, id}),
-        id, version_++)));
+        factory_->Create(
+            auth_token,
+            OnAuthTokenUpdated<AbstractCloudProvider::Auth::AuthToken>(
+                OnAuthTokenChanged{settings_manager_, provider_id.type}),
+            CreateItemUrlProvider(provider_id)),
+        provider_id.username, version_++)));
   }
 }
 
@@ -286,16 +312,24 @@ auto AccountManagerHandler::ChooseHandler(std::string_view path)
                                 http::EncodeUri(account_id.username), '/',
                                 http::EncodeUri(item_id));
                 },
-                [account_id = account.id()](std::string_view item_id) {
-                  return StrCat("/content/", account_id.type, '/',
+                [account_id =
+                     account.id()](const AbstractCloudProvider::File& file) {
+                  return StrCat(file.mime_type == "application/dash+xml"
+                                    ? "/dash/"
+                                    : "/content/",
+                                account_id.type, '/',
                                 http::EncodeUri(account_id.username), '/',
-                                http::EncodeUri(item_id));
+                                http::EncodeUri(file.id));
                 })};
       } else if (match("/webdav/")) {
         return Handler{.account = account, .handler = WebDAVHandler(account)};
       } else if (match("/thumbnail/")) {
         return Handler{.account = account,
                        .handler = ItemThumbnailHandler(account)};
+      } else if (match("/dash/")) {
+        return Handler{
+            .account = account,
+            .handler = DashHandler(CreateItemUrlProvider(account.id()))};
       } else if (match("/content/")) {
         return Handler{.account = account,
                        .handler = ItemContentHandler{account}};
@@ -368,16 +402,21 @@ Task<CloudProviderAccount> AccountManagerHandler::Create(
     AbstractCloudProvider::Auth::AuthToken auth_token,
     stdx::stop_token stop_token) {
   int64_t version = ++version_;
-  auto provider = factory_->Create(auth_token, [](const auto&) {});
+  auto provider = CreateCloudProvider(factory_, auth_token);
   auto general_data = co_await provider->GetGeneralData(std::move(stop_token));
+  CloudProviderAccount::Id provider_id{.type = std::string(provider->GetId()),
+                                       .username = general_data.username};
   RemoveCloudProvider([&](const auto& entry) {
-    return entry.version_ < version &&
-           entry.id() ==
-               CloudProviderAccount::Id{.type = std::string(provider->GetId()),
-                                        .username = general_data.username};
+    return entry.version_ < version && entry.id() == provider_id;
   });
   provider = factory_->Create(
-      auth_token, OnAuthTokenChanged{settings_manager_, general_data.username});
+      auth_token,
+      OnAuthTokenUpdated<AbstractCloudProvider::Auth::AuthToken>(
+          OnAuthTokenChanged{settings_manager_, general_data.username}),
+      ItemUrlProvider([provider_id](std::string_view item_id) -> std::string {
+        return StrCat("/content/", provider_id.type, '/',
+                      http::EncodeUri(provider_id.username), '/', item_id);
+      }));
   auto d = accounts_.emplace_back(
       CreateAccount(std::move(provider), general_data.username, version));
   settings_manager_->SaveToken(std::move(auth_token), general_data.username);
