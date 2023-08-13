@@ -28,6 +28,7 @@
     {
       "name": "cppwinrt",
       "platform": "uwp"
-    }
+    },
+    "antlr4"
   ]
 }

@@ -1,6 +1,7 @@
 include(CheckSymbolExists)
 include(CheckCXXSourceCompiles)
 include(EmbedResource)
+include(antlr)
 
 add_library(coro-cloudstorage)
 
@@ -244,6 +245,35 @@ add_resource_library(
 
 target_link_libraries(coro-cloudstorage PRIVATE coro-cloudstorage-resource)
 
+antlr_target(javascript-lexer
+             GRAMMAR coro/cloudstorage/util/antlr/javascript_lexer.g4
+             TYPE LEXER
+             NAMESPACE coro_cloudstorage_util_antlr)
+target_include_directories(javascript-lexer PRIVATE coro/cloudstorage/util)
+
+antlr_target(javascript-parser
+             GRAMMAR coro/cloudstorage/util/antlr/javascript_parser.g4
+             TYPE PARSER
+             NAMESPACE coro_cloudstorage_util_antlr
+             VISITOR
+             DEPENDS javascript-lexer)
+
+add_library(evaluate-javascript
+            coro/cloudstorage/util/antlr/javascript_lexer_base.h
+            coro/cloudstorage/util/antlr/javascript_lexer_base.cc
+            coro/cloudstorage/util/evaluate_javascript.h
+            coro/cloudstorage/util/evaluate_javascript.cc)
+target_include_directories(
+    evaluate-javascript 
+    PRIVATE 
+        .
+        ${ANTLR4_INCLUDE_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}
+        coro/cloudstorage/util
+)
+target_link_libraries(evaluate-javascript PRIVATE javascript-parser coro::coro-http)
+target_link_libraries(coro-cloudstorage PRIVATE evaluate-javascript)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
     target_compile_definitions(
         coro-cloudstorage PRIVATE WINRT
@@ -253,7 +283,17 @@ endif()
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
-install(TARGETS coro-cloudstorage coro-cloudstorage-resource EXPORT coro-cloudstorage FILE_SET public_headers)
+install(
+    TARGETS 
+        coro-cloudstorage 
+        coro-cloudstorage-resource 
+        evaluate-javascript
+        javascript-parser
+        javascript-lexer
+    EXPORT 
+        coro-cloudstorage 
+    FILE_SET public_headers
+)
 install(EXPORT coro-cloudstorage NAMESPACE coro:: DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/${PROJECT_NAME})
 configure_package_config_file(
         ../cmake/coro-cloudstorage-config.cmake.in
