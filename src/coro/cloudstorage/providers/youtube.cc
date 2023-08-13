@@ -26,6 +26,8 @@ using StreamDirectory = YouTube::StreamDirectory;
 namespace re = ::coro::util::re;
 
 constexpr std::string_view kEndpoint = "https://www.googleapis.com/youtube/v3";
+constexpr std::string_view kChannelPlayListsPageToken = "CHANNEL_PLAYLISTS";
+constexpr std::string_view kUserPlayListsPageToken = "USER_PLAYLISTS";
 
 std::string GetEndpoint(std::string_view path) {
   return StrCat(kEndpoint, path);
@@ -588,10 +590,10 @@ auto YouTube::GetItem(ItemId id, stdx::stop_token stop_token) -> Task<Item> {
     case ItemId::Type::kRootDirectory:
       co_return RootDirectory{{.id = id, .name = id.id}};
     case ItemId::Type::kPlaylist: {
-      std::vector<std::pair<std::string, std::string>> params{
-          {"part", "snippet"}, {"id", id.id}};
-      Request request = {.url = StrCat(GetEndpoint("/playlists"), '?',
-                                       http::FormDataToString(params))};
+      Request request = {
+          .url = StrCat(
+              GetEndpoint("/playlists"), '?',
+              http::FormDataToString({{"part", "snippet"}, {"id", id.id}}))};
       auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                        std::move(stop_token));
       if (response["items"].empty()) {
@@ -615,10 +617,10 @@ auto YouTube::GetItem(ItemId id, stdx::stop_token stop_token) -> Task<Item> {
       throw CloudException(CloudException::Type::kNotFound);
     }
     default: {
-      std::vector<std::pair<std::string, std::string>> params{
-          {"part", "snippet"}, {"id", id.id}};
-      Request request = {.url = StrCat(GetEndpoint("/videos"), '?',
-                                       http::FormDataToString(params))};
+      Request request = {
+          .url = StrCat(
+              GetEndpoint("/videos"), '?',
+              http::FormDataToString({{"part", "snippet"}, {"id", id.id}}))};
       auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                        std::move(stop_token));
       if (response["items"].empty()) {
@@ -682,18 +684,23 @@ auto YouTube::ListDirectoryPage(Playlist directory,
                                 std::optional<std::string> page_token,
                                 stdx::stop_token stop_token) -> Task<PageData> {
   PageData result;
-  std::vector<std::pair<std::string, std::string>> headers{
-      {"part", "snippet"},
+  std::vector<std::pair<std::string, std::string>> params{
+      {"part", "snippet,contentDetails"},
       {"playlistId", directory.id.id},
       {"maxResults", "50"}};
   if (page_token) {
-    headers.emplace_back("pageToken", *page_token);
+    params.emplace_back("pageToken", *page_token);
   }
   Request request = {.url = StrCat(GetEndpoint("/playlistItems"), '?',
-                                   http::FormDataToString(headers))};
+                                   http::FormDataToString(params))};
   auto response = co_await auth_manager_.FetchJson(std::move(request),
                                                    std::move(stop_token));
   for (const auto& item : response["items"]) {
+    auto content_details = item["contentDetails"];
+    auto video_published_at = content_details.find("videoPublishedAt");
+    if (video_published_at == content_details.end()) {
+      continue;
+    }
     switch (directory.id.presentation) {
       case Presentation::kMuxedStreamMp4: {
         result.items.emplace_back(ToMuxedStream<MuxedStreamMp4>(
@@ -711,8 +718,7 @@ auto YouTube::ListDirectoryPage(Playlist directory,
       }
       case Presentation::kStream: {
         StreamDirectory streams;
-        streams.timestamp =
-            http::ParseTime(std::string(item["snippet"]["publishedAt"]));
+        streams.timestamp = http::ParseTime(std::string(*video_published_at));
         streams.name = std::string(item["snippet"]["title"]);
         streams.id = {.type = ItemId::Type::kStreamDirectory,
                       .id = item["snippet"]["resourceId"]["videoId"]};
@@ -721,8 +727,7 @@ auto YouTube::ListDirectoryPage(Playlist directory,
       }
       case Presentation::kDash: {
         DashManifest file;
-        file.timestamp =
-            http::ParseTime(std::string(item["snippet"]["publishedAt"]));
+        file.timestamp = http::ParseTime(std::string(*video_published_at));
         file.name = StrCat(std::string(item["snippet"]["title"]), ".mpd");
         file.id = {.type = ItemId::Type::kDashManifest,
                    .id = item["snippet"]["resourceId"]["videoId"]};
@@ -742,36 +747,7 @@ auto YouTube::ListDirectoryPage(RootDirectory directory,
                                 std::optional<std::string> page_token,
                                 stdx::stop_token stop_token) -> Task<PageData> {
   PageData result;
-  Request request = {
-      .url = StrCat(GetEndpoint("/channels"), '?',
-                    http::FormDataToString({{"mine", "true"},
-                                            {"part", "contentDetails"},
-                                            {"maxResults", "50"}}))};
-  auto response =
-      co_await auth_manager_.FetchJson(std::move(request), stop_token);
-  std::string ids;
-  for (const auto& [_, playlist_id] :
-       response["items"][0]["contentDetails"]["relatedPlaylists"].items()) {
-    if (!ids.empty()) {
-      ids += ',';
-    }
-    ids += playlist_id;
-  }
-  {
-    Request request = {.url = StrCat(GetEndpoint("/playlists"), '?',
-                                     http::FormDataToString(
-                                         {{"part", "snippet"}, {"id", ids}}))};
-    auto response = co_await auth_manager_.FetchJson(std::move(request),
-                                                     std::move(stop_token));
-    for (const auto& item : response["items"]) {
-      result.items.emplace_back(
-          Playlist{{.id = {.type = ItemId::Type::kPlaylist,
-                           .id = item["id"],
-                           .presentation = directory.id.presentation},
-                    .name = item["snippet"]["title"]}});
-    }
-  }
-  if (directory.id.presentation == Presentation::kDash) {
+  if (!page_token && directory.id.presentation == Presentation::kDash) {
     result.items.emplace_back(
         RootDirectory{{.id = {.type = ItemId::Type::kRootDirectory,
                               .id = "streams",
@@ -787,6 +763,59 @@ auto YouTube::ListDirectoryPage(RootDirectory directory,
                               .id = "muxed-mp4",
                               .presentation = Presentation::kMuxedStreamMp4},
                        .name = "muxed-mp4"}});
+    result.next_page_token = kChannelPlayListsPageToken;
+  } else if (!page_token || page_token == kChannelPlayListsPageToken) {
+    Request request = {
+        .url = StrCat(GetEndpoint("/channels"), '?',
+                      http::FormDataToString({{"mine", "true"},
+                                              {"part", "contentDetails"},
+                                              {"maxResults", "50"}}))};
+    auto response =
+        co_await auth_manager_.FetchJson(std::move(request), stop_token);
+    std::string ids;
+    for (const auto& [_, playlist_id] :
+         response["items"][0]["contentDetails"]["relatedPlaylists"].items()) {
+      if (!ids.empty()) {
+        ids += ',';
+      }
+      ids += playlist_id;
+    }
+    {
+      Request request = {
+          .url = StrCat(
+              GetEndpoint("/playlists"), '?',
+              http::FormDataToString({{"part", "snippet"}, {"id", ids}}))};
+      auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                       std::move(stop_token));
+      for (const auto& item : response["items"]) {
+        result.items.emplace_back(
+            Playlist{{.id = {.type = ItemId::Type::kPlaylist,
+                             .id = item["id"],
+                             .presentation = directory.id.presentation},
+                      .name = item["snippet"]["title"]}});
+      }
+    }
+    result.next_page_token = kUserPlayListsPageToken;
+  } else if (page_token == kUserPlayListsPageToken) {
+    std::vector<std::pair<std::string, std::string>> params = {
+        {"part", "snippet"}, {"mine", "true"}};
+    if (page_token != kUserPlayListsPageToken) {
+      params.emplace_back("pageToken", *page_token);
+    }
+    Request request = {.url = StrCat(GetEndpoint("/playlists"), '?',
+                                     http::FormDataToString(params))};
+    auto response = co_await auth_manager_.FetchJson(std::move(request),
+                                                     std::move(stop_token));
+    for (const auto& item : response["items"]) {
+      result.items.emplace_back(
+          Playlist{{.id = {.type = ItemId::Type::kPlaylist,
+                           .id = item["id"],
+                           .presentation = directory.id.presentation},
+                    .name = item["snippet"]["title"]}});
+    }
+    if (auto it = response.find("nextPageToken"); it != response.end()) {
+      result.next_page_token = *it;
+    }
   }
   co_return result;
 }
@@ -990,6 +1019,9 @@ auto YouTube::GetStreamData::operator()(std::string video_id,
   std::string page =
       co_await GetVideoPage(http, std::move(video_id), stop_token);
   json config = GetConfig(page);
+  if (!config.contains("videoDetails")) {
+    throw CloudException("GetStreamData error.");
+  }
   StreamData result{
       .title = config["videoDetails"]["title"],
       .adaptive_formats = config["streamingData"]["adaptiveFormats"],
