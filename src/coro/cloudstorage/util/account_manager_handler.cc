@@ -136,7 +136,7 @@ AccountManagerHandler::AccountManagerHandler(
         factory_->Create(
             auth_token,
             OnAuthTokenUpdated<AbstractCloudProvider::Auth::AuthToken>(
-                OnAuthTokenChanged{settings_manager_, provider_id.type}),
+                OnAuthTokenChanged{settings_manager_, provider_id.username}),
             CreateItemUrlProvider(provider_id)),
         provider_id.username, version_++)));
   }
