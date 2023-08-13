@@ -56,7 +56,7 @@ std::optional<std::string> Find(std::string_view text,
   re::match_results<std::string_view::iterator> match;
   for (const auto& regex : re) {
     if (re::regex_search(text.begin(), text.end(), match, regex)) {
-      return match[match.size() - 1].str();
+      return match[static_cast<int>(match.size() - 1)].str();
     }
   }
   return std::nullopt;
@@ -136,8 +136,8 @@ int ToInt(const std::string& str) { return std::lround(std::stod(str)); }
 
 template <typename Container>
 void CircularShift(Container& container, int shift) {
-  int size = container.size();
-  int m = size - (((shift % size) + size) % size);
+  auto size = container.size();
+  auto m = size - (((shift % size) + size) % size);
   std::reverse(container.begin(), container.begin() + m);
   std::reverse(container.begin() + m, container.end());
   std::reverse(container.begin(), container.end());
@@ -145,24 +145,24 @@ void CircularShift(Container& container, int shift) {
 
 template <typename Container>
 void SwapElement(Container& container, int shift) {
-  int size = container.size();
-  int m = ((shift % size) + size) % size;
+  auto size = container.size();
+  auto m = ((shift % size) + size) % size;
   std::swap(container[0], container[m]);
 }
 
 template <typename Container>
 void RemoveElement(Container& container, int shift) {
-  int size = container.size();
-  int m = ((shift % size) + size) % size;
+  auto size = container.size();
+  auto m = ((shift % size) + size) % size;
   container.erase(container.begin() + m);
 }
 
 std::string Decrypt(std::string input, std::string key,
                     std::string_view cipher_chars) {
-  int h = cipher_chars.length();
+  auto h = cipher_chars.length();
   for (size_t i = 0; i < input.size(); i++) {
-    int i1 = cipher_chars.find(input[i]);
-    int i2 = cipher_chars.find(key[i]);
+    auto i1 = cipher_chars.find(input[i]);
+    auto i2 = cipher_chars.find(key[i]);
     input[i] = cipher_chars[(i1 - i2 + i + h--) % cipher_chars.length()];
     key.push_back(input[i]);
   }
@@ -414,11 +414,10 @@ std::string GetPlayerUrl(std::string_view page_data) {
   re::match_results<std::string_view::iterator> match;
   if (re::regex_search(page_data.begin(), page_data.end(), match,
                        re::regex(R"re("jsUrl":"([^"]*)")re"))) {
-    return "https://www.youtube.com/" + match[1].str();
+    return StrCat("https://www.youtube.com/", match[1].str());
   } else {
     throw CloudException("jsUrl not found");
   }
-  return "";
 }
 
 std::function<std::string(std::string_view)> GetDescrambler(
@@ -586,6 +585,8 @@ auto YouTube::GetRoot(stdx::stop_token) -> Task<RootDirectory> {
 auto YouTube::GetItem(ItemId id, stdx::stop_token /*stop_token*/)
     -> Task<Item> {
   switch (id.type) {
+    case ItemId::Type::kRootDirectory:
+      co_return RootDirectory{{.id = id}};
     default:
       throw CloudException(StrCat("not implemented for ", id.id));
   }
