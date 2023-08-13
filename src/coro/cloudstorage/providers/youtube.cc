@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+#include "coro/cloudstorage/util/string_utils.h"
 #include "coro/util/regex.h"
 
 namespace coro::cloudstorage {
@@ -19,6 +20,7 @@ using ::coro::cloudstorage::util::CreateAbstractCloudProviderImpl;
 using ::coro::cloudstorage::util::MediaContainer;
 using ::coro::cloudstorage::util::StrCat;
 using ::coro::cloudstorage::util::ThumbnailQuality;
+using ::coro::cloudstorage::util::ToStringView;
 using ::nlohmann::json;
 
 using StreamDirectory = YouTube::StreamDirectory;
@@ -175,10 +177,11 @@ std::string GetNewCipher(const JsFunction& function, std::string nsig) {
   auto input = Split(
       Find(function.source, {re::regex(R"(\w\s*=\s*\[([\s\S]*)\];)")}).value(),
       ',');
-  for (std::string_view command : Split(
-           Find(function.source, {re::regex(R"(try\s*\{([\s\S]*)\}\s*catch)")})
-               .value(),
-           ',')) {
+  for (std::string_view command :
+       Split(Find(function.source,
+                  {re::regex(R"((try\s*\{\s*)+([\s\S]*)\}\s*catch)")})
+                 .value(),
+             ',')) {
     re::match_results<std::string_view::iterator> match;
     if (re::regex_search(
             command.begin(), command.end(), match,
@@ -487,9 +490,32 @@ std::function<std::string(std::string_view)> GetDescrambler(
 
 std::optional<std::function<std::string(std::string_view cipher)>>
 GetNewDescrambler(std::string_view page_data) {
-  auto nsig_function_name = Find(
-      page_data,
-      {re::regex(R"(\.get\("n"\)\)&&\(b=([a-zA-Z0-9$]{3})\([a-zA-Z0-9]\))")});
+  re::regex regex(
+      R"(\.get\("n"\)\)&&\(b=([a-zA-Z0-9$]{3})(?:\[(\d+)\])?\([a-zA-Z0-9]\))");
+  re::match_results<std::string_view::iterator> match;
+  if (!re::regex_search(page_data.begin(), page_data.end(), match, regex)) {
+    return std::nullopt;
+  }
+  std::optional<std::string> nsig_function_name =
+      [&]() -> std::optional<std::string> {
+    std::string_view func = ToStringView(match[1].begin(), match[1].end());
+    if (match.size() == 2) {
+      return std::string(func);
+    }
+    re::regex regex(StrCat("var ", func, R"(\s*=\s*\[(.+?)\];)"));
+    re::match_results<std::string_view::iterator> func_match;
+    if (!re::regex_search(page_data.begin(), page_data.end(), func_match,
+                          regex)) {
+      return std::nullopt;
+    }
+    auto func_names =
+        Split(ToStringView(func_match[1].begin(), func_match[1].end()), ',');
+    int index = std::stoi(match[2].str());
+    if (index >= 0 && index < func_names.size()) {
+      return func_names[index];
+    }
+    return std::nullopt;
+  }();
   if (!nsig_function_name) {
     return std::nullopt;
   }
