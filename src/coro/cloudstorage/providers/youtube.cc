@@ -685,7 +685,7 @@ auto YouTube::ListDirectoryPage(Playlist directory,
                                 stdx::stop_token stop_token) -> Task<PageData> {
   PageData result;
   std::vector<std::pair<std::string, std::string>> params{
-      {"part", "snippet,contentDetails"},
+      {"part", "snippet,contentDetails,status"},
       {"playlistId", directory.id.id},
       {"maxResults", "50"}};
   if (page_token) {
@@ -699,6 +699,9 @@ auto YouTube::ListDirectoryPage(Playlist directory,
     auto content_details = item["contentDetails"];
     auto video_published_at = content_details.find("videoPublishedAt");
     if (video_published_at == content_details.end()) {
+      continue;
+    }
+    if (item["status"]["privacyStatus"] == "private") {
       continue;
     }
     switch (directory.id.presentation) {
