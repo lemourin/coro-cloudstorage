@@ -86,6 +86,7 @@ class YouTube {
   };
 
   struct StreamData {
+    std::string title;
     json adaptive_formats;
     json formats;
     std::optional<std::function<std::string(std::string_view)>> descrambler;
