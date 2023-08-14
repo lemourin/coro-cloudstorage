@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "coro/cloudstorage/util/abstract_cloud_provider_impl.h"
+#include "coro/cloudstorage/util/evaluate_javascript.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/util/regex.h"
 
@@ -24,6 +25,7 @@ using ::coro::cloudstorage::util::ToStringView;
 using ::nlohmann::json;
 
 using StreamDirectory = YouTube::StreamDirectory;
+using JsFunction = coro::cloudstorage::util::js::Function;
 
 namespace re = ::coro::util::re;
 
@@ -83,12 +85,6 @@ YouTube::ThumbnailData GetThumbnailData(const nlohmann::json& json) {
   return data;
 }
 
-struct JsFunction {
-  std::string name;
-  std::vector<std::string> args;
-  std::string source;
-};
-
 JsFunction GetFunction(std::string_view document,
                        std::string_view function_name) {
   re::match_results<std::string_view::iterator> match;
@@ -134,118 +130,6 @@ std::vector<std::string> Split(std::string_view text, char /*delimiter*/) {
     result.emplace_back(std::move(current));
   }
   return result;
-}
-
-int ToInt(const std::string& str) { return std::lround(std::stod(str)); }
-
-template <typename Container>
-void CircularShift(Container& container, int shift) {
-  auto size = container.size();
-  auto m = size - (((shift % size) + size) % size);
-  std::reverse(container.begin(), container.begin() + m);
-  std::reverse(container.begin() + m, container.end());
-  std::reverse(container.begin(), container.end());
-}
-
-template <typename Container>
-void SwapElement(Container& container, int shift) {
-  auto size = container.size();
-  auto m = ((shift % size) + size) % size;
-  std::swap(container[0], container[m]);
-}
-
-template <typename Container>
-void RemoveElement(Container& container, int shift) {
-  auto size = container.size();
-  auto m = ((shift % size) + size) % size;
-  container.erase(container.begin() + m);
-}
-
-std::string Decrypt(std::string input, std::string key,
-                    std::string_view cipher_chars) {
-  auto h = cipher_chars.length();
-  for (size_t i = 0; i < input.size(); i++) {
-    auto i1 = cipher_chars.find(input[i]);
-    auto i2 = cipher_chars.find(key[i]);
-    input[i] = cipher_chars[(i1 - i2 + i + h--) % cipher_chars.length()];
-    key.push_back(input[i]);
-  }
-  return input;
-}
-
-std::string GetNewCipher(const JsFunction& function, std::string nsig) {
-  auto input = Split(
-      Find(function.source, {re::regex(R"(\w\s*=\s*\[([\s\S]*)\];)")}).value(),
-      ',');
-  for (std::string_view command :
-       Split(Find(function.source,
-                  {re::regex(R"((try\s*\{\s*)+([\s\S]*)\}\s*catch)")})
-                 .value(),
-             ',')) {
-    re::match_results<std::string_view::iterator> match;
-    if (re::regex_search(
-            command.begin(), command.end(), match,
-            re::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\],\s*\w+\[(\d+)\]\))"))) {
-      int a = ToInt(match[1].str());
-      int b = ToInt(match[2].str());
-      int c = ToInt(match[3].str());
-      auto do_operation = [&]<typename T>(T& i) {
-        std::string_view source = input.at(a);
-        if (source.find("for") != std::string::npos) {
-          CircularShift(i, ToInt(input.at(c)));
-        } else if (source.find("d.splice(e,1)") != std::string::npos) {
-          RemoveElement(i, ToInt(input.at(c)));
-        } else if (source.find("push") != std::string::npos) {
-          if constexpr (std::is_same_v<T, std::vector<std::string>>) {
-            i.push_back(input.at(c));
-          } else {
-            throw CloudException("unexpected push");
-          }
-        } else {
-          SwapElement(i, ToInt(input.at(c)));
-        }
-      };
-      std::string_view nd_argument = input.at(b);
-      if (nd_argument == "null") {
-        do_operation(input);
-      } else if (nd_argument == "b") {
-        do_operation(nsig);
-      } else {
-        throw CloudException(StrCat("unexpected ", nd_argument));
-      }
-    } else if (re::regex_search(command.begin(), command.end(), match,
-                                re::regex(R"(\w+\[(\d+)\]\(\w+\[(\d+)\]\))"))) {
-      int b = ToInt(match[2].str());
-      std::string_view nd_argument = input.at(b);
-      if (nd_argument == "null") {
-        std::reverse(input.begin(), input.end());
-      } else if (nd_argument == "b") {
-        std::reverse(nsig.begin(), nsig.end());
-      } else {
-        throw CloudException(StrCat("unexpected ", nd_argument));
-      }
-    } else if (
-        re::regex_search(
-            command.begin(), command.end(), match,
-            re::regex(
-                R"(\w+\[(\d+)\]\(\w+\[(\d+)\],\s*\w+\[(\d+)\],\s*\w+\[(\d+)\]\(\)\))"))) {
-      int c = ToInt(match[3].str());
-      int d = ToInt(match[4].str());
-      const std::string& key = input.at(c);
-      nsig = Decrypt(std::move(nsig), key.substr(1, key.size() - 2), [&] {
-        const std::string& cipher_source = input.at(d);
-        if (cipher_source.find("-=58") != std::string::npos ||
-            cipher_source.find("-=18") != std::string::npos) {
-          return R"(0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_)";
-        } else {
-          return R"(ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_)";
-        }
-      }());
-    } else {
-      throw CloudException(StrCat("unexpected command ", command));
-    }
-  }
-  return nsig;
 }
 
 template <typename MuxedStreamT>
@@ -521,7 +405,8 @@ GetNewDescrambler(std::string_view page_data) {
   }
   return [nsig_function = GetFunction(page_data, *nsig_function_name)](
              std::string_view nsig) {
-    return GetNewCipher(nsig_function, std::string(nsig));
+    return util::js::EvaluateJavascript(nsig_function,
+                                        std::vector{std::string(nsig)});
   };
 }
 
