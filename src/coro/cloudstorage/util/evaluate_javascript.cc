@@ -2,6 +2,7 @@
 
 #include <antlr4-runtime.h>
 
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -157,7 +158,7 @@ class Value : public Variant {
           } else if constexpr (std::is_same_v<V, Undefined>) {
             return "undefined";
           } else if constexpr (requires(std::stringstream stream, V v) {
-                                 {stream << v};
+                                 { stream << v };
                                }) {
             std::stringstream sstream;
             sstream << value;
@@ -205,7 +206,9 @@ class Value : public Variant {
   friend Value operator op(const Value& v1, const Value& v2) {               \
     return std::visit(                                                       \
         []<typename T1, typename T2>(const T1& e1, const T2& e2) -> Value {  \
-          if constexpr (requires(T1 e1, T2 e2) { {e1 op e2}; }) {            \
+          if constexpr (requires(T1 e1, T2 e2) {                             \
+                          { e1 op e2 };                                      \
+                        }) {                                                 \
             return Value(e1 op e2);                                          \
           } else {                                                           \
             throw JsException("can't " STR(op) " given types");              \
@@ -218,7 +221,9 @@ class Value : public Variant {
   friend Value& operator op(Value& v1, const Value& v2) {              \
     std::visit(                                                        \
         []<typename T1, typename T2>(T1& e1, const T2& e2) {           \
-          if constexpr (requires(T1 & e1, T2 e2) { {e1 op e2}; }) {    \
+          if constexpr (requires(T1& e1, T2 e2) {                      \
+                          { e1 op e2 };                                \
+                        }) {                                           \
             e1 op e2;                                                  \
           } else {                                                     \
             throw JsException("can't " STR(op) " given types");        \
@@ -234,7 +239,9 @@ class Value : public Variant {
         []<typename T1, typename T2>(const T1& e1, const T2& e2) -> bool {   \
           if constexpr (!std::is_same_v<T1, std::shared_ptr<Value>> &&       \
                         !std::is_same_v<T2, std::shared_ptr<Value>> &&       \
-                        requires(T1 e1, T2 e2) { {e1 op e2}; }) {            \
+                        requires(T1 e1, T2 e2) {                             \
+                          { e1 op e2 };                                      \
+                        }) {                                                 \
             return e1 op e2;                                                 \
           } else {                                                           \
             throw JsException("can't " STR(op) " given types");              \
@@ -264,7 +271,9 @@ class Value : public Variant {
   friend Value operator-(const Value& v) {
     return std::visit(
         []<typename T>(const T& e) -> Value {
-          if constexpr (requires(T e) { {-e}; }) {
+          if constexpr (requires(T e) {
+                          { -e };
+                        }) {
             return -e;
           } else {
             throw JsException("can't negate given type");
@@ -276,7 +285,9 @@ class Value : public Variant {
   friend Value& operator++(Value& v) {
     std::visit(
         []<typename T>(T& e) {
-          if constexpr (!std::is_same_v<T, bool> && requires(T e) { {++e}; }) {
+          if constexpr (!std::is_same_v<T, bool> && requires(T e) {
+                          { ++e };
+                        }) {
             ++e;
           } else {
             throw JsException("can't increment given type");
@@ -290,7 +301,9 @@ class Value : public Variant {
     Value copy = *v;
     std::visit(
         []<typename T>(T& e) {
-          if constexpr (!std::is_same_v<T, bool> && requires(T e) { {e++}; }) {
+          if constexpr (!std::is_same_v<T, bool> && requires(T e) {
+                          { e++ };
+                        }) {
             e++;
           } else {
             throw JsException("can't increment given type");
@@ -303,7 +316,9 @@ class Value : public Variant {
   friend Value& operator--(Value& v) {
     std::visit(
         []<typename T>(T& e) {
-          if constexpr (!std::is_same_v<T, bool> && requires(T e) { {--e}; }) {
+          if constexpr (!std::is_same_v<T, bool> && requires(T e) {
+                          { --e };
+                        }) {
             --e;
           } else {
             throw JsException("can't decrement given type");
@@ -317,7 +332,9 @@ class Value : public Variant {
     Value copy = *v;
     std::visit(
         []<typename T>(T& e) {
-          if constexpr (!std::is_same_v<T, bool> && requires(T e) { {e--}; }) {
+          if constexpr (!std::is_same_v<T, bool> && requires(T e) {
+                          { e-- };
+                        }) {
             e--;
           } else {
             throw JsException("can't decrement given type");
