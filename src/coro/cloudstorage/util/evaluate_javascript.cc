@@ -12,6 +12,7 @@
 #include "coro/cloudstorage/util/antlr/javascript-parser/javascript_parserBaseVisitor.h"
 #include "coro/cloudstorage/util/antlr/javascript-parser/javascript_parserVisitor.h"
 #include "coro/http/http_parse.h"
+#include "coro/util/raii_utils.h"
 
 #ifdef _MSC_VER
 #pragma warning(disable : 4804 4805)
@@ -21,11 +22,11 @@ namespace coro::cloudstorage::util::js {
 
 namespace {
 
+using ::coro::http::ParseTime;
+using ::coro::util::AtScopeExit;
 using ::coro_cloudstorage_util_antlr::javascript_lexer;
 using ::coro_cloudstorage_util_antlr::javascript_parser;
 using ::coro_cloudstorage_util_antlr::javascript_parserBaseVisitor;
-
-namespace internal {
 
 class Value;
 
@@ -89,6 +90,11 @@ bool operator>=(const Undefined&, const T&) {
   return false;
 }
 
+class JsException : public std::exception {
+ public:
+  using std::exception::exception;
+};
+
 class Value : public Variant {
  public:
   using Variant::variant;
@@ -120,8 +126,7 @@ class Value : public Variant {
           } else if constexpr (std::is_same_v<V, Function>) {
             std::stringstream sstream;
             sstream << "[Function " << value.source->getText() << "]";
-            return "[Function]";
-            // return std::move(sstream).str();
+            return std::move(sstream).str();
           } else if constexpr (std::is_same_v<V, std::nullptr_t>) {
             return "null";
           } else if constexpr (std::is_same_v<V, Undefined>) {
@@ -200,7 +205,7 @@ class Value : public Variant {
                         }) {                                                 \
             return Value(e1 op e2);                                          \
           } else {                                                           \
-            throw std::runtime_error("can't " STR(op) " given types");       \
+            throw JsException("can't " STR(op) " given types");              \
           }                                                                  \
         },                                                                   \
         static_cast<const Variant&>(*v1), static_cast<const Variant&>(*v2)); \
@@ -215,7 +220,7 @@ class Value : public Variant {
                         }) {                                           \
             e1 op e2;                                                  \
           } else {                                                     \
-            throw std::runtime_error("can't " STR(op) " given types"); \
+            throw JsException("can't " STR(op) " given types");        \
           }                                                            \
         },                                                             \
         static_cast<Variant&>(*v1), static_cast<const Variant&>(*v2)); \
@@ -233,7 +238,7 @@ class Value : public Variant {
                         }) {                                                 \
             return e1 op e2;                                                 \
           } else {                                                           \
-            throw std::runtime_error("can't " STR(op) " given types");       \
+            throw JsException("can't " STR(op) " given types");              \
           }                                                                  \
         },                                                                   \
         static_cast<const Variant&>(*v1), static_cast<const Variant&>(*v2)); \
@@ -265,7 +270,7 @@ class Value : public Variant {
                         }) {
             return -e;
           } else {
-            throw std::runtime_error("can't negate given type");
+            throw JsException("can't negate given type");
           }
         },
         static_cast<const Variant&>(*v));
@@ -279,7 +284,7 @@ class Value : public Variant {
                         }) {
             ++e;
           } else {
-            throw std::runtime_error("can't increment given type");
+            throw JsException("can't increment given type");
           }
         },
         static_cast<Variant&>(*v));
@@ -295,7 +300,7 @@ class Value : public Variant {
                         }) {
             e++;
           } else {
-            throw std::runtime_error("can't increment given type");
+            throw JsException("can't increment given type");
           }
         },
         static_cast<Variant&>(*v));
@@ -310,7 +315,7 @@ class Value : public Variant {
                         }) {
             --e;
           } else {
-            throw std::runtime_error("can't decrement given type");
+            throw JsException("can't decrement given type");
           }
         },
         static_cast<Variant&>(*v));
@@ -326,12 +331,23 @@ class Value : public Variant {
                         }) {
             e--;
           } else {
-            throw std::runtime_error("can't decrement given type");
+            throw JsException("can't decrement given type");
           }
         },
         static_cast<Variant&>(*v));
     return copy;
   }
+};
+
+class JsValueException : public JsException {
+ public:
+  explicit JsValueException(Value value)
+      : JsException(value.ToString().c_str()), value_(std::move(value)) {}
+
+  const Value& value() const { return value_; }
+
+ private:
+  Value value_;
 };
 
 std::shared_ptr<Value> CreateRef(Value value) {
@@ -431,6 +447,15 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
     return ctx->switchBlock()->accept(this);
   }
 
+  std::any visitThrowStatement(
+      javascript_parser::ThrowStatementContext* ctx) override {
+    if (continue_pending_ || break_pending_ || current_return_) {
+      return nullptr;
+    }
+    throw JsValueException(
+        *std::any_cast<Value>(ctx->expression()->accept(this)));
+  }
+
   std::any visitTryCatchBlockStatement(
       javascript_parser::TryCatchBlockStatementContext* ctx) override {
     if (continue_pending_ || break_pending_ || current_return_) {
@@ -443,8 +468,15 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
       javascript_parser::TryCatchBlockContext* ctx) override {
     try {
       return ctx->block(0)->accept(this);
-    } catch (const std::exception& e) {
-      std::cerr << "EXCEPTION " << e.what() << '\n';
+    } catch (const JsValueException& e) {
+      environment_.PushStackFrame();
+      auto at_exit = AtScopeExit([&] { environment_.PopStackFrame(); });
+      environment_.Add(ctx->Identifier()->getText(), e.value());
+      return ctx->block(1)->accept(this);
+    } catch (const JsException& e) {
+      environment_.PushStackFrame();
+      auto at_exit = AtScopeExit([&] { environment_.PopStackFrame(); });
+      environment_.Add(ctx->Identifier()->getText(), e.what());
       return ctx->block(1)->accept(this);
     }
   }
@@ -572,7 +604,7 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
       **p = *rhs;
       return Value(std::move(*p));
     } else {
-      throw std::runtime_error("expression not assignable");
+      throw JsException("expression not assignable");
     }
   }
 
@@ -581,12 +613,12 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
     auto target = std::any_cast<Value>(ctx->expression(0)->accept(this));
     auto* array = target.GetIf<Array>();
     if (!array) {
-      throw std::runtime_error("object not an array");
+      throw JsException("object not an array");
     }
     auto index = *std::any_cast<Value>(ctx->expression(1)->accept(this));
     const auto* i = index.GetIf<int64_t>();
     if (!i) {
-      throw std::runtime_error("subscript not an integer");
+      throw JsException("subscript not an integer");
     }
     if (*i < 0) {
       return Value(Undefined{});
@@ -613,8 +645,9 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
     auto func = std::any_cast<Value>(expression[0]->accept(this));
     const auto* f = func.GetIf<Function>();
     if (!f) {
-      throw std::runtime_error("object not a function");
+      throw JsException("object not a function");
     }
+    auto at_exit = AtScopeExit([&] { environment_.PopStackFrame(); });
     environment_.PushStackFrame();
 
     for (size_t i = 0; i < f->args.size(); i++) {
@@ -626,7 +659,6 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
 
     f->source->accept(this);
 
-    environment_.PopStackFrame();
     if (current_return_) {
       auto result = std::move(*current_return_);
       current_return_ = std::nullopt;
@@ -733,8 +765,7 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
         return Value(int64_t((*array)->size()));
       }
     }
-    std::cerr << ctx->getText() << ' ' << obj.ToString() << '\n';
-    throw std::runtime_error("invalid member field reference");
+    throw JsException("invalid member field reference");
   }
 
   std::any visitOrExpression(
@@ -822,12 +853,12 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
     if (ctx->Identifier()->getText() == "Date") {
       auto expression = ctx->expression();
       if (expression.size() != 1) {
-        throw std::runtime_error("Invalid argument count for constructor.");
+        throw JsException("Invalid argument count for constructor.");
       }
       Value value = *std::any_cast<Value>(expression[0]->accept(this));
-      return Value(1000 * coro::http::ParseTime(value.Get<std::string>()));
+      return Value(1000 * ParseTime(value.Get<std::string>()));
     } else {
-      throw std::runtime_error("Unknown type.");
+      throw JsException("Unknown type.");
     }
   }
 
@@ -860,7 +891,7 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
     } else if (auto* object = ctx->object()) {
       return Value(Undefined{});
     } else {
-      throw std::runtime_error("invalid constant");
+      throw JsException("invalid constant");
     }
   }
 
@@ -870,7 +901,7 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
       if (method == "split") {
         auto args = f_args();
         if (args.size() != 1) {
-          throw std::runtime_error("split takes one argument");
+          throw JsException("split takes one argument");
         }
         return Split(*string, args[0].Get<std::string>());
       }
@@ -878,7 +909,7 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
       if (type->name == "String" && method == "fromCharCode") {
         auto args = f_args();
         if (args.size() != 1) {
-          throw std::runtime_error("fromCharCode takes one argument");
+          throw JsException("fromCharCode takes one argument");
         }
         return Value(static_cast<char>(args[0].Get<int64_t>()));
       } else if (type->name == "console" && method == "log") {
@@ -891,7 +922,7 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
       } else if (type->name == "Math" && method == "pow") {
         auto args = f_args();
         if (args.size() != 2) {
-          throw std::runtime_error("Math.pow takes two arguments");
+          throw JsException("Math.pow takes two arguments");
         }
         return int64_t(
             std::pow(args[0].Get<int64_t>(), args[1].Get<int64_t>()));
@@ -900,20 +931,20 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
       if (method == "push") {
         auto args = f_args();
         if (args.size() != 1) {
-          throw std::runtime_error("push takes one argument");
+          throw JsException("push takes one argument");
         }
         (*array)->emplace_back(CreateRef(std::move(args[0])));
         return nullptr;
       } else if (method == "join") {
         auto args = f_args();
         if (args.size() != 1) {
-          throw std::runtime_error("join takes one argument");
+          throw JsException("join takes one argument");
         }
         return Join(*array, args[0].Get<std::string>());
       } else if (method == "splice") {
         auto args = f_args();
         if (args.size() < 1) {
-          throw std::runtime_error("splice takes at least one argument");
+          throw JsException("splice takes at least one argument");
         }
         int64_t start = args[0].Get<int64_t>();
         return Splice(*array, start,
@@ -927,7 +958,7 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
       } else if (method == "forEach") {
         auto args = f_args();
         if (args.size() < 1 || args.size() > 2) {
-          throw std::runtime_error("forEach takes either 1 or 2 arguments");
+          throw JsException("forEach takes either 1 or 2 arguments");
         }
         ForEach(value, args[0].Get<Function>(),
                 args.size() == 2 ? std::make_optional(std::move(args[1]))
@@ -941,17 +972,17 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
       } else if (method == "indexOf") {
         auto args = f_args();
         if (args.size() != 1) {
-          throw std::runtime_error("indexOf takes one argument");
+          throw JsException("indexOf takes one argument");
         }
         return IndexOf(*array, args[0]);
       }
     }
-    throw std::runtime_error("unimplemented method");
+    throw JsException("unimplemented method");
   }
 
   static Array Split(std::string_view input, std::string_view separator) {
     if (separator != "") {
-      throw std::runtime_error("nonempty separator unsupported");
+      throw JsException("nonempty separator unsupported");
     }
     Array result = std::make_shared<std::vector<Value>>();
     for (char c : input) {
@@ -962,7 +993,7 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
 
   static std::string Join(const Array& array, std::string_view separator) {
     if (separator != "") {
-      throw std::runtime_error("nonempty separator unsupported");
+      throw JsException("nonempty separator unsupported");
     }
     std::string result;
     for (const auto& v : *array) {
@@ -1015,11 +1046,12 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
   void ForEach(const Value& array, const Function& callback,
                std::optional<Value> this_arg) {
     if (callback.args.size() > 3 || callback.args.size() < 1) {
-      throw std::runtime_error("invalid callback argument for forEach");
+      throw JsException("invalid callback argument for forEach");
     }
     int index = 0;
     for (const auto& e : *array.Get<Array>()) {
       environment_.PushStackFrame();
+      auto at_exit = AtScopeExit([&] { environment_.PopStackFrame(); });
       environment_.Add(callback.args[0], **e);
       if (callback.args.size() >= 2) {
         environment_.Add(callback.args[1], index);
@@ -1033,7 +1065,6 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
 
       callback.source->accept(this);
 
-      environment_.PopStackFrame();
       index++;
     }
   }
@@ -1058,14 +1089,14 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
           return value_it->second;
         }
       }
-      throw std::runtime_error("variable undefined");
+      throw JsException("variable undefined");
     }
 
     void Add(std::string_view name, Value value) {
       const auto [it, success] = stack_.back().try_emplace(
           std::string(name), CreateRef(std::move(value)));
       if (!success) {
-        throw std::runtime_error("variable redefined");
+        throw JsException("variable redefined");
       }
     }
 
@@ -1099,7 +1130,7 @@ std::string EvaluateJavascriptImpl(
     }
   }();
   if (arguments.size() != function.args.size()) {
-    throw std::runtime_error("invalid argument count");
+    throw JsException("invalid argument count");
   }
   std::vector<std::pair<std::string_view, Value>> environment(arguments.size());
   for (size_t i = 0; i < arguments.size(); i++) {
@@ -1109,17 +1140,16 @@ std::string EvaluateJavascriptImpl(
   if (Value* output = std::any_cast<Value>(&result)) {
     return output->ToString();
   } else {
-    return "invalid output";
+    throw JsException("invalid output");
   }
 }
 
-}  // namespace internal
-
 }  // namespace
 
-std::string EvaluateJavascript(const Function& function,
-                               std::span<const std::string> arguments) {
-  return internal::EvaluateJavascriptImpl(function, arguments);
+std::string EvaluateJavascript(
+    const coro::cloudstorage::util::js::Function& function,
+    std::span<const std::string> arguments) {
+  return EvaluateJavascriptImpl(function, arguments);
 }
 
 }  // namespace coro::cloudstorage::util::js

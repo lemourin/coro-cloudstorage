@@ -42,6 +42,7 @@ Or: '||';
 BitOr: '|';
 BitShiftLeft: '<<';
 
+Throw: 'throw';
 Void: 'void';
 New: 'new';
 Function: 'function';

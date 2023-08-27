@@ -20,6 +20,7 @@ statement
     | Return expression ';'?  #ReturnStatement
     | ';'  #EmptyStatement
     | If '(' expression ')' statement  #IfStatement
+    | Throw expression ';'?  #ThrowStatement
     ;
 
 tryCatchBlock
