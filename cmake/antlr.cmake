@@ -4,7 +4,7 @@ define_property(TARGET
                 FULL_DOCS "antlr token directory")
 
 function(antlr_target name)
-    find_package(antlr4-generator 4.9.1 CONFIG REQUIRED)
+    find_package(antlr4-generator 4.13.0 CONFIG REQUIRED)
     cmake_parse_arguments(PARSE_ARGV 1 ANTLR "LISTENER;VISITOR" "GRAMMAR;TYPE;NAMESPACE" "DEPENDS")
 
     get_filename_component(DIRECTORY ${ANTLR_GRAMMAR} DIRECTORY)

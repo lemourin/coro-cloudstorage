@@ -14,7 +14,7 @@ find_package(pugixml 1.11 REQUIRED)
 find_package(Libevent 2.1.12 REQUIRED)
 find_package(SqliteOrm 1.8.0 REQUIRED)
 
-find_package(antlr4-runtime 4.9.1 CONFIG REQUIRED)
+find_package(antlr4-runtime 4.13.0 CONFIG REQUIRED)
 add_library(antlr4::antlr4 ALIAS antlr4_static)
 
 find_package(FFMPEG 4.4 QUIET)
