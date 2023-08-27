@@ -8,8 +8,8 @@
     {
       "kind": "git",
       "repository": "https://github.com/lemourin/vcpkg-registry",
-      "baseline": "24371cec7a262d20cc997a06cc1efd3f6fefd64e",
-      "packages": [ "coro-http", "sqlite-orm" ]
+      "baseline": "5a8546a587a24d12c9e380531c461f0996aaa244",
+      "packages": [ "coro-http", "sqlite-orm", "antlr4" ]
     }
   ]
 }
