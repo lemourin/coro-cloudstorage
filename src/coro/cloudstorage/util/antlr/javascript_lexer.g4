@@ -41,6 +41,7 @@ And: '&&';
 Or: '||';
 BitOr: '|';
 BitShiftLeft: '<<';
+BitXor: '^';
 
 Throw: 'throw';
 Void: 'void';

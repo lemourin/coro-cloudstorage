@@ -80,6 +80,7 @@ expression
     | expression '<' expression  #LessExpression
     | expression '<<' expression  #BitShiftLeftExpression
     | expression '|' expression  #BitOrExpression
+    | expression '^' expression  #BitXorExpression
     | expression '?' expression ':' expression  #TernaryOperatorExpression
     | expression '===' expression  #StrictEqualExpression
     | expression '!==' expression  #NotStrictEqualExpression
