@@ -356,14 +356,6 @@ class JsValueException : public JsException {
   Value value_;
 };
 
-std::shared_ptr<Value> CreateRef(Value value) {
-  if (auto* p = std::get_if<std::shared_ptr<Value>>(&value)) {
-    return std::move(*p);
-  } else {
-    return std::make_shared<Value>(std::move(value));
-  }
-}
-
 class JavascriptVisitor : public javascript_parserBaseVisitor {
  public:
   explicit JavascriptVisitor(
@@ -597,7 +589,8 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
       javascript_parser::ArrayExpressionContext* ctx) override {
     Array array = std::make_shared<std::vector<Value>>();
     for (auto* expr : ctx->expression()) {
-      array->push_back(CreateRef(*std::any_cast<Value>(expr->accept(this))));
+      array->push_back(
+          environment_.CreateRef(*std::any_cast<Value>(expr->accept(this))));
     }
     return Value(std::move(array));
   }
@@ -939,7 +932,7 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
         if (args.size() != 1) {
           throw JsException("push takes one argument");
         }
-        (*array)->emplace_back(CreateRef(std::move(args[0])));
+        (*array)->emplace_back(environment_.CreateRef(std::move(args[0])));
         return nullptr;
       } else if (method == "join") {
         auto args = f_args();
@@ -986,18 +979,18 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
     throw JsException("unimplemented method");
   }
 
-  static Array Split(std::string_view input, std::string_view separator) {
+  Array Split(std::string_view input, std::string_view separator) {
     if (separator != "") {
       throw JsException("nonempty separator unsupported");
     }
     Array result = std::make_shared<std::vector<Value>>();
     for (char c : input) {
-      result->emplace_back(CreateRef(char(c)));
+      result->emplace_back(environment_.CreateRef(char(c)));
     }
     return result;
   }
 
-  static std::string Join(const Array& array, std::string_view separator) {
+  std::string Join(const Array& array, std::string_view separator) {
     if (separator != "") {
       throw JsException("nonempty separator unsupported");
     }
@@ -1008,15 +1001,15 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
     return result;
   }
 
-  static int64_t Unshift(Array& array, std::span<Value> args) {
+  int64_t Unshift(Array& array, std::span<Value> args) {
     for (auto it = std::rbegin(args); it != std::rend(args); it++) {
-      array->insert(array->begin(), CreateRef(std::move(*it)));
+      array->insert(array->begin(), environment_.CreateRef(std::move(*it)));
     }
     return array->size();
   }
 
-  static Array Splice(Array& array, int64_t start, int64_t delete_count,
-                      std::span<const Value> items) {
+  Array Splice(Array& array, int64_t start, int64_t delete_count,
+               std::span<const Value> items) {
     Array result = std::make_shared<std::vector<Value>>();
     int64_t s = start >= 0 ? start : array->size() + start;
     s = std::max<int64_t>(std::min<int64_t>(s, array->size()), 0);
@@ -1027,7 +1020,7 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
         array->begin() + s,
         array->begin() + std::min<int64_t>(s + delete_count, array->size()));
     for (auto it = std::rbegin(items); it != std::rend(items); it++) {
-      array->insert(array->begin() + s, CreateRef(std::move(*it)));
+      array->insert(array->begin() + s, environment_.CreateRef(std::move(*it)));
     }
     return result;
   }
@@ -1085,6 +1078,19 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
       Add("Math", Type{.name = "Math"});
     }
 
+    ~Environment() {
+      for (const auto& ref : refs_) {
+        if (auto* arr = ref->GetIf<Array>()) {
+          (*arr)->clear();
+        }
+      }
+    }
+
+    Environment(const Environment&) = delete;
+    Environment(Environment&&) = delete;
+    Environment& operator=(const Environment&) = delete;
+    Environment& operator=(Environment&&) = delete;
+
     void PushStackFrame() { stack_.emplace_back(); }
     void PopStackFrame() { stack_.pop_back(); }
 
@@ -1106,8 +1112,17 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
       }
     }
 
+    std::shared_ptr<Value> CreateRef(Value value) {
+      if (auto* p = std::get_if<std::shared_ptr<Value>>(&value)) {
+        return std::move(*p);
+      } else {
+        return refs_.emplace_back(std::make_shared<Value>(std::move(value)));
+      }
+    }
+
    private:
     std::vector<std::unordered_map<std::string, Value>> stack_;
+    std::vector<std::shared_ptr<Value>> refs_;
   } environment_;
   std::optional<Value> current_return_;
   bool break_pending_ = false;
