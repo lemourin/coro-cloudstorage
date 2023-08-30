@@ -535,6 +535,13 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
     return Value(Undefined{});
   }
 
+  std::any visitBitOrExpression(
+      javascript_parser::BitOrExpressionContext* ctx) override {
+    auto lhs = std::any_cast<Value>(ctx->expression(0)->accept(this));
+    auto rhs = std::any_cast<Value>(ctx->expression(1)->accept(this));
+    return Value(Undefined{});
+  }
+
   std::any visitParenthesisExpression(
       javascript_parser::ParenthesisExpressionContext* ctx) override {
     std::any result;

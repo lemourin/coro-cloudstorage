@@ -81,13 +81,13 @@ expression
     | expression '<<' expression  #BitShiftLeftExpression
     | expression '|' expression  #BitOrExpression
     | expression '^' expression  #BitXorExpression
-    | expression '?' expression ':' expression  #TernaryOperatorExpression
     | expression '===' expression  #StrictEqualExpression
     | expression '!==' expression  #NotStrictEqualExpression
     | expression '==' expression  #EqualExpression
     | expression '!=' expression  #NotEqualExpression
     | expression '&&' expression  #AndExpression
     | expression '||' expression  #OrExpression
+    | expression '?' expression ':' expression  #TernaryOperatorExpression
     ;
 
 object
