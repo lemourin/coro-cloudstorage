@@ -79,6 +79,8 @@ expression
     | expression '<=' expression  #LessOrEqualExpression
     | expression '<' expression  #LessExpression
     | expression '<<' expression  #BitShiftLeftExpression
+    | expression '>>' expression  #BitShiftRightExpression
+    | expression '>>>' expression  #BitUnsignedShiftRightExpression
     | expression '|' expression  #BitOrExpression
     | expression '^' expression  #BitXorExpression
     | expression '===' expression  #StrictEqualExpression
