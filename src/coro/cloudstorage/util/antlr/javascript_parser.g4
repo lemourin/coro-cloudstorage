@@ -24,7 +24,7 @@ statement
     ;
 
 tryCatchBlock
-    : Try block Catch '(' Identifier ')' block
+    : Try block Catch '(' Identifier ')' block (Finally block)?
     ;
 
 block

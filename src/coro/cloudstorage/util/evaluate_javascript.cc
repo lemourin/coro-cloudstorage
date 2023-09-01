@@ -464,19 +464,24 @@ class JavascriptVisitor : public javascript_parserBaseVisitor {
 
   std::any visitTryCatchBlock(
       javascript_parser::TryCatchBlockContext* ctx) override {
+    auto block = ctx->block();
     try {
-      return ctx->block(0)->accept(this);
+      block[0]->accept(this);
     } catch (const JsValueException& e) {
       environment_.PushStackFrame();
       auto at_exit = AtScopeExit([&] { environment_.PopStackFrame(); });
       environment_.Add(ctx->Identifier()->getText(), e.value());
-      return ctx->block(1)->accept(this);
+      block[1]->accept(this);
     } catch (const JsException& e) {
       environment_.PushStackFrame();
       auto at_exit = AtScopeExit([&] { environment_.PopStackFrame(); });
       environment_.Add(ctx->Identifier()->getText(), e.what());
-      return ctx->block(1)->accept(this);
+      block[1]->accept(this);
     }
+    if (block.size() == 3) {
+      block[2]->accept(this);
+    }
+    return nullptr;
   }
 
   std::any visitOneDeclaration(

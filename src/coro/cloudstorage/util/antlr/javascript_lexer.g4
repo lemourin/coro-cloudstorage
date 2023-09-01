@@ -45,6 +45,7 @@ BitShiftRight: '>>';
 BitUnsignedRightShift: '>>>';
 BitXor: '^';
 
+Finally: 'finally';
 Throw: 'throw';
 Void: 'void';
 New: 'new';
