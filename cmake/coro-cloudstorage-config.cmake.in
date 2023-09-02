@@ -2,7 +2,7 @@
 
 include(CMakeFindDependencyMacro)
 
-find_dependency(Duktape 2.7.0 CONFIG REQUIRED)
+find_dependency(duktape 2.7.0 CONFIG REQUIRED)
 find_dependency(coro-http REQUIRED)
 find_dependency(nlohmann_json 3.9.1 REQUIRED)
 find_dependency(fmt 8.0.0 REQUIRED)

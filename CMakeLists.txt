@@ -8,7 +8,7 @@ option(BUILD_EXAMPLES "build examples" ON)
 find_package(coro-http REQUIRED)
 list(APPEND CMAKE_MODULE_PATH ${coro-http_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-find_package(Duktape 2.4.0 CONFIG REQUIRED)
+find_package(duktape 2.4.0 CONFIG REQUIRED)
 find_package(nlohmann_json 3.9.1 REQUIRED)
 find_package(fmt 8.0.0 REQUIRED)
 find_package(pugixml 1.11 REQUIRED)
