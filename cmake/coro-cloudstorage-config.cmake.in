@@ -2,16 +2,13 @@
 
 include(CMakeFindDependencyMacro)
 
+find_dependency(Duktape 2.7.0 CONFIG REQUIRED)
 find_dependency(coro-http REQUIRED)
 find_dependency(nlohmann_json 3.9.1 REQUIRED)
 find_dependency(fmt 8.0.0 REQUIRED)
 find_dependency(pugixml 1.11 REQUIRED)
 find_dependency(Libevent 2.1.12 REQUIRED)
 find_dependency(SqliteOrm 1.8.0 REQUIRED)
-find_dependency(antlr4-runtime 4.13.0 CONFIG REQUIRED)
-if(NOT TARGET antlr4::antlr4)
-    add_library(antlr4::antlr4 ALIAS antlr4_static)
-endif()
 
 if(@FFMPEG_FOUND@)
     find_dependency(FFMPEG 4.4 REQUIRED)

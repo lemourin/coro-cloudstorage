@@ -19,6 +19,7 @@
     "libevent",
     "cryptopp",
     "sqlite-orm",
+    "duktape",
     {
       "name": "ffmpeg",
       "features": [
@@ -28,7 +29,6 @@
     {
       "name": "cppwinrt",
       "platform": "uwp"
-    },
-    "antlr4"
+    }
   ]
 }
