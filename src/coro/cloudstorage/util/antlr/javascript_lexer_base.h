@@ -3,7 +3,7 @@
 
 #include <antlr4-runtime.h>
 
-namespace coro_cloudstorage_util_antlr {
+namespace coro::cloudstorage::util::antlr {
 
 class JavaScriptLexerBase : public antlr4::Lexer {
  public:
@@ -20,6 +20,6 @@ class JavaScriptLexerBase : public antlr4::Lexer {
   size_t last_token_type_ = 0;
 };
 
-}  // namespace coro_cloudstorage_util_antlr
+}  // namespace coro::cloudstorage::util::antlr
 
 #endif  // CORO_CLOUDSTORAGE_UTIL_ANTLR_JAVASCRIPT_LEXER_BASE_H

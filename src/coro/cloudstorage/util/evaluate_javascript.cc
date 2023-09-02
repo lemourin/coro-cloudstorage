@@ -23,11 +23,11 @@ namespace coro::cloudstorage::util::js {
 
 namespace {
 
+using ::coro::cloudstorage::util::antlr::javascript_lexer;
+using ::coro::cloudstorage::util::antlr::javascript_parser;
+using ::coro::cloudstorage::util::antlr::javascript_parserBaseVisitor;
 using ::coro::http::ParseTime;
 using ::coro::util::AtScopeExit;
-using ::coro_cloudstorage_util_antlr::javascript_lexer;
-using ::coro_cloudstorage_util_antlr::javascript_parser;
-using ::coro_cloudstorage_util_antlr::javascript_parserBaseVisitor;
 
 class Value;
 

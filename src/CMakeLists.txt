@@ -251,7 +251,7 @@ target_link_libraries(coro-cloudstorage PRIVATE coro-cloudstorage-resource)
 antlr_target(javascript-lexer
              GRAMMAR coro/cloudstorage/util/antlr/javascript_lexer.g4
              TYPE LEXER
-             NAMESPACE coro_cloudstorage_util_antlr)
+             NAMESPACE coro::cloudstorage::util::antlr)
 target_sources(javascript-lexer PRIVATE
                coro/cloudstorage/util/antlr/javascript_lexer_base.h
                coro/cloudstorage/util/antlr/javascript_lexer_base.cc)
@@ -260,7 +260,7 @@ target_include_directories(javascript-lexer PRIVATE . coro/cloudstorage/util)
 antlr_target(javascript-parser
              GRAMMAR coro/cloudstorage/util/antlr/javascript_parser.g4
              TYPE PARSER
-             NAMESPACE coro_cloudstorage_util_antlr
+             NAMESPACE coro::cloudstorage::util::antlr
              VISITOR
              DEPENDS javascript-lexer)
 

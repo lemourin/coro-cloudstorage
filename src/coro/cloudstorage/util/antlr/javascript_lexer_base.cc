@@ -2,7 +2,7 @@
 
 #include "coro/cloudstorage/util/antlr/javascript-lexer/javascript_lexer.h"
 
-namespace coro_cloudstorage_util_antlr {
+namespace coro::cloudstorage::util::antlr {
 
 std::unique_ptr<antlr4::Token> JavaScriptLexerBase::nextToken() {
   auto next = antlr4::Lexer::nextToken();
@@ -39,4 +39,4 @@ bool JavaScriptLexerBase::IsRegexPossible() {
   }
 }
 
-}  // namespace coro_cloudstorage_util_antlr
+}  // namespace coro::cloudstorage::util::antlr
