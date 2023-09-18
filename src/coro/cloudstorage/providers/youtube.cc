@@ -223,6 +223,9 @@ std::string GenerateDashManifest(const util::ItemUrlProvider& item_url_provider,
     grouped[mimetype.substr(0, mimetype.find(';'))].emplace_back(d);
   }
   for (const auto& [mimetype, streams] : grouped) {
+    if (!mimetype.ends_with("/mp4")) {
+      continue;
+    }
     int stream_count = 0;
     for (const auto& stream : streams) {
       if (stream.contains("indexRange") && stream.contains("initRange")) {
