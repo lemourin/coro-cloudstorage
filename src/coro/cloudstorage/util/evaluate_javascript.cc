@@ -9,18 +9,20 @@
 #include <string>
 #include <utility>
 
+#include "coro/exception.h"
+
 namespace coro::cloudstorage::util::js {
 
 namespace {
 
-class JsException : public std::exception {
+class JsException : public RuntimeError {
  public:
-  explicit JsException(std::string what) : what_(std::move(what)) {}
-
-  const char* what() const noexcept override { return what_.c_str(); }
-
- private:
-  std::string what_;
+  explicit JsException(
+      std::string message,
+      stdx::source_location location = stdx::source_location::current(),
+      stdx::stacktrace stacktrace = stdx::stacktrace::current())
+      : RuntimeError(std::move(message), std::move(location),
+                     std::move(stacktrace)) {}
 };
 
 struct DukHeapDeleter {
