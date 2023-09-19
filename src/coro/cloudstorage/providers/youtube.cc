@@ -212,7 +212,8 @@ std::string GenerateDashManifest(const util::ItemUrlProvider& item_url_provider,
             {"xsi:schemaLocation",
              "urn:mpeg:dash:schema:mpd:2011 DASH-MPD.xsd"},
             {"type", "static"},
-            {"mediaPresentationDuration", StrCat("PT", duration / 1000, "S")},
+            {"mediaPresentationDuration",
+             StrCat("PT", (duration + 1000 - 1) / 1000, "S")},
             {"minBufferTime", "PT2S"},
             {"profiles", "urn:mpeg:dash:profile:isoff-on-demand:2011"}})
     << ">";
@@ -220,12 +221,24 @@ std::string GenerateDashManifest(const util::ItemUrlProvider& item_url_provider,
   std::unordered_map<std::string, std::vector<json>> grouped;
   for (const auto& d : stream_data) {
     std::string mimetype = d["mimeType"];
-    grouped[mimetype.substr(0, mimetype.find(';'))].emplace_back(d);
-  }
-  for (const auto& [mimetype, streams] : grouped) {
-    if (!mimetype.ends_with("/mp4")) {
+#ifdef WINRT
+    if (mimetype.find("mp4") == std::string::npos) {
       continue;
     }
+    if (mimetype.find("av01") != std::string::npos) {
+      continue;
+    }
+#endif
+    grouped[mimetype.substr(0, mimetype.find(';'))].emplace_back(d);
+  }
+  int adaptation_set_index = 0;
+  for (std::string mimetype :
+       {"video/mp4", "audio/mp4", "video/webm", "audio/webm"}) {
+    auto it = grouped.find(mimetype);
+    if (it == grouped.end()) {
+      continue;
+    }
+    const auto& streams = it->second;
     int stream_count = 0;
     for (const auto& stream : streams) {
       if (stream.contains("indexRange") && stream.contains("initRange")) {
@@ -237,7 +250,8 @@ std::string GenerateDashManifest(const util::ItemUrlProvider& item_url_provider,
     }
     std::string type = mimetype.substr(0, mimetype.find('/'));
     r << "<AdaptationSet "
-      << XmlAttributes({{"mimeType", mimetype},
+      << XmlAttributes({{"id", std::to_string(adaptation_set_index++)},
+                        {"mimeType", mimetype},
                         {"contentType", type},
                         {"bitstreamSwitching", "true"},
                         {"segmentAlignment", "true"},
@@ -252,9 +266,6 @@ std::string GenerateDashManifest(const util::ItemUrlProvider& item_url_provider,
       }
       std::string full_mimetype = stream["mimeType"];
       std::string codecs = full_mimetype.substr(full_mimetype.find(';') + 2);
-      std::string quality_label =
-          (stream.contains("qualityLabel") ? stream["qualityLabel"]
-                                           : stream["audioQuality"]);
       std::string extension(
           full_mimetype.begin() + static_cast<std::string::difference_type>(
                                       full_mimetype.find('/') + 1),
@@ -262,7 +273,7 @@ std::string GenerateDashManifest(const util::ItemUrlProvider& item_url_provider,
                                       full_mimetype.find(';')));
       r << "<Representation "
         << XmlAttributes(
-               {{"id", quality_label},
+               {{"id", std::to_string(int64_t(stream["itag"]))},
                 {"bandwidth", std::to_string(int64_t(stream["bitrate"]))}})
         << " " << codecs;
       if (type == "video") {
