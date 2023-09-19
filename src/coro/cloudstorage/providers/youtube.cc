@@ -214,7 +214,7 @@ std::string GenerateDashManifest(const util::ItemUrlProvider& item_url_provider,
             {"type", "static"},
             {"mediaPresentationDuration", StrCat("PT", duration / 1000, "S")},
             {"minBufferTime", "PT2S"},
-            {"profiles", "urn:mpeg:dash:profile:isoff-main:2011"}})
+            {"profiles", "urn:mpeg:dash:profile:isoff-on-demand:2011"}})
     << ">";
   r << "<Period>";
   std::unordered_map<std::string, std::vector<json>> grouped;
