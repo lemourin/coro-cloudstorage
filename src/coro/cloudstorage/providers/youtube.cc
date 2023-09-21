@@ -10,6 +10,7 @@
 #include "coro/cloudstorage/util/evaluate_javascript.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/util/regex.h"
+#include "coro/when_all.h"
 
 namespace coro::cloudstorage {
 
@@ -32,6 +33,7 @@ namespace re = ::coro::util::re;
 constexpr std::string_view kEndpoint = "https://www.googleapis.com/youtube/v3";
 constexpr std::string_view kChannelPlayListsPageToken = "CHANNEL_PLAYLISTS";
 constexpr std::string_view kUserPlayListsPageToken = "USER_PLAYLISTS";
+constexpr int kMaxRedirectCount = 8;
 
 std::string GetEndpoint(std::string_view path) {
   return StrCat(kEndpoint, path);
@@ -455,6 +457,34 @@ YouTube::ThumbnailData ToThumbnailData(const nlohmann::json& json) {
   return data;
 }
 
+std::string GetVideoUrl(const YouTube::StreamData& data, int64_t itag) {
+  std::optional<std::string> url;
+  for (const auto& formats : {data.adaptive_formats, data.formats}) {
+    for (const auto& d : formats) {
+      if (d["itag"] == itag) {
+        if (d.contains("url")) {
+          url = d["url"];
+        } else {
+          url = (*data.descrambler)(std::string(d["signatureCipher"]));
+        }
+        auto uri = http::ParseUri(*url);
+        auto params = http::ParseQuery(uri.query.value_or(""));
+        if (auto it = params.find("n");
+            it != params.end() && data.new_descrambler) {
+          it->second = (*data.new_descrambler)(it->second);
+          url = StrCat(uri.scheme.value_or("https"), "://",
+                       uri.host.value_or(""), uri.path.value_or(""), '?',
+                       http::FormDataToString(params));
+        }
+      }
+    }
+  }
+  if (!url) {
+    throw CloudException(CloudException::Type::kNotFound);
+  }
+  return *url;
+}
+
 }  // namespace
 
 std::string YouTube::Auth::GetAuthorizationUrl(const AuthData& data) {
@@ -852,21 +882,22 @@ Generator<std::string> YouTube::GetMuxedFileContent(
 }
 
 Generator<std::string> YouTube::GetFileContentImpl(
-    Stream file, http::Range range, stdx::stop_token stop_token) {
-  std::string video_url =
-      co_await GetVideoUrl(file.id.id, file.id.itag, stop_token);
+    Stream file, http::Range range, stdx::stop_token stop_token) const {
+  auto stream_data = co_await stream_cache_.Get(file.id.id, stop_token);
+  std::string video_url = GetVideoUrl(stream_data, file.id.itag);
   Request request{.url = std::move(video_url),
                   .headers = {http::ToRangeHeader(range)}};
   auto response = co_await http_->Fetch(std::move(request), stop_token);
   if (response.status / 100 == 4) {
     stream_cache_.Invalidate(file.id.id);
-    video_url = co_await GetVideoUrl(file.id.id, file.id.itag, stop_token);
+    video_url = GetVideoUrl(co_await stream_cache_.Get(file.id.id, stop_token),
+                            file.id.itag);
     Request retry_request{.url = std::move(video_url),
                           .headers = {http::ToRangeHeader(range)}};
     response = co_await http_->Fetch(std::move(retry_request), stop_token);
   }
 
-  int max_redirect_count = 8;
+  int max_redirect_count = kMaxRedirectCount;
   while (response.status == 302 && max_redirect_count-- > 0) {
     auto redirect_request = Request{
         .url = coro::http::GetHeader(response.headers, "Location").value(),
@@ -876,8 +907,9 @@ Generator<std::string> YouTube::GetFileContentImpl(
   if (response.status / 100 != 2) {
     throw http::HttpException(response.status);
   }
-
-  FOR_CO_AWAIT(std::string & body, response.body) { co_yield std::move(body); }
+  FOR_CO_AWAIT(std::string & chunk, response.body) {
+    co_yield std::move(chunk);
+  }
 }
 
 template <typename ItemT>
@@ -911,36 +943,6 @@ auto YouTube::GetItemThumbnailImpl(ItemT item, ThumbnailQuality quality,
   co_return result;
 }
 
-Task<std::string> YouTube::GetVideoUrl(std::string video_id, int64_t itag,
-                                       stdx::stop_token stop_token) const {
-  StreamData data = co_await stream_cache_.Get(video_id, stop_token);
-  std::optional<std::string> url;
-  for (const auto& formats : {data.adaptive_formats, data.formats}) {
-    for (const auto& d : formats) {
-      if (d["itag"] == itag) {
-        if (d.contains("url")) {
-          url = d["url"];
-        } else {
-          url = (*data.descrambler)(std::string(d["signatureCipher"]));
-        }
-        auto uri = http::ParseUri(*url);
-        auto params = http::ParseQuery(uri.query.value_or(""));
-        if (auto it = params.find("n");
-            it != params.end() && data.new_descrambler) {
-          it->second = (*data.new_descrambler)(it->second);
-          url = StrCat(uri.scheme.value_or("https"), "://",
-                       uri.host.value_or(""), uri.path.value_or(""), '?',
-                       http::FormDataToString(params));
-        }
-      }
-    }
-  }
-  if (!url) {
-    throw CloudException(CloudException::Type::kNotFound);
-  }
-  co_return *url;
-}
-
 auto YouTube::GetStreamData::operator()(std::string video_id,
                                         stdx::stop_token stop_token) const
     -> Task<StreamData> {
@@ -958,13 +960,47 @@ auto YouTube::GetStreamData::operator()(std::string video_id,
   auto player_content = co_await http::GetBody(std::move(response.body));
   result.new_descrambler = GetNewDescrambler(player_content);
   for (const auto& formats : {result.adaptive_formats, result.formats}) {
+    if (result.descrambler) {
+      break;
+    }
     for (const auto& d : formats) {
       if (!d.contains("url")) {
         result.descrambler = GetDescrambler(player_content);
-        co_return result;
+        break;
       }
     }
   }
+  std::vector<Task<>> tasks;
+  for (auto& format : result.formats) {
+    if (format.contains("contentLength")) {
+      continue;
+    }
+    tasks.emplace_back([](const http::Http& http, const StreamData& stream_data,
+                          nlohmann::json& format,
+                          stdx::stop_token stop_token) -> Task<> {
+      auto request =
+          http::Request<>{.url = GetVideoUrl(stream_data, format["itag"]),
+                          .method = http::Method::kHead};
+      auto response = co_await http.Fetch(std::move(request), stop_token);
+      int max_redirect_count = kMaxRedirectCount;
+      while (response.status == 302 && max_redirect_count-- > 0) {
+        auto redirect_request = Request{
+            .url = coro::http::GetHeader(response.headers, "Location").value(),
+            .method = http::Method::kHead};
+        response = co_await http.Fetch(std::move(redirect_request), stop_token);
+      }
+      if (response.status / 100 != 2) {
+        throw http::HttpException(response.status);
+      }
+      if (auto content_length =
+              http::GetHeader(response.headers, "Content-Length")) {
+        format["contentLength"] = *content_length;
+      }
+    }(http, result, format, stop_token));
+  }
+
+  co_await WhenAll(std::move(tasks));
+
   co_return result;
 }
 

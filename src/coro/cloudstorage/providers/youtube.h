@@ -177,6 +177,12 @@ class YouTube {
   static nlohmann::json ToJson(const Item&);
 
  private:
+  struct GetStreamData {
+    Task<StreamData> operator()(std::string video_id,
+                                stdx::stop_token stop_token) const;
+    const http::Http& http;
+  };
+
   template <typename MuxedStream>
   Generator<std::string> GetMuxedFileContent(MuxedStream file,
                                              http::Range range,
@@ -184,22 +190,13 @@ class YouTube {
                                              stdx::stop_token stop_token);
 
   Generator<std::string> GetFileContentImpl(Stream file, http::Range range,
-                                            stdx::stop_token stop_token);
+                                            stdx::stop_token stop_token) const;
 
   template <typename Item>
   Task<Thumbnail> GetItemThumbnailImpl(Item item,
                                        util::ThumbnailQuality quality,
                                        http::Range range,
                                        stdx::stop_token stop_token);
-
-  Task<std::string> GetVideoUrl(std::string video_id, int64_t itag,
-                                stdx::stop_token stop_token) const;
-
-  struct GetStreamData {
-    Task<StreamData> operator()(std::string video_id,
-                                stdx::stop_token stop_token) const;
-    const http::Http& http;
-  };
 
   AuthManager auth_manager_;
   const http::Http* http_;
