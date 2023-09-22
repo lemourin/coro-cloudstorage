@@ -175,21 +175,12 @@ target_link_libraries(coro-cloudstorage PRIVATE
     pugixml::pugixml
     libevent::core
     sqlite_orm::sqlite_orm
+    FFMPEG::avcodec
+    FFMPEG::avutil
+    FFMPEG::avformat
+    FFMPEG::swscale
+    FFMPEG::avfilter
 )
-
-if(FFMPEG_LIBRARIES)
-    target_include_directories(coro-cloudstorage PRIVATE ${FFMPEG_INCLUDE_DIRS})
-    target_link_directories(coro-cloudstorage PRIVATE ${FFMPEG_LIBRARY_DIRS})
-    target_link_libraries(coro-cloudstorage PRIVATE ${FFMPEG_LIBRARIES})
-else()
-    target_link_libraries(coro-cloudstorage PRIVATE
-        FFMPEG::avcodec
-        FFMPEG::avutil
-        FFMPEG::avformat
-        FFMPEG::swscale
-        FFMPEG::avfilter
-    )
-endif()
 
 add_resource_library(
     coro-cloudstorage-resource
@@ -255,10 +246,9 @@ target_include_directories(
     PRIVATE 
         .
         ${CMAKE_CURRENT_BINARY_DIR}
-        ${DUKTAPE_INCLUDE_DIRS}
         coro/cloudstorage/util
 )
-target_link_libraries(evaluate-javascript PRIVATE coro::coro-http ${DUKTAPE_LIBRARY})
+target_link_libraries(evaluate-javascript PRIVATE coro::coro-http duktape::duktape)
 target_link_libraries(coro-cloudstorage PRIVATE evaluate-javascript)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
@@ -272,8 +262,8 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 install(
     TARGETS 
-        coro-cloudstorage 
-        coro-cloudstorage-resource 
+        coro-cloudstorage
+        coro-cloudstorage-resource
         evaluate-javascript
     EXPORT 
         coro-cloudstorage 
