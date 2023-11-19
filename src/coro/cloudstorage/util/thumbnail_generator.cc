@@ -425,10 +425,13 @@ auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
       std::move(GraphBuilder(read_graph).AddFilter("thumbnail", {})).Build();
 
   int stream_orientation = [&] {
-    auto* stream_matrix = reinterpret_cast<int32_t*>(av_stream_get_side_data(
-        context->streams[stream], AV_PKT_DATA_DISPLAYMATRIX, nullptr));
+    const AVPacketSideData* stream_matrix = av_packet_side_data_get(
+        context->streams[stream]->codecpar->coded_side_data,
+        context->streams[stream]->codecpar->nb_coded_side_data,
+        AV_PKT_DATA_DISPLAYMATRIX);
     if (stream_matrix != nullptr) {
-      return GetExifOrientation(stream_matrix);
+      return GetExifOrientation(
+          reinterpret_cast<const int32_t*>(stream_matrix->data));
     } else {
       return 0;
     }
