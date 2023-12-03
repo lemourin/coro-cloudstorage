@@ -2,6 +2,22 @@
 
 namespace coro::cloudstorage::util {
 
+CloudFactoryServer::CloudFactoryServer(
+    AccountManagerHandler account_manager,
+    const coro::util::EventLoop* event_loop,
+    const coro::util::TcpServer::Config& config)
+    : account_manager_(std::move(account_manager)),
+      http_server_(coro::http::CreateHttpServer(
+          [&]<typename... Args>(Args... args) {
+            return account_manager_(std::forward<Args>(args)...);
+          },
+          event_loop, config)) {}
+
+Task<> CloudFactoryServer::Quit() {
+  account_manager_.Quit();
+  return http_server_.Quit();
+}
+
 CloudFactoryContext::CloudFactoryContext(
     const coro::util::EventLoop* event_loop, CloudFactoryConfig config)
     : event_loop_(event_loop),
@@ -27,9 +43,17 @@ AccountManagerHandler CloudFactoryContext::CreateAccountManagerHandler(
           std::move(listener), &settings_manager_,    &cache_};
 }
 
-http::HttpServer<AccountManagerHandler> CloudFactoryContext::CreateHttpServer(
+coro::util::TcpServer CloudFactoryContext::CreateHttpServer(
+    coro::http::HttpHandler handler) {
+  return coro::http::CreateHttpServer(std::move(handler), event_loop_,
+                                      settings_manager_.GetHttpServerConfig());
+}
+
+CloudFactoryServer CloudFactoryContext::CreateHttpServer(
     AccountListener listener) {
-  return CreateHttpServer(CreateAccountManagerHandler(std::move(listener)));
+  return CloudFactoryServer(CreateAccountManagerHandler(std::move(listener)),
+                            event_loop_,
+                            settings_manager_.GetHttpServerConfig());
 }
 
 }  // namespace coro::cloudstorage::util

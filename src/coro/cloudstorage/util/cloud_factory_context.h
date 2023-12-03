@@ -17,6 +17,19 @@
 
 namespace coro::cloudstorage::util {
 
+class CloudFactoryServer {
+ public:
+  CloudFactoryServer(AccountManagerHandler,
+                     const coro::util::EventLoop* event_loop,
+                     const coro::util::TcpServer::Config& config);
+
+  Task<> Quit();
+
+ private:
+  AccountManagerHandler account_manager_;
+  coro::util::TcpServer http_server_;
+};
+
 class CloudFactoryContext {
  public:
   CloudFactoryContext(const coro::util::EventLoop* event_loop,
@@ -31,16 +44,8 @@ class CloudFactoryContext {
   auto* clock() { return &clock_; }
 
   AccountManagerHandler CreateAccountManagerHandler(AccountListener listener);
-
-  template <typename HandlerTypeT>
-  http::HttpServer<HandlerTypeT> CreateHttpServer(HandlerTypeT handler) {
-    return http::HttpServer<HandlerTypeT>(
-        event_loop_, settings_manager_.GetHttpServerConfig(),
-        std::move(handler));
-  }
-
-  http::HttpServer<AccountManagerHandler> CreateHttpServer(
-      AccountListener listener);
+  coro::util::TcpServer CreateHttpServer(coro::http::HttpHandler handler);
+  CloudFactoryServer CreateHttpServer(AccountListener listener);
 
  private:
   const coro::util::EventLoop* event_loop_;

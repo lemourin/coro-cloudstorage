@@ -18,6 +18,10 @@ namespace coro::cloudstorage::util {
 class AccountListener {
  public:
   template <typename T>
+    requires requires(T impl, CloudProviderAccount account) {
+      impl.OnCreate(std::move(account));
+      impl.OnDestroy(std::move(account));
+    }
   AccountListener(T impl)
       : d_(std::make_unique<AccountListenerImpl<T>>(std::move(impl))) {}
 

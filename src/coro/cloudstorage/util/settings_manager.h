@@ -34,7 +34,7 @@ class SettingsManager {
     return effective_is_public_network_enabled_;
   }
 
-  http::HttpServerConfig GetHttpServerConfig() const;
+  coro::util::TcpServer::Config GetHttpServerConfig() const;
 
   std::string GetPostAuthRedirectUri(std::string_view account_type,
                                      std::string_view username) const;

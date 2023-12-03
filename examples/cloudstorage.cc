@@ -47,24 +47,24 @@ class HttpHandler {
     }
     std::cerr << "\n";
     if (request.url == "/quit") {
-      co_return Response{
-          .status = 200,
-          .body = GetQuitResponse(
-              std::unique_ptr<Promise<void>, QuitDeleter>(quit_))};
+      co_return Response{.status = 200,
+                         .body = GetQuitResponse(
+                             std::unique_ptr<HttpHandler, QuitDeleter>(this))};
     }
     co_return co_await account_manager_handler_(std::move(request),
                                                 std::move(stop_token));
   }
 
-  auto Quit() { return account_manager_handler_.Quit(); }
-
  private:
   struct QuitDeleter {
-    void operator()(Promise<void>* quit) { quit->SetValue(); }
+    void operator()(HttpHandler* handler) {
+      handler->account_manager_handler_.Quit();
+      handler->quit_->SetValue();
+    }
   };
 
   Generator<std::string> GetQuitResponse(
-      std::unique_ptr<Promise<void>, QuitDeleter>) const {
+      std::unique_ptr<HttpHandler, QuitDeleter>) const {
     co_yield "QUITTING...\n";
   }
 
