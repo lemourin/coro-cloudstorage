@@ -2,6 +2,8 @@
 
 namespace coro::cloudstorage::util {
 
+using ::coro::http::CurlHttpConfig;
+
 CloudFactoryServer::CloudFactoryServer(
     AccountManagerHandler account_manager,
     const coro::util::EventLoop* event_loop,
@@ -24,7 +26,7 @@ CloudFactoryContext::CloudFactoryContext(
       cache_db_(CreateCacheDatabase(config.cache_path)),
       thread_pool_(event_loop_, (std::thread::hardware_concurrency() + 1) / 2,
                    "coro-tpool"),
-      curl_http_(event_loop_, GetDirectoryPath(config.cache_path)),
+      curl_http_(event_loop_, std::move(config.http_client_config)),
       http_(config.http_cache_config, &curl_http_),
       thumbnail_thread_pool_(
           event_loop_, std::thread::hardware_concurrency() / 2, "coro-thumb"),

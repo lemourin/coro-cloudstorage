@@ -8,6 +8,7 @@
 #include "coro/cloudstorage/util/file_utils.h"
 #include "coro/cloudstorage/util/settings_utils.h"
 #include "coro/http/cache_http.h"
+#include "coro/http/curl_http.h"
 
 namespace coro::cloudstorage::util {
 
@@ -27,6 +28,8 @@ struct CloudFactoryConfig {
                             std::string_view username)>
       post_auth_redirect_uri = GetDefaultPostAuthRedirectUri;
   AuthData auth_data = GetDefaultAuthData();
+  coro::http::CurlHttpConfig http_client_config = {
+      .cache_path = GetDirectoryPath(this->cache_path)};
 
   static std::string GetDefaultPostAuthRedirectUri(
       std::string_view account_type, std::string_view username);
