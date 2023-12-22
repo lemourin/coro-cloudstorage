@@ -29,7 +29,8 @@ struct CloudFactoryConfig {
       post_auth_redirect_uri = GetDefaultPostAuthRedirectUri;
   AuthData auth_data = GetDefaultAuthData();
   coro::http::CurlHttpConfig http_client_config = {
-      .cache_path = GetDirectoryPath(this->cache_path)};
+      .alt_svc_path =
+          util::StrCat(GetDirectoryPath(this->cache_path), "/alt-svc.txt")};
 
   static std::string GetDefaultPostAuthRedirectUri(
       std::string_view account_type, std::string_view username);
