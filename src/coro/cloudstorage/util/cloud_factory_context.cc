@@ -26,8 +26,8 @@ CloudFactoryContext::CloudFactoryContext(
       cache_db_(CreateCacheDatabase(config.cache_path)),
       thread_pool_(event_loop_, (std::thread::hardware_concurrency() + 1) / 2,
                    "coro-tpool"),
-      curl_http_(event_loop_, std::move(config.http_client_config)),
-      http_(config.http_cache_config, &curl_http_),
+      curl_http_(http::CurlHttp(event_loop_, std::move(config.http_client_config))),
+      http_(http::CacheHttp(config.http_cache_config, &curl_http_)),
       thumbnail_thread_pool_(
           event_loop_, std::thread::hardware_concurrency() / 2, "coro-thumb"),
       thumbnail_generator_(&thumbnail_thread_pool_, event_loop_),
