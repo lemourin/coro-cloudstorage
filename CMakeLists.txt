@@ -4,6 +4,7 @@ project(coro-cloudstorage CXX C)
 
 option(BUILD_SHARED_LIBS "build shared libs" OFF)
 option(BUILD_EXAMPLES "build examples" ON)
+option(BUILD_TESTING "build tests" OFF)
 
 find_package(coro-http REQUIRED)
 list(APPEND CMAKE_MODULE_PATH ${coro-http_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -62,4 +63,9 @@ endif()
 add_subdirectory(src)
 if(BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory(test)
 endif()

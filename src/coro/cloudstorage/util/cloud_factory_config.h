@@ -12,7 +12,13 @@
 
 namespace coro::cloudstorage::util {
 
+std::string GetDefaultPostAuthRedirectUri(std::string_view account_type,
+                                          std::string_view username);
+
+AuthData GetDefaultAuthData();
+
 struct CloudFactoryConfig {
+  const coro::util::EventLoop* event_loop = nullptr;
   coro::http::CacheHttpConfig http_cache_config = {};
   std::string config_path = [] {
     std::string path = GetConfigFilePath();
@@ -28,14 +34,10 @@ struct CloudFactoryConfig {
                             std::string_view username)>
       post_auth_redirect_uri = GetDefaultPostAuthRedirectUri;
   AuthData auth_data = GetDefaultAuthData();
-  coro::http::CurlHttpConfig http_client_config = {
-      .alt_svc_path =
-          util::StrCat(GetDirectoryPath(this->cache_path), "/alt-svc.txt")};
-
-  static std::string GetDefaultPostAuthRedirectUri(
-      std::string_view account_type, std::string_view username);
-
-  static AuthData GetDefaultAuthData();
+  http::Http http{http::CurlHttp(
+      event_loop,
+      http::CurlHttpConfig{.alt_svc_path = StrCat(GetDirectoryPath(cache_path),
+                                                  "/alt-svc.txt")})};
 };
 
 }  // namespace coro::cloudstorage::util

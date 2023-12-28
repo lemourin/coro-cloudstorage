@@ -32,8 +32,7 @@ class CloudFactoryServer {
 
 class CloudFactoryContext {
  public:
-  CloudFactoryContext(const coro::util::EventLoop* event_loop,
-                      CloudFactoryConfig config);
+  explicit CloudFactoryContext(CloudFactoryConfig config);
 
   CloudFactoryContext(CloudFactoryContext&&) = delete;
   CloudFactoryContext& operator=(CloudFactoryContext&&) = delete;
@@ -51,8 +50,8 @@ class CloudFactoryContext {
   const coro::util::EventLoop* event_loop_;
   std::unique_ptr<CacheDatabase, CacheDatabaseDeleter> cache_db_;
   coro::util::ThreadPool thread_pool_;
-  http::Http curl_http_;
   http::Http http_;
+  http::Http cached_http_;
   coro::util::ThreadPool thumbnail_thread_pool_;
   util::ThumbnailGenerator thumbnail_generator_;
   util::Muxer muxer_;

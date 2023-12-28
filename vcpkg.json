@@ -8,28 +8,29 @@
     },
     {
       "name": "coro-http",
-      "platform": "!uwp & !android",
       "features": [
         "stacktrace"
-      ]
-    },
-    "nlohmann-json",
-    "fmt",
-    "pugixml",
-    "libevent",
-    "cryptopp",
-    "sqlite-orm",
-    "duktape",
-    {
-      "name": "ffmpeg",
-      "features": [
-        "zlib",
-        "dav1d"
-      ]
+      ],
+      "platform": "!uwp & !android"
     },
     {
       "name": "cppwinrt",
       "platform": "uwp"
-    }
+    },
+    "cryptopp",
+    "duktape",
+    {
+      "name": "ffmpeg",
+      "features": [
+        "dav1d",
+        "zlib"
+      ]
+    },
+    "fmt",
+    "gtest",
+    "libevent",
+    "nlohmann-json",
+    "pugixml",
+    "sqlite-orm"
   ]
 }

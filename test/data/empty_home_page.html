@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <title>coro-cloudstorage</title>
+    <meta name='viewport'
+          content='width=device-width, initial-scale=1'>
+    <link rel='stylesheet' href='/static/layout.css'>
+    <link rel='stylesheet' href='/static/colors.css'>
+    <link rel='icon' type='image/x-icon' href='/static/favicon.ico'>
+    <script src='/static/account_list_main.js'></script>
+</head>
+<body class='root-container'>
+<table class='content-table'>
+    <tr>
+        <td>
+            <a href="/settings"><img class='settings-icon icon' src='/static/configure-settings.svg'></a>
+        </td>
+    </tr>
+    <tr>
+        <td><h3 class='table-header'>ADD CLOUD PROVIDERS</h3></td>
+    </tr>
+    <tr>
+        <td>
+            <div class='supported-providers'>
+                <div class='thumbnail-container'>
+    <a href='/auth/amazons3'>
+        <img class='provider-icon' src='/static/amazons3.png'/>
+    </a>
+</div><div class='thumbnail-container'>
+    <a href='https://account.box.com/api/oauth2/authorize?response_type=code&client_id=box_client_id&client_secret=box_client_secret&redirect_uri=http%3A%2F%2Flocalhost%3A12345%2Fauth%2Fbox&state='>
+        <img class='provider-icon' src='/static/box.png'/>
+    </a>
+</div><div class='thumbnail-container'>
+    <a href='https://www.dropbox.com/oauth2/authorize?response_type=code&client_id=dropbox_client_id&redirect_uri=http%3A%2F%2Flocalhost%3A12345%2Fauth%2Fdropbox&state=&token_access_type=offline'>
+        <img class='provider-icon' src='/static/dropbox.png'/>
+    </a>
+</div><div class='thumbnail-container'>
+    <a href='https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=google_client_id&redirect_uri=http%3A%2F%2Flocalhost%3A12345%2Fauth%2Fgoogle&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&access_type=offline&prompt=consent&state='>
+        <img class='provider-icon' src='/static/google.png'/>
+    </a>
+</div><div class='thumbnail-container'>
+    <a href='/auth/local'>
+        <img class='provider-icon' src='/static/local.png'/>
+    </a>
+</div><div class='thumbnail-container'>
+    <a href='/auth/mega'>
+        <img class='provider-icon' src='/static/mega.png'/>
+    </a>
+</div><div class='thumbnail-container'>
+    <a href='https://login.microsoftonline.com/common/oauth2/v2.0/authorize?response_type=code&client_id=onedrive_client_key&redirect_uri=http%3A%2F%2Flocalhost%3A12345%2Fauth%2Fonedrive&scope=offline_access%20user.read%20files.read&state='>
+        <img class='provider-icon' src='/static/onedrive.png'/>
+    </a>
+</div><div class='thumbnail-container'>
+    <a href='https://my.pcloud.com/oauth2/authorize?response_type=code&client_id=pcloud_client_id&redirect_uri=http%3A%2F%2Flocalhost%3A12345%2Fauth%2Fpcloud&state=&force_reapprove=true'>
+        <img class='provider-icon' src='/static/pcloud.png'/>
+    </a>
+</div><div class='thumbnail-container'>
+    <a href='/auth/webdav'>
+        <img class='provider-icon' src='/static/webdav.png'/>
+    </a>
+</div><div class='thumbnail-container'>
+    <a href='https://oauth.yandex.com/authorize?response_type=code&client_id=yandex_client_id&redirect_uri=http%3A%2F%2Flocalhost%3A12345%2Fauth%2Fyandex&state=&force_confirm=yes'>
+        <img class='provider-icon' src='/static/yandex.png'/>
+    </a>
+</div><div class='thumbnail-container'>
+    <a href='/auth/openstack'>
+        <img class='provider-icon' src='/static/openstack.png'/>
+    </a>
+</div><div class='thumbnail-container'>
+    <a href='https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=youtube_client_id&redirect_uri=http%3A%2F%2Flocalhost%3A12345%2Fauth%2Fyoutube&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fyoutube.readonly%20openid%20email&access_type=offline&prompt=consent&state='>
+        <img class='provider-icon' src='/static/youtube.png'/>
+    </a>
+</div>
+            </div>
+        </td>
+    </tr>
+</table>
+<h3 class='table-header'>ACCOUNT LIST</h3>
+<table class='content-table'>
+    
+</table>
+</body>
+</html>

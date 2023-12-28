@@ -6,12 +6,12 @@
 
 namespace coro::cloudstorage::util {
 
-std::string CloudFactoryConfig::GetDefaultPostAuthRedirectUri(
-    std::string_view account_type, std::string_view username) {
+std::string GetDefaultPostAuthRedirectUri(std::string_view account_type,
+                                          std::string_view username) {
   return StrCat("/list/", account_type, '/', http::EncodeUri(username), '/');
 }
 
-AuthData CloudFactoryConfig::GetDefaultAuthData() {
+AuthData GetDefaultAuthData() {
   return {"http://localhost:12345", nlohmann::json::parse(kAuthDataJson)};
 }
 
