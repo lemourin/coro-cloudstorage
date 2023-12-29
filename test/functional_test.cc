@@ -45,7 +45,7 @@ struct ResponseContent {
 };
 
 std::string GetFileContent(std::string_view path) {
-  std::ifstream stream(path, std::fstream::binary);
+  std::ifstream stream(std::string(path), std::fstream::binary);
   std::string data;
   std::string buffer(4096, 0);
   while (stream) {
@@ -56,7 +56,7 @@ std::string GetFileContent(std::string_view path) {
 }
 
 void WriteFileContent(std::string_view path, std::string_view content) {
-  std::ofstream stream(path, std::fstream::binary);
+  std::ofstream stream(std::string(path), std::fstream::binary);
   if (!stream) {
     throw std::runtime_error("File not writeable.");
   }
@@ -229,11 +229,12 @@ class FakeHttpClient {
   }
 
   Task<Response> Fetch(Request request, stdx::stop_token) const {
-    http::Request<std::string> request_s{
-        .url = std::move(request.url),
-        .method = request.method,
-        .headers = std::move(request.headers),
-        .body = request.body ? co_await GetBody(std::move(*request.body)) : ""};
+    std::string body =
+        request.body ? co_await GetBody(std::move(*request.body)) : "";
+    http::Request<std::string> request_s{.url = std::move(request.url),
+                                         .method = request.method,
+                                         .headers = std::move(request.headers),
+                                         .body = std::move(body)};
     for (auto it = stubbings_.begin(); it != stubbings_.end();) {
       if (it->matcher(request_s)) {
         auto result = it->request_f(std::move(request_s));
@@ -326,10 +327,10 @@ class TestHelper {
         [this,
          request = std::move(request)]() mutable -> Task<ResponseContent> {
           auto response = co_await state_->http().Fetch(std::move(request));
-          co_return ResponseContent{
-              .status = response.status,
-              .headers = std::move(response.headers),
-              .body = co_await GetBody(std::move(response.body))};
+          auto body = co_await GetBody(std::move(response.body));
+          co_return ResponseContent{.status = response.status,
+                                    .headers = std::move(response.headers),
+                                    .body = std::move(body)};
         });
   }
 
