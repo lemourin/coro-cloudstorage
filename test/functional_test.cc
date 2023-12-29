@@ -625,7 +625,7 @@ TEST_F(FunctionalTest, ThumbnailGeneratorTest) {
                 "thumbnailLink": "thumbnail-link",
                 "modifiedTime": "2023-12-29T12:29:03Z",
                 "parents": [ "root" ],
-                "size": "323855",
+                "size": "2508570",
                 "mimeType": "video/mp4"
               })js"))
       .Expect(HttpRequest("thumbnail-link")
@@ -674,7 +674,7 @@ TEST_F(FunctionalTest, MuxerTest) {
                 "thumbnailLink": "thumbnail-link",
                 "modifiedTime": "2023-12-29T12:29:03Z",
                 "parents": [ "root" ],
-                "size": "323855",
+                "size": "2508570",
                 "mimeType": "video/mp4"
               })js"))
       .Expect(
@@ -690,7 +690,80 @@ TEST_F(FunctionalTest, MuxerTest) {
                 "iconLink": "icon-link",
                 "modifiedTime": "2023-12-29T12:29:03Z",
                 "parents": [ "root" ],
-                "size": "403361",
+                "size": "245256",
+                "mimeType": "audio/mp4"
+              })js"))
+      .Expect(
+          HttpRequest("https://www.googleapis.com/drive/v3/files/id1?alt=media")
+              .WillRespondToRangeRequestWith(GetTestFileContent("video.mp4")))
+      .Expect(
+          HttpRequest("https://www.googleapis.com/drive/v3/files/id2?alt=media")
+              .WillRespondToRangeRequestWith(GetTestFileContent("audio.m4a")));
+  TestHelper test_helper(std::move(http));
+  ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
+
+  auto response = test_helper.Fetch(
+      {.url = fmt::format(
+           "/mux?{}",
+           http::FormDataToString({{"video_account_type", "google"},
+                                   {"video_account_name", "test@gmail.com"},
+                                   {"audio_account_type", "google"},
+                                   {"audio_account_name", "test@gmail.com"},
+                                   {"video_id", "id1"},
+                                   {"audio_id", "id2"},
+                                   {"format", "mp4"},
+                                   {"seekable", "false"}}))});
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(response.body, GetTestFileContent("muxed-nonseekable.mp4"));
+}
+
+TEST_F(FunctionalTest, MuxerSeekableOutput) {
+  FakeHttpClient http;
+  http.Expect(HttpRequest("https://accounts.google.com/o/oauth2/token")
+                  .WillReturn(R"js({
+                    "access_token": "access_token",
+                    "refresh_token": "refresh_token"
+                  })js"))
+      .Expect(HttpRequest("https://www.googleapis.com/drive/v3/"
+                          "about?fields=user,storageQuota")
+                  .WillReturn(R"js({
+                    "user": {
+                      "emailAddress": "test@gmail.com"
+                    },
+                    "storageQuota": {
+                      "usage": "2137"
+                    }
+                  })js"))
+      .Expect(
+          HttpRequest(
+              fmt::format("https://www.googleapis.com/drive/v3/files/id1?{}",
+                          http::FormDataToString(
+                              {{"fields",
+                                "id,name,thumbnailLink,trashed,mimeType,"
+                                "iconLink,parents,size,modifiedTime"}})))
+              .WillReturn(R"js({
+                "id": "id1",
+                "name": "video.mp4",
+                "thumbnailLink": "thumbnail-link",
+                "modifiedTime": "2023-12-29T12:29:03Z",
+                "parents": [ "root" ],
+                "size": "2508570",
+                "mimeType": "video/mp4"
+              })js"))
+      .Expect(
+          HttpRequest(
+              fmt::format("https://www.googleapis.com/drive/v3/files/id2?{}",
+                          http::FormDataToString(
+                              {{"fields",
+                                "id,name,thumbnailLink,trashed,mimeType,"
+                                "iconLink,parents,size,modifiedTime"}})))
+              .WillReturn(R"js({
+                "id": "id2",
+                "name": "audio.m4a",
+                "iconLink": "icon-link",
+                "modifiedTime": "2023-12-29T12:29:03Z",
+                "parents": [ "root" ],
+                "size": "245256",
                 "mimeType": "audio/mp4"
               })js"))
       .Expect(
@@ -714,7 +787,7 @@ TEST_F(FunctionalTest, MuxerTest) {
                                    {"format", "mp4"},
                                    {"seekable", "true"}}))});
   EXPECT_EQ(response.status, 200);
-  EXPECT_EQ(response.body, GetTestFileContent("muxed.mp4"));
+  EXPECT_EQ(response.body, GetTestFileContent("muxed-seekable.mp4"));
 }
 
 TEST_F(FunctionalTest, ThumbnailGeneratorRespectsExifOrientation) {
@@ -754,7 +827,8 @@ TEST_F(FunctionalTest, ThumbnailGeneratorRespectsExifOrientation) {
                   .WillReturn(ResponseContent{.status = 404}))
       .Expect(
           HttpRequest("https://www.googleapis.com/drive/v3/files/id1?alt=media")
-              .WillRespondToRangeRequestWith(GetTestFileContent("frame-exif.jpg")));
+              .WillRespondToRangeRequestWith(
+                  GetTestFileContent("frame-exif.jpg")));
   TestHelper test_helper(std::move(http));
   ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
 
