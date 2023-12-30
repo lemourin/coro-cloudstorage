@@ -251,7 +251,7 @@ template <typename F1, typename F2>
 auto Muxer::InParallel(F1&& f1, F2&& f2, stdx::stop_token stop_token) const
     -> std::tuple<decltype(f1()), decltype(f2())> {
   std::promise<std::tuple<decltype(f1()), decltype(f2())>> promise;
-  coro::RunTask([&]() -> Task<> {
+  event_loop_->RunOnEventLoop([&]() -> Task<> {
     try {
       promise.set_value(
           co_await WhenAll(thread_pool_->Do(stop_token, std::forward<F1>(f1)),
