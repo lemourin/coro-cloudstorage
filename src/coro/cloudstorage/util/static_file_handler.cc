@@ -109,6 +109,9 @@ Task<Response> StaticFileHandler::operator()(Request request,
   } else if (request.url == "/static/settings_main.js") {
     content = kSettingsMainJs;
     mime_type = "text/javascript;charset=UTF-8";
+  } else if (request.url == "/static/dash_main.js") {
+    content = kDashMainJs;
+    mime_type = "text/javascript;charset=UTF-8";
   } else if (request.url == "/static/favicon.ico") {
     content = kFavIcon;
     mime_type = "image/x-icon";

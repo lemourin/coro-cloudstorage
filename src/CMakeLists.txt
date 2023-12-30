@@ -233,6 +233,7 @@ add_resource_library(
         kColorsDarkCss ../assets/styles/colors_dark.css
         kAccountListMainJs ../assets/js/account_list_main.js
         kSettingsMainJs ../assets/js/settings_main.js
+        kDashMainJs ../assets/js/dash_main.js
         kAuthDataJson ../assets/config/auth_data.json
 )
 

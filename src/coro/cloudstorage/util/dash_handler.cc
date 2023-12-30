@@ -14,12 +14,9 @@ namespace re = coro::util::re;
 
 Generator<std::string> GetDashPlayer(std::string path,
                                      std::string thumbnail_url) {
-  std::stringstream stream;
-  stream << "<source src='" << path << "'>";
-  std::string content = fmt::format(
-      fmt::runtime(kDashPlayerHtml), fmt::arg("poster", thumbnail_url),
-      fmt::arg("source", std::move(stream).str()));
-  co_yield std::move(content);
+  co_yield fmt::format(fmt::runtime(kDashPlayerHtml),
+                       fmt::arg("poster", thumbnail_url),
+                       fmt::arg("source", path));
 }
 
 }  // namespace

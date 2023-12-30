@@ -4,20 +4,19 @@
     <title>coro-cloudstorage</title>
     <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width'>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/3.2.1/shaka-player.ui.min.js"
-            integrity="sha512-RGtUYMciCI9fWIUvMH7f84pw96thSKhXDDFF/S91V8ETmhXbA/WkWlrRqfumfeZOIWlFrJnLgRfTopqwO3Y0dg=="
-            crossorigin="anonymous"></script>
-    <link rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/3.2.1/controls.min.css"
-          integrity="sha512-SYNKswp79a9ENEbm/jOfRxIsGQSoIOtNpNnjitsn912rcpGkYIl3uIxunsszTwrMcs+RPvKsQr0MNXj2muy91g=="
-          crossorigin="anonymous"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.1/shaka-player.ui.min.js"
+            integrity="sha512-XWgmGNNaASW2KwDsTbMYdceOzHmveITptYLEMY6x8Rhv+UML8OUADLQy4NWyFVn9Vfz5LHcMruvMuw3JUyc++w=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.1/controls.min.css"
+          integrity="sha512-ZXFmY+vKw1D+HPeAZcAea7YkaW5c0z5QlnJYoZvycEserPCQ4CAxH+RgHrP88eOszM7hRgjGotI2euh/ijRgJA=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"/>
     <script defer src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js"></script>
+    <script src="/static/dash_main.js"></script>
 </head>
 <body style='background-color:black; display: flex; margin: auto; justify-content: center; align-items: center; width: 100vw; height: 100%'>
 <div data-shaka-player-cast-receiver-id="1BA79154" data-shaka-player-container style='display: flex; max-height: 100%;'>
-    <video autoplay data-shaka-player id='video' style='max-height: 100%; width: 100vw;' poster="{poster}">
-        {source}
-    </video>
+    <video autoplay data-shaka-player id='video' style='max-height: 100%; width: 100vw;' poster="{poster}"
+           data-src="{source}"></video>
 </div>
 </body>
 </html>
