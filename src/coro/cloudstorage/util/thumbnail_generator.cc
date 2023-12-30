@@ -380,20 +380,28 @@ int GetExifOrientation(const int32_t* matrix) {
   }
 }
 
-bool IsFrameBlack(const AVFrame* input) {
-  auto frame = ConvertFrame(input, AV_PIX_FMT_RGB24);
+bool IsFrameBlackImpl(const AVFrame* frame) {
   int count = 0;
+  const uint8_t* p = frame->data[0];
   for (int i = 0; i < frame->height; i++) {
     for (int j = 0; j < frame->width; j++) {
-      int value =
-          *std::max(frame->data[0] + i * frame->linesize[0] + 3 * j,
-                    frame->data[0] + i * frame->linesize[0] + 3 * (j + 1));
-      if (value < 32) {
-        count++;
-      }
+      count += p[j] < 32;
     }
+    p += frame->linesize[0];
   }
-  return count >= 0.95 * frame->width * frame->height;
+  return count * 100 / (frame->width * frame->height) >= 95;
+}
+
+bool IsFrameBlack(const AVFrame* input) {
+  static const enum AVPixelFormat kPixelFormats[] = {
+      AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV420P, AV_PIX_FMT_GRAY8,
+      AV_PIX_FMT_NV12,    AV_PIX_FMT_NV21,    AV_PIX_FMT_YUV444P,
+      AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_NONE};
+  AVPixelFormat format = avcodec_find_best_pix_fmt_of_list(
+      kPixelFormats, AVPixelFormat(input->format), /*alpha=*/false,
+      /*loss_ptr=*/nullptr);
+  return IsFrameBlackImpl(
+      input->format == format ? input : ConvertFrame(input, format).get());
 }
 
 auto GetThumbnailFrame(AVIOContext* io_context, ThumbnailOptions options,
