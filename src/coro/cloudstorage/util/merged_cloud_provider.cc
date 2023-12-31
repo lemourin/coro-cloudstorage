@@ -85,7 +85,8 @@ auto MergedCloudProvider::ListDirectoryPage(ProviderTypeRoot directory,
     }
   }
   PageData page_data;
-  for (auto &d : co_await coro::WhenAll(std::move(tasks))) {
+  auto roots = co_await coro::WhenAll(std::move(tasks));
+  for (auto &d : roots) {
     page_data.items.emplace_back(std::move(d));
   }
   co_return page_data;
@@ -132,7 +133,8 @@ auto MergedCloudProvider::GetGeneralData(stdx::stop_token stop_token)
     tasks.emplace_back(get_volume_data(account));
   }
   GeneralData total = {.space_used = 0, .space_total = 0};
-  for (const auto &data : co_await coro::WhenAll(std::move(tasks))) {
+  auto roots_data = co_await coro::WhenAll(std::move(tasks));
+  for (const auto &data : roots_data) {
     if (data.space_used && total.space_used) {
       *total.space_used += *data.space_used;
     } else {
