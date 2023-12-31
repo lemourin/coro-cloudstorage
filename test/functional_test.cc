@@ -10,7 +10,7 @@
 #include <span>
 
 #include "coro/cloudstorage/util/cloud_factory_context.h"
-#include "coro/cloudstorage/util/file_utils.h"
+#include "test_utils.h"
 
 namespace coro::cloudstorage {
 namespace {
@@ -20,11 +20,15 @@ using Response = http::Response<>;
 
 using ::coro::cloudstorage::util::AbstractCloudProvider;
 using ::coro::cloudstorage::util::AccountManagerHandler;
+using ::coro::cloudstorage::util::AreVideosEquiv;
 using ::coro::cloudstorage::util::AuthData;
 using ::coro::cloudstorage::util::CloudFactoryContext;
 using ::coro::cloudstorage::util::CloudProviderAccount;
 using ::coro::cloudstorage::util::CreateDirectory;
 using ::coro::cloudstorage::util::GetDirectoryPath;
+using ::coro::cloudstorage::util::GetTestFileContent;
+using ::coro::cloudstorage::util::kTestDataDirectory;
+using ::coro::cloudstorage::util::kTestRunDirectory;
 using ::coro::cloudstorage::util::StrCat;
 using ::coro::http::CreateHttpServer;
 using ::coro::http::CurlHttp;
@@ -34,42 +38,12 @@ using ::coro::util::EventLoop;
 using ::coro::util::TcpServer;
 using ::testing::StrEq;
 
-constexpr std::string_view kTestDataDirectory = TEST_DATA_DIRECTORY;
-constexpr std::string_view kTestRunDirectory = BUILD_DIRECTORY "/test";
-
 struct ResponseContent {
   int status = 200;
   std::vector<std::pair<std::string, std::string>> headers = {
       {"Content-Type", "application/x-octet-stream"}};
   std::string body;
 };
-
-std::string GetFileContent(std::string_view path) {
-  std::ifstream stream(std::string(path), std::fstream::binary);
-  std::string data;
-  std::string buffer(4096, 0);
-  while (stream) {
-    stream.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-    data += std::string_view(buffer.data(), stream.gcount());
-  }
-  return data;
-}
-
-void WriteFileContent(std::string_view path, std::string_view content) {
-  std::ofstream stream(std::string(path), std::fstream::binary);
-  if (!stream) {
-    throw std::runtime_error("File not writeable.");
-  }
-  stream << content;
-}
-
-std::string GetTestFileContent(std::string_view filename) {
-  return GetFileContent(StrCat(kTestDataDirectory, '/', filename));
-}
-
-void WriteTestFileContent(std::string_view filename, std::string_view content) {
-  WriteFileContent(StrCat(kTestDataDirectory, '/', filename), content);
-}
 
 CloudFactoryContext CreateContext(const EventLoop* event_loop,
                                   http::Http http) {
@@ -787,7 +761,8 @@ TEST_F(FunctionalTest, MuxerSeekableOutput) {
                                    {"format", "mp4"},
                                    {"seekable", "true"}}))});
   EXPECT_EQ(response.status, 200);
-  EXPECT_EQ(response.body, GetTestFileContent("muxed-seekable.mp4"));
+  EXPECT_TRUE(AreVideosEquiv(response.body,
+                             GetTestFileContent("muxed-seekable.mp4"), "mov"));
 }
 
 TEST_F(FunctionalTest, ThumbnailGeneratorRespectsExifOrientation) {
@@ -837,7 +812,8 @@ TEST_F(FunctionalTest, ThumbnailGeneratorRespectsExifOrientation) {
   auto response =
       test_helper.Fetch({.url = "/thumbnail/google/test%40gmail.com/id1"});
   EXPECT_EQ(response.status, 200);
-  EXPECT_EQ(response.body, GetTestFileContent("thumbnail-exif.png"));
+  EXPECT_TRUE(AreVideosEquiv(response.body,
+                             GetTestFileContent("thumbnail-exif.png"), "png"));
 }
 
 }  // namespace

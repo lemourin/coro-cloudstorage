@@ -5,9 +5,19 @@ find_package(GTest REQUIRED)
 add_executable(
     coro-cloudstorage-test
     functional_test.cc
+    test_utils.h
+    test_utils.cc
 )
 
-target_link_libraries(coro-cloudstorage-test GTest::gtest_main GTest::gtest coro-cloudstorage coro::coro-http)
+target_link_libraries(
+    coro-cloudstorage-test
+        GTest::gtest_main
+        GTest::gtest
+        coro-cloudstorage
+        coro::coro-http
+        FFMPEG::avfilter
+        fmt::fmt
+)
 target_compile_definitions(
     coro-cloudstorage-test
         PRIVATE
