@@ -1,15 +1,21 @@
 {
   "default-registry": {
     "kind": "git",
-    "repository": "https://github.com/microsoft/vcpkg",
-    "baseline": "000d1bda1ffa95a73e0b40334fa4103d6f4d3d48"
+    "baseline": "000d1bda1ffa95a73e0b40334fa4103d6f4d3d48",
+    "repository": "https://github.com/microsoft/vcpkg"
   },
   "registries": [
     {
       "kind": "git",
+      "baseline": "9d4f836cf951a5f738ee235bd80354e238a4257c",
       "repository": "https://github.com/lemourin/vcpkg-registry",
-      "baseline": "69ef66f271e8063aabe4488c2d6f288838782c7c",
-      "packages": [ "coro-http", "curl", "ngtcp2", "quictls", "libevent" ]
+      "packages": [
+        "coro-http",
+        "curl",
+        "ngtcp2",
+        "quictls",
+        "libevent"
+      ]
     }
   ]
 }
