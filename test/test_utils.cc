@@ -109,21 +109,16 @@ bool AreVideosEquivImpl(std::string_view path1, std::string_view path2,
   if (!graph) {
     throw RuntimeError("avfilter_graph_alloc");
   }
-  AVFilterInOut* inputs = nullptr;
-  AVFilterInOut* outputs = nullptr;
   std::string graph_str = fmt::format(
       "movie=filename={}:f={format} [i1];"
       "movie=filename={}:f={format} [i2];"
-      "[i1][i2] identity, buffersink@output",
+      "[i1][i2] identity [out];"
+      "[out] buffersink@output;",
       EscapePath(path1), EscapePath(path2), fmt::arg("format", format));
-  if (avfilter_graph_parse2(graph.get(), graph_str.c_str(), &inputs,
-                            &outputs) != 0) {
+  if (avfilter_graph_parse(graph.get(), graph_str.c_str(), nullptr, nullptr,
+                           nullptr) != 0) {
     throw RuntimeError("avfilter_graph_parse2 error");
   }
-  auto at_exit = AtScopeExit([&] {
-    avfilter_inout_free(&inputs);
-    avfilter_inout_free(&outputs);
-  });
 
   if (avfilter_graph_config(graph.get(), nullptr) != 0) {
     throw RuntimeError("avfilter_graph_config error");
