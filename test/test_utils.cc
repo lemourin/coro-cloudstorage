@@ -7,6 +7,11 @@
 #include "coro/cloudstorage/util/file_utils.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/util/raii_utils.h"
+#include "coro/util/regex.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 extern "C" {
 #include <libavfilter/avfilter.h>
@@ -19,6 +24,8 @@ namespace {
 
 constexpr double kEps = 0.0001;
 
+namespace re = coro::util::re;
+
 using ::coro::util::AtScopeExit;
 
 struct AVFilterGraphDeleter {
@@ -29,10 +36,23 @@ struct AVFrameDeleter {
   void operator()(AVFrame* frame) const { av_frame_free(&frame); }
 };
 
+std::string EscapePath(std::string_view path) {
+  return re::regex_replace(
+      re::regex_replace(std::string(path), re::regex("\\\\"), "/"),
+      re::regex("\\:"), R"(\\\\$&)");
+}
+
 class TemporaryFile {
  public:
   TemporaryFile() {
 #ifdef _WIN32
+    std::string path(MAX_PATH, 0);
+    if (GetTempFileNameA(kTestRunDirectory.data(), "tmp", 0, path.data()) ==
+        0) {
+      throw RuntimeError("GetTempFileNameA error");
+    }
+    path_ = std::move(path);
+    file_.reset(std::fopen(path_.c_str(), "wb+"));
 #else
     std::string tmpl = StrCat(kTestRunDirectory, "/tmp.XXXXX");
     int fd = mkstemp(tmpl.data());
@@ -91,14 +111,13 @@ bool AreVideosEquivImpl(std::string_view path1, std::string_view path2,
   }
   AVFilterInOut* inputs = nullptr;
   AVFilterInOut* outputs = nullptr;
-  if (avfilter_graph_parse2(
-          graph.get(),
-          fmt::format("movie=filename={}:f={format} [i1];"
-                      "movie=filename={}:f={format} [i2];"
-                      "[i1][i2] identity, buffersink@output",
-                      path1, path2, fmt::arg("format", format))
-              .c_str(),
-          &inputs, &outputs) != 0) {
+  std::string graph_str = fmt::format(
+      "movie=filename={}:f={format} [i1];"
+      "movie=filename={}:f={format} [i2];"
+      "[i1][i2] identity, buffersink@output",
+      EscapePath(path1), EscapePath(path2), fmt::arg("format", format));
+  if (avfilter_graph_parse2(graph.get(), graph_str.c_str(), &inputs,
+                            &outputs) != 0) {
     throw RuntimeError("avfilter_graph_parse2 error");
   }
   auto at_exit = AtScopeExit([&] {
@@ -153,7 +172,8 @@ void WriteTestFileContent(std::string_view filename, std::string_view content) {
   WriteFileContent(StrCat(kTestDataDirectory, '/', filename), content);
 }
 
-bool AreVideosEquiv(std::string_view video1, std::string_view video2, std::string_view format) {
+bool AreVideosEquiv(std::string_view video1, std::string_view video2,
+                    std::string_view format) {
   TemporaryFile f1;
   TemporaryFile f2;
   WriteFileContent(f1.stream(), video1);
