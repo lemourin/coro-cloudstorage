@@ -109,8 +109,8 @@ bool AreVideosEquivImpl(std::string_view path1, std::string_view path2,
     throw RuntimeError("avfilter_graph_alloc");
   }
   std::string graph_str = fmt::format(
-      "movie=filename={}:f={format} [i1];"
-      "movie=filename={}:f={format} [i2];"
+      "movie=filename={}:f={format}:dec_threads=1 [i1];"
+      "movie=filename={}:f={format}:dec_threads=1 [i2];"
       "[i1][i2] msad [out];"
       "[out] buffersink@output;",
       EscapePath(path1), EscapePath(path2), fmt::arg("format", format));
