@@ -51,6 +51,7 @@ class TemporaryFile {
         0) {
       throw RuntimeError("GetTempFileNameA error");
     }
+    path.resize(strlen(path.c_str()));
     path_ = std::move(path);
     file_.reset(std::fopen(path_.c_str(), "wb+"));
 #else
