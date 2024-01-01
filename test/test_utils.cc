@@ -111,7 +111,7 @@ bool AreVideosEquivImpl(std::string_view path1, std::string_view path2,
   std::string graph_str = fmt::format(
       "movie=filename={}:f={format} [i1];"
       "movie=filename={}:f={format} [i2];"
-      "[i1][i2] identity [out];"
+      "[i1][i2] msad [out];"
       "[out] buffersink@output;",
       EscapePath(path1), EscapePath(path2), fmt::arg("format", format));
   if (avfilter_graph_parse(graph.get(), graph_str.c_str(), nullptr, nullptr,
@@ -137,11 +137,11 @@ bool AreVideosEquivImpl(std::string_view path1, std::string_view path2,
       throw RuntimeError("av_buffersink_get_frame");
     }
     const AVDictionaryEntry* entry =
-        av_dict_get(frame->metadata, "lavfi.identity.identity_avg", nullptr, 0);
+        av_dict_get(frame->metadata, "lavfi.msad.msad_avg", nullptr, 0);
     if (entry == nullptr) {
-      throw RuntimeError("lavfi.identity.identity_avg attribute missing");
+      throw RuntimeError("lavfi.msad.msad_avg attribute missing");
     }
-    if (std::abs(std::stod(entry->value) - 1.0) > 0.6) {
+    if (std::abs(std::stod(entry->value)) > 0.01) {
       return false;
     }
   }
