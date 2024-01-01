@@ -168,6 +168,9 @@ void WriteTestFileContent(std::string_view filename, std::string_view content) {
 
 bool AreVideosEquiv(std::string_view video1, std::string_view video2,
                     std::string_view format) {
+  if (video1 == video2) {
+    return true;
+  }
   TemporaryFile f1;
   TemporaryFile f2;
   WriteFileContent(f1.stream(), video1);
