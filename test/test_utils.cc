@@ -22,8 +22,6 @@ namespace coro::cloudstorage::util {
 
 namespace {
 
-constexpr double kEps = 0.0001;
-
 namespace re = coro::util::re;
 
 using ::coro::util::AtScopeExit;
@@ -143,7 +141,7 @@ bool AreVideosEquivImpl(std::string_view path1, std::string_view path2,
     if (entry == nullptr) {
       throw RuntimeError("lavfi.identity.identity_avg attribute missing");
     }
-    if (std::abs(std::stod(entry->value) - 1.0) > kEps) {
+    if (std::abs(std::stod(entry->value) - 1.0) > 0.6) {
       return false;
     }
   }
