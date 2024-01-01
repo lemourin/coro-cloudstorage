@@ -54,7 +54,7 @@ class TemporaryFile {
     path_ = std::move(path);
     file_.reset(std::fopen(path_.c_str(), "wb+"));
 #else
-    std::string tmpl = StrCat(kTestRunDirectory, "/tmp.XXXXX");
+    std::string tmpl = StrCat(kTestRunDirectory, "/tmp.XXXXXX");
     int fd = mkstemp(tmpl.data());
     if (fd < 0) {
       throw RuntimeError("mkstemp error");

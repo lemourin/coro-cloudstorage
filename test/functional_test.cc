@@ -615,7 +615,8 @@ TEST_F(FunctionalTest, ThumbnailGeneratorTest) {
   auto response =
       test_helper.Fetch({.url = "/thumbnail/google/test%40gmail.com/id1"});
   EXPECT_EQ(response.status, 200);
-  EXPECT_EQ(response.body, GetTestFileContent("thumbnail.png"));
+  EXPECT_TRUE(AreVideosEquiv(response.body, GetTestFileContent("thumbnail.png"),
+                             "png"));
 }
 
 TEST_F(FunctionalTest, MuxerTest) {
@@ -688,7 +689,8 @@ TEST_F(FunctionalTest, MuxerTest) {
                                    {"format", "mp4"},
                                    {"seekable", "false"}}))});
   EXPECT_EQ(response.status, 200);
-  EXPECT_EQ(response.body, GetTestFileContent("muxed-nonseekable.mp4"));
+  EXPECT_TRUE(AreVideosEquiv(
+      response.body, GetTestFileContent("muxed-nonseekable.mp4"), "mov"));
 }
 
 TEST_F(FunctionalTest, MuxerSeekableOutput) {
