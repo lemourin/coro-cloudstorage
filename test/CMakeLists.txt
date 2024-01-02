@@ -4,7 +4,10 @@ find_package(GTest REQUIRED)
 
 add_executable(
     coro-cloudstorage-test
-    functional_test.cc
+    account_manager_test.cc
+    muxer_test.cc
+    thumbnail_generator_test.cc
+    google_drive_test.cc
     coro/cloudstorage/test/test_utils.h
     coro/cloudstorage/test/test_utils.cc
     coro/cloudstorage/test/fake_http_client.h
