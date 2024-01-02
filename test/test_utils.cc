@@ -108,12 +108,24 @@ bool AreVideosEquivImpl(std::string_view path1, std::string_view path2,
   if (!graph) {
     throw RuntimeError("avfilter_graph_alloc");
   }
-  std::string graph_str = fmt::format(
-      "movie=filename={}:f={format}:dec_threads=1 [i1];"
-      "movie=filename={}:f={format}:dec_threads=1 [i2];"
-      "[i1][i2] msad [out];"
-      "[out] buffersink@output;",
-      EscapePath(path1), EscapePath(path2), fmt::arg("format", format));
+  std::string graph_str =
+      format == "png" || format == "mjpeg"
+          ? fmt::format(
+                "movie=filename={}:f={format}:dec_threads=1 [v1];"
+                "movie=filename={}:f={format}:dec_threads=1 [v2];"
+                "[v1][v2] msad [vout];"
+                "[vout] buffersink@output;",
+                EscapePath(path1), EscapePath(path2),
+                fmt::arg("format", format))
+          : fmt::format(
+                "movie=filename={}:f={format}:dec_threads=1:s=dv+da [v1][a1];"
+                "movie=filename={}:f={format}:dec_threads=1:s=dv+da [v2][a2];"
+                "[v1][v2] msad [vout];"
+                "[vout] buffersink@output;"
+                "[a1] abuffersink@output1;"
+                "[a2] abuffersink@output2;",
+                EscapePath(path1), EscapePath(path2),
+                fmt::arg("format", format));
   if (avfilter_graph_parse(graph.get(), graph_str.c_str(), nullptr, nullptr,
                            nullptr) != 0) {
     throw RuntimeError("avfilter_graph_parse2 error");
@@ -125,24 +137,62 @@ bool AreVideosEquivImpl(std::string_view path1, std::string_view path2,
 
   AVFilterContext* sink =
       avfilter_graph_get_filter(graph.get(), "buffersink@output");
-  while (true) {
-    std::unique_ptr<AVFrame, AVFrameDeleter> frame{av_frame_alloc()};
-    if (!frame) {
-      throw RuntimeError("av_frame_alloc");
+  AVFilterContext* asink1 =
+      avfilter_graph_get_filter(graph.get(), "abuffersink@output1");
+  AVFilterContext* asink2 =
+      avfilter_graph_get_filter(graph.get(), "abuffersink@output2");
+  bool video_drained = false;
+  bool audio_drained = !asink1 && !asink2;
+  while (!video_drained || !audio_drained) {
+    std::unique_ptr<AVFrame, AVFrameDeleter> frame;
+    if (!video_drained) {
+      frame.reset(av_frame_alloc());
+      if (!frame) {
+        throw RuntimeError("av_frame_alloc");
+      }
+      int err = av_buffersink_get_frame(sink, frame.get());
+      if (err == AVERROR_EOF) {
+        video_drained = true;
+      } else if (err != 0) {
+        throw RuntimeError("av_buffersink_get_frame");
+      } else {
+        const AVDictionaryEntry* entry =
+            av_dict_get(frame->metadata, "lavfi.msad.msad_avg", nullptr, 0);
+        if (entry == nullptr) {
+          throw RuntimeError("lavfi.msad.msad_avg attribute missing");
+        }
+        if (std::abs(std::stod(entry->value)) > 0.01) {
+          return false;
+        }
+      }
     }
-    int err = av_buffersink_get_frame(sink, frame.get());
-    if (err == AVERROR_EOF) {
-      break;
-    } else if (err != 0) {
-      throw RuntimeError("av_buffersink_get_frame");
-    }
-    const AVDictionaryEntry* entry =
-        av_dict_get(frame->metadata, "lavfi.msad.msad_avg", nullptr, 0);
-    if (entry == nullptr) {
-      throw RuntimeError("lavfi.msad.msad_avg attribute missing");
-    }
-    if (std::abs(std::stod(entry->value)) > 0.01) {
-      return false;
+    while (!audio_drained) {
+      std::unique_ptr<AVFrame, AVFrameDeleter> frame1{av_frame_alloc()};
+      std::unique_ptr<AVFrame, AVFrameDeleter> frame2{av_frame_alloc()};
+      if (!frame1 || !frame2) {
+        throw RuntimeError("av_frame_alloc");
+      }
+      int err1 = av_buffersink_get_frame(asink1, frame1.get());
+      int err2 = av_buffersink_get_frame(asink2, frame2.get());
+      if (err1 == AVERROR_EOF && err2 == AVERROR_EOF) {
+        audio_drained = true;
+      } else if (err1 != 0 || err2 != 0) {
+        throw RuntimeError("av_buffersink_get_frame");
+      } else {
+        if (frame1->linesize[0] != frame2->linesize[0]) {
+          return false;
+        }
+        if (memcmp(frame1->data[0], frame2->data[0], frame1->linesize[0]) !=
+            0) {
+          return false;
+        }
+        if (frame &&
+            av_compare_ts(frame->pts, av_buffersink_get_time_base(sink),
+                          frame1->pts,
+                          av_buffersink_get_time_base(asink1)) < 0) {
+          break;
+        }
+      }
     }
   }
 
