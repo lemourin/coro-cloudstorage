@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 
 #include <fstream>
+#include <filesystem>
 
 #include "coro/cloudstorage/util/file_utils.h"
 #include "coro/cloudstorage/util/string_utils.h"
@@ -209,6 +210,15 @@ void WriteFileContent(std::FILE* file, std::string_view content) {
 }
 
 }  // namespace
+
+TestDataScope::TestDataScope() {
+  std::filesystem::remove_all(kTestRunDirectory);
+  std::filesystem::create_directory(kTestRunDirectory);
+}
+
+TestDataScope::~TestDataScope() {
+  std::filesystem::remove_all(kTestRunDirectory);
+}
 
 std::string GetTestFileContent(std::string_view filename) {
   return GetFileContent(StrCat(kTestDataDirectory, '/', filename));

@@ -3,10 +3,6 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <filesystem>
-#include <fstream>
-#include <span>
-
 #include "coro/cloudstorage/test/fake_cloud_factory_context.h"
 #include "coro/cloudstorage/test/fake_http_client.h"
 #include "coro/cloudstorage/test/test_utils.h"
@@ -19,13 +15,8 @@ using ::coro::cloudstorage::util::CloudProviderAccount;
 using ::testing::StrEq;
 
 class FunctionalTest : public ::testing::Test {
- public:
-  FunctionalTest() {
-    std::filesystem::remove_all(kTestRunDirectory);
-    std::filesystem::create_directory(kTestRunDirectory);
-  }
-
-  ~FunctionalTest() override { std::filesystem::remove_all(kTestRunDirectory); }
+ private:
+  TestDataScope scope_;
 };
 
 TEST_F(FunctionalTest, Runs) {
@@ -599,4 +590,4 @@ TEST_F(FunctionalTest, ThumbnailGeneratorRespectsExifOrientation) {
 }
 
 }  // namespace
-}  // namespace coro::cloudstorage
+}  // namespace coro::cloudstorage::test
