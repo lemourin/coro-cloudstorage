@@ -1,9 +1,9 @@
 #include "fake_cloud_factory_context.h"
 
+#include "coro/cloudstorage/test/test_utils.h"
 #include "coro/cloudstorage/util/cloud_factory_context.h"
 #include "coro/cloudstorage/util/string_utils.h"
 #include "coro/util/event_loop.h"
-#include "test_utils.h"
 
 namespace coro::cloudstorage::test {
 

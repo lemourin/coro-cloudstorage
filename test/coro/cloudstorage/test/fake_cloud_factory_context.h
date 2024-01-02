@@ -3,9 +3,9 @@
 
 #include <coro/util/event_loop.h>
 
+#include "coro/cloudstorage/test/fake_http_client.h"
 #include "coro/cloudstorage/util/cloud_factory_context.h"
 #include "coro/cloudstorage/util/cloud_provider_account.h"
-#include "fake_http_client.h"
 
 namespace coro::cloudstorage::test {
 

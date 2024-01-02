@@ -5,13 +5,15 @@ find_package(GTest REQUIRED)
 add_executable(
     coro-cloudstorage-test
     functional_test.cc
-    test_utils.h
-    test_utils.cc
-    fake_http_client.h
-    fake_http_client.cc
-    fake_cloud_factory_context.h
-    fake_cloud_factory_context.cc
+    coro/cloudstorage/test/test_utils.h
+    coro/cloudstorage/test/test_utils.cc
+    coro/cloudstorage/test/fake_http_client.h
+    coro/cloudstorage/test/fake_http_client.cc
+    coro/cloudstorage/test/fake_cloud_factory_context.h
+    coro/cloudstorage/test/fake_cloud_factory_context.cc
 )
+
+target_include_directories(coro-cloudstorage-test PRIVATE .)
 
 target_link_libraries(
     coro-cloudstorage-test

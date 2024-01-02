@@ -1,6 +1,4 @@
-#include <coro/http/curl_http.h>
 #include <coro/http/http.h>
-#include <coro/http/http_server.h>
 #include <fmt/format.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -9,39 +7,15 @@
 #include <fstream>
 #include <span>
 
-#include "coro/cloudstorage/util/cloud_factory_context.h"
-#include "fake_cloud_factory_context.h"
-#include "fake_http_client.h"
-#include "test_utils.h"
+#include "coro/cloudstorage/test/fake_cloud_factory_context.h"
+#include "coro/cloudstorage/test/fake_http_client.h"
+#include "coro/cloudstorage/test/test_utils.h"
 
-namespace coro::cloudstorage {
+namespace coro::cloudstorage::test {
 namespace {
 
-using Request = http::Request<>;
-using Response = http::Response<>;
-
-using ::coro::cloudstorage::test::AreVideosEquiv;
-using ::coro::cloudstorage::test::FakeCloudFactoryContext;
-using ::coro::cloudstorage::test::FakeHttpClient;
-using ::coro::cloudstorage::test::GetTestFileContent;
-using ::coro::cloudstorage::test::HttpRequest;
-using ::coro::cloudstorage::test::kTestDataDirectory;
-using ::coro::cloudstorage::test::kTestRunDirectory;
-using ::coro::cloudstorage::test::ResponseContent;
 using ::coro::cloudstorage::util::AbstractCloudProvider;
-using ::coro::cloudstorage::util::AccountManagerHandler;
-using ::coro::cloudstorage::util::AuthData;
-using ::coro::cloudstorage::util::CloudFactoryContext;
 using ::coro::cloudstorage::util::CloudProviderAccount;
-using ::coro::cloudstorage::util::CreateDirectory;
-using ::coro::cloudstorage::util::GetDirectoryPath;
-using ::coro::cloudstorage::util::StrCat;
-using ::coro::http::CreateHttpServer;
-using ::coro::http::CurlHttp;
-using ::coro::http::GetBody;
-using ::coro::http::Http;
-using ::coro::util::EventLoop;
-using ::coro::util::TcpServer;
 using ::testing::StrEq;
 
 class FunctionalTest : public ::testing::Test {

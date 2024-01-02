@@ -1,4 +1,4 @@
-#include "fake_http_client.h"
+#include "coro/cloudstorage/test/fake_http_client.h"
 
 #include <fmt/format.h>
 
