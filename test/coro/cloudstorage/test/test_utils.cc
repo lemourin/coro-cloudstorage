@@ -2,8 +2,8 @@
 
 #include <fmt/format.h>
 
-#include <fstream>
 #include <filesystem>
+#include <fstream>
 
 #include "coro/cloudstorage/util/file_utils.h"
 #include "coro/cloudstorage/util/string_utils.h"
@@ -25,9 +25,9 @@ namespace {
 
 namespace re = coro::util::re;
 
-using ::coro::util::AtScopeExit;
-using ::coro::cloudstorage::util::StrCat;
 using ::coro::cloudstorage::util::FileDeleter;
+using ::coro::cloudstorage::util::StrCat;
+using ::coro::util::AtScopeExit;
 
 struct AVFilterGraphDeleter {
   void operator()(AVFilterGraph* graph) const { avfilter_graph_free(&graph); }
@@ -210,6 +210,9 @@ void WriteFileContent(std::FILE* file, std::string_view content) {
 }
 
 }  // namespace
+
+const std::string_view kTestDataDirectory = TEST_DATA_DIRECTORY;
+const std::string_view kTestRunDirectory = BUILD_DIRECTORY "/test";
 
 TestDataScope::TestDataScope() {
   std::filesystem::remove_all(kTestRunDirectory);

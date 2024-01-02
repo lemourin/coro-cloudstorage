@@ -1,11 +1,12 @@
-#ifndef CORO_CLOUDSTORAGE_FAKE_HTTP_CLIENT_H
-#define CORO_CLOUDSTORAGE_FAKE_HTTP_CLIENT_H
+#ifndef CORO_CLOUDSTORAGE_TEST_FAKE_HTTP_CLIENT_H
+#define CORO_CLOUDSTORAGE_TEST_FAKE_HTTP_CLIENT_H
 
 #include <coro/http/http.h>
 #include <coro/stdx/any_invocable.h>
-#include <gtest/gtest.h>
 
 #include <string>
+
+#include "coro/cloudstorage/test/matcher.h"
 
 namespace coro::cloudstorage::test {
 
@@ -25,11 +26,10 @@ struct HttpRequestStubbing {
 
 class HttpRequestStubbingBuilder {
  public:
-  explicit HttpRequestStubbingBuilder(testing::Matcher<std::string> url_matcher)
+  explicit HttpRequestStubbingBuilder(Matcher<std::string> url_matcher)
       : url_matcher_(std::move(url_matcher)) {}
 
-  HttpRequestStubbingBuilder&& WithBody(
-      testing::Matcher<std::string> body_matcher) &&;
+  HttpRequestStubbingBuilder&& WithBody(Matcher<std::string> body_matcher) &&;
 
   HttpRequestStubbing WillReturn(std::string_view message) &&;
 
@@ -42,12 +42,11 @@ class HttpRequestStubbingBuilder {
   stdx::any_invocable<bool(const http::Request<std::string>&) const>
   CreateRequestMatcher() &&;
 
-  testing::Matcher<std::string> url_matcher_;
-  std::optional<testing::Matcher<std::string>> body_matcher_;
+  Matcher<std::string> url_matcher_;
+  std::optional<Matcher<std::string>> body_matcher_;
 };
 
-HttpRequestStubbingBuilder HttpRequest(
-    testing::Matcher<std::string> url_matcher);
+HttpRequestStubbingBuilder HttpRequest(Matcher<std::string> url_matcher);
 
 class FakeHttpClient {
  public:
@@ -69,4 +68,4 @@ class FakeHttpClient {
 
 }  // namespace coro::cloudstorage::test
 
-#endif  // CORO_CLOUDSTORAGE_FAKE_HTTP_CLIENT_H
+#endif  // CORO_CLOUDSTORAGE_TEST_FAKE_HTTP_CLIENT_H

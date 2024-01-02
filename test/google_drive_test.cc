@@ -1,4 +1,5 @@
 #include <fmt/format.h>
+#include <gtest/gtest.h>
 
 #include "coro/cloudstorage/test/fake_cloud_factory_context.h"
 #include "coro/cloudstorage/test/fake_http_client.h"

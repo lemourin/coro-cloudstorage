@@ -2,6 +2,8 @@
 
 #include <fmt/format.h>
 
+#include <iostream>
+
 namespace coro::cloudstorage::test {
 
 namespace {
@@ -42,7 +44,7 @@ Response RespondToRangeRequestWith(const http::Request<std::string>& request,
 }  // namespace
 
 HttpRequestStubbingBuilder&& HttpRequestStubbingBuilder::WithBody(
-    testing::Matcher<std::string> body_matcher) && {
+    Matcher<std::string> body_matcher) && {
   body_matcher_ = std::move(body_matcher);
   return std::move(*this);
 }
@@ -89,8 +91,7 @@ HttpRequestStubbingBuilder::CreateRequestMatcher() && {
   };
 }
 
-HttpRequestStubbingBuilder HttpRequest(
-    testing::Matcher<std::string> url_matcher) {
+HttpRequestStubbingBuilder HttpRequest(Matcher<std::string> url_matcher) {
   return HttpRequestStubbingBuilder(std::move(url_matcher));
 }
 

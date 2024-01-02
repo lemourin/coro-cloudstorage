@@ -1,13 +1,13 @@
-#ifndef CORO_CLOUDSTORAGE_TEST_UTILS_H
-#define CORO_CLOUDSTORAGE_TEST_UTILS_H
+#ifndef CORO_CLOUDSTORAGE_TEST_TEST_UTILS_H
+#define CORO_CLOUDSTORAGE_TEST_TEST_UTILS_H
 
 #include <string>
 #include <string_view>
 
 namespace coro::cloudstorage::test {
 
-inline constexpr std::string_view kTestDataDirectory = TEST_DATA_DIRECTORY;
-inline constexpr std::string_view kTestRunDirectory = BUILD_DIRECTORY "/test";
+extern const std::string_view kTestDataDirectory;
+extern const std::string_view kTestRunDirectory;
 
 class TestDataScope {
  public:
@@ -28,4 +28,4 @@ bool AreVideosEquiv(std::string_view video1, std::string_view video2,
 
 }  // namespace coro::cloudstorage::test
 
-#endif  // CORO_CLOUDSTORAGE_TEST_UTILS_H
+#endif  // CORO_CLOUDSTORAGE_TEST_TEST_UTILS_H
