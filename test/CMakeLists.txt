@@ -9,6 +9,8 @@ add_executable(
     test_utils.cc
     fake_http_client.h
     fake_http_client.cc
+    fake_cloud_factory_context.h
+    fake_cloud_factory_context.cc
 )
 
 target_link_libraries(

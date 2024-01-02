@@ -10,6 +10,7 @@
 #include <span>
 
 #include "coro/cloudstorage/util/cloud_factory_context.h"
+#include "fake_cloud_factory_context.h"
 #include "fake_http_client.h"
 #include "test_utils.h"
 
@@ -20,6 +21,7 @@ using Request = http::Request<>;
 using Response = http::Response<>;
 
 using ::coro::cloudstorage::test::AreVideosEquiv;
+using ::coro::cloudstorage::test::FakeCloudFactoryContext;
 using ::coro::cloudstorage::test::FakeHttpClient;
 using ::coro::cloudstorage::test::GetTestFileContent;
 using ::coro::cloudstorage::test::HttpRequest;
@@ -42,203 +44,6 @@ using ::coro::util::EventLoop;
 using ::coro::util::TcpServer;
 using ::testing::StrEq;
 
-CloudFactoryContext CreateContext(const EventLoop* event_loop,
-                                  http::Http http) {
-  return CloudFactoryContext(
-      {.event_loop = event_loop,
-       .config_path = StrCat(kTestRunDirectory, "/config.sqlite"),
-       .cache_path = StrCat(kTestRunDirectory, "/cache.sqlite"),
-       .auth_data =
-           AuthData("http://localhost:12345", nlohmann::json::parse(R"js({
-             "google": {
-               "client_id": "google_client_id",
-               "client_secret": "google_client_secret"
-             },
-             "box": {
-               "client_id": "box_client_id",
-               "client_secret": "box_client_secret"
-             },
-             "dropbox": {
-                "client_id": "dropbox_client_id",
-                "client_secret": "dropbox_client_secret"
-             },
-             "mega": {
-               "api_key": "mega_api_key",
-               "app_name": "mega_app_name"
-             },
-             "onedrive": {
-               "client_id": "onedrive_client_key",
-               "client_secret": "onedrive_client_secret"
-             },
-             "pcloud": {
-               "client_id": "pcloud_client_id",
-               "client_secret": "pcloud_client_secret"
-             },
-             "yandex": {
-               "client_id": "yandex_client_id",
-               "client_secret": "yandex_client_secret"
-             },
-             "youtube": {
-               "client_id": "youtube_client_id",
-               "client_secret": "youtube_client_secret"
-             }
-           })js")),
-       .http = std::move(http)});
-}
-
-class TestCloudProviderAccount {
- public:
-  template <typename F>
-  auto WithAccount(F func) const {
-    return event_loop_->Do([this, func = std::move(func)]() mutable {
-      return std::move(func)(GetAccount());
-    });
-  }
-
-  auto GetRoot() const {
-    return WithAccount([](CloudProviderAccount account) {
-      return account.provider()->GetRoot(stdx::stop_token());
-    });
-  }
-
-  template <typename... Ts>
-  auto ListDirectoryPage(Ts... args) const {
-    return WithAccount(
-        [... args = std::move(args)](CloudProviderAccount account) {
-          return account.provider()->ListDirectoryPage(std::move(args)...,
-                                                       stdx::stop_token());
-        });
-  }
-
- private:
-  friend class TestHelper;
-
-  TestCloudProviderAccount(EventLoop* event_loop, CloudProviderAccount::Id id,
-                           std::span<const CloudProviderAccount> accounts)
-      : event_loop_(event_loop), id_(std::move(id)), accounts_(accounts) {}
-
-  CloudProviderAccount GetAccount() const {
-    for (const auto& account : accounts_) {
-      if (account.id() == id_) {
-        return account;
-      }
-    }
-    throw CloudException(CloudException::Type::kNotFound);
-  }
-
-  EventLoop* event_loop_;
-  CloudProviderAccount::Id id_;
-  std::span<const CloudProviderAccount> accounts_;
-};
-
-class TestHelper {
- public:
-  explicit TestHelper(FakeHttpClient http = {})
-      : thread_([this, http = std::move(http)]() mutable {
-          RunThread(std::move(http));
-        }) {
-    ready_.get_future().get();
-  }
-  TestHelper(const TestHelper&) = delete;
-  TestHelper(TestHelper&&) = delete;
-  TestHelper& operator=(const TestHelper&) = delete;
-  TestHelper& operator=(TestHelper&&) = delete;
-  ~TestHelper() {
-    state_->event_loop().RunOnEventLoop([&] { state_->quit().SetValue(); });
-    thread_.join();
-  }
-
-  ResponseContent Fetch(http::Request<std::string> request) {
-    request.url = StrCat(*address_, request.url);
-    return state_->event_loop().Do(
-        [this,
-         request = std::move(request)]() mutable -> Task<ResponseContent> {
-          auto response = co_await state_->http().Fetch(std::move(request));
-          auto body = co_await GetBody(std::move(response.body));
-          co_return ResponseContent{.status = response.status,
-                                    .headers = std::move(response.headers),
-                                    .body = std::move(body)};
-        });
-  }
-
-  TestCloudProviderAccount GetAccount(CloudProviderAccount::Id id) {
-    return {&state_->event_loop(), std::move(id), state_->accounts()};
-  }
-
- private:
-  class AccountListener {
-   public:
-    explicit AccountListener(
-        std::vector<CloudProviderAccount>* accounts = nullptr)
-        : accounts_(accounts) {}
-
-    void OnCreate(CloudProviderAccount account) {
-      if (accounts_) {
-        accounts_->push_back(std::move(account));
-      }
-    }
-
-    void OnDestroy(const CloudProviderAccount& account) {
-      if (accounts_) {
-        accounts_->erase(std::find_if(
-            accounts_->begin(), accounts_->end(),
-            [&](const auto& e) { return e.id() == account.id(); }));
-      }
-    }
-
-   private:
-    std::vector<CloudProviderAccount>* accounts_;
-  };
-
-  void RunThread(FakeHttpClient http) {
-    state_.emplace(std::move(http));
-    auto at_scope_exit = [&] { state_.reset(); };
-    std::exception_ptr exception;
-    RunTask([&]() -> Task<> {
-      try {
-        auto http_server = CreateHttpServer(
-            state_->context().CreateAccountManagerHandler(
-                AccountListener{&state_->accounts()}),
-            &state_->event_loop(),
-            TcpServer::Config{.address = "127.0.0.1", .port = 0});
-        address_ = "http://127.0.0.1:" + std::to_string(http_server.GetPort());
-        ready_.set_value();
-        co_await state_->quit();
-        co_await http_server.Quit();
-      } catch (...) {
-        exception = std::current_exception();
-      }
-    });
-    state_->event_loop().EnterLoop();
-    if (exception) {
-      std::rethrow_exception(exception);
-    }
-  }
-
-  class ThreadState {
-   public:
-    explicit ThreadState(FakeHttpClient http)
-        : context_(CreateContext(&event_loop_, Http(std::move(http)))) {}
-
-    EventLoop& event_loop() { return event_loop_; }
-    Http& http() { return http_; }
-    CloudFactoryContext& context() { return context_; }
-    Promise<void>& quit() { return quit_; }
-    std::vector<CloudProviderAccount>& accounts() { return accounts_; }
-
-   private:
-    EventLoop event_loop_;
-    Http http_{CurlHttp{&event_loop_}};
-    CloudFactoryContext context_;
-    Promise<void> quit_;
-    std::vector<CloudProviderAccount> accounts_;
-  };
-  std::optional<ThreadState> state_;
-  std::promise<void> ready_;
-  std::optional<std::string> address_;
-  std::thread thread_;
-};
-
 class FunctionalTest : public ::testing::Test {
  public:
   FunctionalTest() {
@@ -250,7 +55,7 @@ class FunctionalTest : public ::testing::Test {
 };
 
 TEST_F(FunctionalTest, Runs) {
-  TestHelper test_helper;
+  FakeCloudFactoryContext test_helper;
   auto response = test_helper.Fetch({.url = "/"});
   EXPECT_EQ(response.body, GetTestFileContent("empty_home_page.html"));
 }
@@ -278,7 +83,7 @@ TEST_F(FunctionalTest, CreateAccount) {
                       "usage": "2137"
                     }
                   })js"));
-  TestHelper test_helper(std::move(http));
+  FakeCloudFactoryContext test_helper(std::move(http));
   auto response = test_helper.Fetch({.url = "/auth/google?code=test"});
 
   EXPECT_THAT(response.status, 302);
@@ -326,7 +131,7 @@ TEST_F(FunctionalTest, ListDirectory) {
                 ],
                 "nextPageToken": "next-page-token"
               })js"));
-  TestHelper test_helper(std::move(http));
+  FakeCloudFactoryContext test_helper(std::move(http));
   ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
 
   auto account = test_helper.GetAccount(
@@ -365,11 +170,11 @@ TEST_F(FunctionalTest, RestoresAccounts) {
                         "usage": "2137"
                       }
                     })js"));
-    TestHelper test_helper(std::move(http));
+    FakeCloudFactoryContext test_helper(std::move(http));
     ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
   }
   {
-    TestHelper test_helper(FakeHttpClient{});
+    FakeCloudFactoryContext test_helper(FakeHttpClient{});
     auto account = test_helper.GetAccount(CloudProviderAccount::Id{
         .type = "google", .username = "test@gmail.com"});
     auto root = account.GetRoot();
@@ -411,7 +216,7 @@ TEST_F(FunctionalTest, GetThumbnailTest) {
                 "mimeType": "video/mp4"
               })js"))
       .Expect(HttpRequest("thumbnail-link").WillReturn("thumbnail"));
-  TestHelper test_helper(std::move(http));
+  FakeCloudFactoryContext test_helper(std::move(http));
   ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
 
   auto account = test_helper.GetAccount(
@@ -460,7 +265,7 @@ TEST_F(FunctionalTest, ThumbnailGeneratorTest) {
       .Expect(
           HttpRequest("https://www.googleapis.com/drive/v3/files/id1?alt=media")
               .WillRespondToRangeRequestWith(GetTestFileContent("video.mp4")));
-  TestHelper test_helper(std::move(http));
+  FakeCloudFactoryContext test_helper(std::move(http));
   ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
 
   auto account = test_helper.GetAccount(
@@ -527,7 +332,7 @@ TEST_F(FunctionalTest, MuxerTest) {
       .Expect(
           HttpRequest("https://www.googleapis.com/drive/v3/files/id2?alt=media")
               .WillRespondToRangeRequestWith(GetTestFileContent("audio.m4a")));
-  TestHelper test_helper(std::move(http));
+  FakeCloudFactoryContext test_helper(std::move(http));
   ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
 
   auto response = test_helper.Fetch(
@@ -601,7 +406,7 @@ TEST_F(FunctionalTest, MuxerSeekableOutput) {
       .Expect(
           HttpRequest("https://www.googleapis.com/drive/v3/files/id2?alt=media")
               .WillRespondToRangeRequestWith(GetTestFileContent("audio.m4a")));
-  TestHelper test_helper(std::move(http));
+  FakeCloudFactoryContext test_helper(std::move(http));
   ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
 
   auto response = test_helper.Fetch(
@@ -675,7 +480,7 @@ TEST_F(FunctionalTest, MuxerWebmTest) {
       .Expect(
           HttpRequest("https://www.googleapis.com/drive/v3/files/id2?alt=media")
               .WillRespondToRangeRequestWith(GetTestFileContent("audio.webm")));
-  TestHelper test_helper(std::move(http));
+  FakeCloudFactoryContext test_helper(std::move(http));
   ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
 
   auto response = test_helper.Fetch(
@@ -749,7 +554,7 @@ TEST_F(FunctionalTest, MuxerWebmSeekableOutput) {
       .Expect(
           HttpRequest("https://www.googleapis.com/drive/v3/files/id2?alt=media")
               .WillRespondToRangeRequestWith(GetTestFileContent("audio.webm")));
-  TestHelper test_helper(std::move(http));
+  FakeCloudFactoryContext test_helper(std::move(http));
   ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
 
   auto response = test_helper.Fetch(
@@ -807,7 +612,7 @@ TEST_F(FunctionalTest, ThumbnailGeneratorRespectsExifOrientation) {
           HttpRequest("https://www.googleapis.com/drive/v3/files/id1?alt=media")
               .WillRespondToRangeRequestWith(
                   GetTestFileContent("frame-exif.jpg")));
-  TestHelper test_helper(std::move(http));
+  FakeCloudFactoryContext test_helper(std::move(http));
   ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
 
   auto account = test_helper.GetAccount(
