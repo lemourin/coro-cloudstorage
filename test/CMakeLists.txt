@@ -7,6 +7,8 @@ add_executable(
     functional_test.cc
     test_utils.h
     test_utils.cc
+    fake_http_client.h
+    fake_http_client.cc
 )
 
 target_link_libraries(

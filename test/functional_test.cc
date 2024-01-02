@@ -10,6 +10,7 @@
 #include <span>
 
 #include "coro/cloudstorage/util/cloud_factory_context.h"
+#include "fake_http_client.h"
 #include "test_utils.h"
 
 namespace coro::cloudstorage {
@@ -18,17 +19,20 @@ namespace {
 using Request = http::Request<>;
 using Response = http::Response<>;
 
+using ::coro::cloudstorage::test::AreVideosEquiv;
+using ::coro::cloudstorage::test::FakeHttpClient;
+using ::coro::cloudstorage::test::GetTestFileContent;
+using ::coro::cloudstorage::test::HttpRequest;
+using ::coro::cloudstorage::test::kTestDataDirectory;
+using ::coro::cloudstorage::test::kTestRunDirectory;
+using ::coro::cloudstorage::test::ResponseContent;
 using ::coro::cloudstorage::util::AbstractCloudProvider;
 using ::coro::cloudstorage::util::AccountManagerHandler;
-using ::coro::cloudstorage::util::AreVideosEquiv;
 using ::coro::cloudstorage::util::AuthData;
 using ::coro::cloudstorage::util::CloudFactoryContext;
 using ::coro::cloudstorage::util::CloudProviderAccount;
 using ::coro::cloudstorage::util::CreateDirectory;
 using ::coro::cloudstorage::util::GetDirectoryPath;
-using ::coro::cloudstorage::util::GetTestFileContent;
-using ::coro::cloudstorage::util::kTestDataDirectory;
-using ::coro::cloudstorage::util::kTestRunDirectory;
 using ::coro::cloudstorage::util::StrCat;
 using ::coro::http::CreateHttpServer;
 using ::coro::http::CurlHttp;
@@ -37,13 +41,6 @@ using ::coro::http::Http;
 using ::coro::util::EventLoop;
 using ::coro::util::TcpServer;
 using ::testing::StrEq;
-
-struct ResponseContent {
-  int status = 200;
-  std::vector<std::pair<std::string, std::string>> headers = {
-      {"Content-Type", "application/x-octet-stream"}};
-  std::string body;
-};
 
 CloudFactoryContext CreateContext(const EventLoop* event_loop,
                                   http::Http http) {
@@ -88,150 +85,6 @@ CloudFactoryContext CreateContext(const EventLoop* event_loop,
            })js")),
        .http = std::move(http)});
 }
-
-struct HttpRequestStubbing {
-  stdx::any_invocable<bool(const http::Request<std::string>&) const> matcher;
-  stdx::any_invocable<Response(http::Request<std::string> request)> request_f;
-  bool pending = true;
-};
-
-class HttpRequestStubbingBuilder {
- public:
-  explicit HttpRequestStubbingBuilder(testing::Matcher<std::string> url_matcher)
-      : url_matcher_(std::move(url_matcher)) {}
-
-  HttpRequestStubbingBuilder&& WithBody(
-      testing::Matcher<std::string> body_matcher) && {
-    body_matcher_ = std::move(body_matcher);
-    return std::move(*this);
-  }
-
-  HttpRequestStubbing WillReturn(std::string_view message) && {
-    return std::move(*this).WillReturn(
-        ResponseContent{.status = 200, .body = std::string(message)});
-  }
-
-  HttpRequestStubbing WillReturn(ResponseContent response) && {
-    return HttpRequestStubbing{
-        .matcher = std::move(*this).CreateRequestMatcher(),
-        .request_f = [response = std::move(response)](
-                         const http::Request<std::string>& request) mutable {
-          Response d{.status = response.status,
-                     .headers = std::move(response.headers)};
-          d.headers.emplace_back("Content-Length",
-                                 std::to_string(response.body.size()));
-          d.body = http::CreateBody(std::move(response.body));
-          return d;
-        }};
-  }
-
-  HttpRequestStubbing WillRespondToRangeRequestWith(
-      std::string_view message) && {
-    return HttpRequestStubbing{
-        .matcher = std::move(*this).CreateRequestMatcher(),
-        .request_f =
-            [message = std::string(message)](
-                const http::Request<std::string>& request) {
-              return RespondToRangeRequestWith(request, message);
-            },
-        .pending = false};
-  }
-
- private:
-  static Response RespondToRangeRequestWith(
-      const http::Request<std::string>& request, std::string_view message) {
-    bool has_range_header = false;
-    auto range = [&]() -> http::Range {
-      if (auto header = http::GetHeader(request.headers, "Range")) {
-        has_range_header = true;
-        return http::ParseRange(std::move(*header));
-      } else {
-        return http::Range{};
-      }
-    }();
-    if (!range.end) {
-      range.end = message.size();
-    }
-    Response d{.status = has_range_header ? 206 : 200};
-    d.headers.emplace_back("Accept-Ranges", "bytes");
-    d.headers.emplace_back("Content-Length",
-                           std::to_string(*range.end - range.start + 1));
-    if (has_range_header) {
-      d.headers.emplace_back("Content-Range",
-                             fmt::format("bytes {}-{}/{}", range.start,
-                                         *range.end, message.size()));
-    }
-    d.body = http::CreateBody(
-        std::string(message.substr(range.start, *range.end - range.start + 1)));
-    return d;
-  }
-
-  stdx::any_invocable<bool(const http::Request<std::string>&) const>
-  CreateRequestMatcher() && {
-    return [url_matcher = std::move(url_matcher_),
-            body_matcher = std::move(body_matcher_)](const auto& request) {
-      return url_matcher.Matches(request.url) &&
-             (!body_matcher ||
-              body_matcher->Matches(request.body.value_or("")));
-    };
-  }
-
-  testing::Matcher<std::string> url_matcher_;
-  std::optional<testing::Matcher<std::string>> body_matcher_;
-};
-
-HttpRequestStubbingBuilder HttpRequest(
-    testing::Matcher<std::string> url_matcher) {
-  return HttpRequestStubbingBuilder(std::move(url_matcher));
-}
-
-class FakeHttpClient {
- public:
-  FakeHttpClient() = default;
-  FakeHttpClient(const FakeHttpClient&) = default;
-  FakeHttpClient(FakeHttpClient&&) = default;
-  FakeHttpClient& operator=(const FakeHttpClient&) = default;
-  FakeHttpClient& operator=(FakeHttpClient&&) = default;
-
-  ~FakeHttpClient() {
-    for (const auto& stubbing : stubbings_) {
-      if (stubbing.pending) {
-        std::cerr << "Unsatisfied http request stubbings.\n";
-        abort();
-      }
-    }
-  }
-
-  Task<Response> Fetch(Request request, stdx::stop_token) const {
-    std::string body =
-        request.body ? co_await GetBody(std::move(*request.body)) : "";
-    http::Request<std::string> request_s{.url = std::move(request.url),
-                                         .method = request.method,
-                                         .headers = std::move(request.headers),
-                                         .body = std::move(body)};
-    for (auto it = stubbings_.begin(); it != stubbings_.end();) {
-      if (it->matcher(request_s)) {
-        auto result = it->request_f(std::move(request_s));
-        if (it->pending) {
-          it = stubbings_.erase(it);
-        }
-        co_return result;
-      } else {
-        it++;
-      }
-    }
-    throw http::HttpException(
-        500, fmt::format("unexpected request url = {}", request_s.url));
-  }
-
-  FakeHttpClient& Expect(HttpRequestStubbing stubbing) {
-    stubbings_.push_back(std::move(stubbing));
-    return *this;
-  }
-
- private:
-  mutable std::vector<HttpRequestStubbing> stubbings_;
-};
 
 class TestCloudProviderAccount {
  public:

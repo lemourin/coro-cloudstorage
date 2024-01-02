@@ -18,13 +18,15 @@ extern "C" {
 #include <libavfilter/buffersink.h>
 }
 
-namespace coro::cloudstorage::util {
+namespace coro::cloudstorage::test {
 
 namespace {
 
 namespace re = coro::util::re;
 
 using ::coro::util::AtScopeExit;
+using ::coro::cloudstorage::util::StrCat;
+using ::coro::cloudstorage::util::FileDeleter;
 
 struct AVFilterGraphDeleter {
   void operator()(AVFilterGraph* graph) const { avfilter_graph_free(&graph); }
@@ -228,4 +230,4 @@ bool AreVideosEquiv(std::string_view video1, std::string_view video2,
   return AreVideosEquivImpl(f1.path(), f2.path(), format);
 }
 
-}  // namespace coro::cloudstorage::util
+}  // namespace coro::cloudstorage::test
