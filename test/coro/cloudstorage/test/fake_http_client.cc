@@ -1,6 +1,7 @@
 #include "coro/cloudstorage/test/fake_http_client.h"
 
 #include <coro/promise.h>
+#include <coro/stdx/stop_callback.h>
 #include <fmt/format.h>
 
 namespace coro::cloudstorage::test {
@@ -57,10 +58,14 @@ HttpRequestStubbing HttpRequestStubbingBuilder::WillReturn(
 HttpRequestStubbing HttpRequestStubbingBuilder::WillNotReturn() && {
   return HttpRequestStubbing{
       .matcher = std::move(*this).CreateRequestMatcher(),
-      .request_f = [](http::Request<std::string> request) -> Task<Response> {
+      .request_f = [](http::Request<std::string> request,
+                      stdx::stop_token stop_token) -> Task<Response> {
         coro::Promise<void> promise;
+        stdx::stop_callback stop_callback{
+            std::move(stop_token),
+            [&] { promise.SetException(InterruptedException()); }};
         co_await promise;
-        throw RuntimeError("unexpected return");
+        co_return Response{};
       }};
 }
 
@@ -68,9 +73,9 @@ HttpRequestStubbing HttpRequestStubbingBuilder::WillReturn(
     ResponseContent response) && {
   return HttpRequestStubbing{
       .matcher = std::move(*this).CreateRequestMatcher(),
-      .request_f =
-          [response = std::move(response)](
-              http::Request<std::string> request) mutable -> Task<Response> {
+      .request_f = [response = std::move(response)](
+                       http::Request<std::string> request,
+                       stdx::stop_token) mutable -> Task<Response> {
         Response d{.status = response.status,
                    .headers = std::move(response.headers)};
         d.headers.emplace_back("Content-Length",
@@ -85,7 +90,8 @@ HttpRequestStubbing HttpRequestStubbingBuilder::WillRespondToRangeRequestWith(
   return HttpRequestStubbing{
       .matcher = std::move(*this).CreateRequestMatcher(),
       .request_f = [message = std::string(message)](
-                       http::Request<std::string> request) -> Task<Response> {
+                       http::Request<std::string> request,
+                       stdx::stop_token) -> Task<Response> {
         co_return RespondToRangeRequestWith(request, message);
       },
       .pending = false};
@@ -113,7 +119,8 @@ FakeHttpClient::~FakeHttpClient() {
   }
 }
 
-Task<Response> FakeHttpClient::Fetch(Request request, stdx::stop_token) const {
+Task<Response> FakeHttpClient::Fetch(Request request,
+                                     stdx::stop_token stop_token) const {
   std::string body =
       request.body ? co_await GetBody(std::move(*request.body)) : "";
   http::Request<std::string> request_s{.url = std::move(request.url),
@@ -125,9 +132,10 @@ Task<Response> FakeHttpClient::Fetch(Request request, stdx::stop_token) const {
       if (it->pending) {
         auto f = std::move(it->request_f);
         stubbings_.erase(it);
-        co_return co_await f(std::move(request_s));
+        co_return co_await f(std::move(request_s), std::move(stop_token));
       } else {
-        co_return co_await it->request_f(std::move(request_s));
+        co_return co_await it->request_f(std::move(request_s),
+                                         std::move(stop_token));
       }
     } else {
       it++;

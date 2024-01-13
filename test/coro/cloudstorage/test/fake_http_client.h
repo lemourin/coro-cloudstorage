@@ -19,8 +19,8 @@ struct ResponseContent {
 
 struct HttpRequestStubbing {
   stdx::any_invocable<bool(const http::Request<std::string>&) const> matcher;
-  stdx::any_invocable<Task<http::Response<>>(
-      http::Request<std::string> request)>
+  stdx::any_invocable<Task<http::Response<>>(http::Request<std::string> request,
+                                             stdx::stop_token)>
       request_f;
   bool pending = true;
 };
