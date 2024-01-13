@@ -2,10 +2,12 @@
 #define CORO_CLOUDBROWSER_ANDROID_CLOUD_FACTORY_CONFIG_H
 
 #include <functional>
+#include <random>
 #include <string>
 
 #include "coro/cloudstorage/util/auth_data.h"
 #include "coro/cloudstorage/util/file_utils.h"
+#include "coro/cloudstorage/util/random_number_generator.h"
 #include "coro/cloudstorage/util/settings_utils.h"
 #include "coro/http/cache_http.h"
 #include "coro/http/curl_http.h"
@@ -38,6 +40,8 @@ struct CloudFactoryConfig {
       event_loop,
       http::CurlHttpConfig{.alt_svc_path = StrCat(GetDirectoryPath(cache_path),
                                                   "/alt-svc.txt")})};
+  util::RandomNumberGenerator random_number_generator{
+      std::mt19937(std::random_device()())};
 };
 
 }  // namespace coro::cloudstorage::util

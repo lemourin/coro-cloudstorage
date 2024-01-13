@@ -10,7 +10,7 @@
 namespace coro::cloudstorage::test {
 
 class TestCloudProviderAccount {
- public:
+ private:
   template <typename F>
   auto WithAccount(F func) const {
     return event_loop_->Do([this, func = std::move(func)]() mutable {
@@ -18,6 +18,7 @@ class TestCloudProviderAccount {
     });
   }
 
+ public:
   auto GetRoot() const {
     return WithAccount(
         [](coro::cloudstorage::util::CloudProviderAccount account) {

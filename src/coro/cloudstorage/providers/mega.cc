@@ -1206,6 +1206,9 @@ auto Mega::Auth::AuthHandler::operator()(http::Request<> request,
                                          stdx::stop_token stop_token)
     -> Task<std::variant<http::Response<>, Auth::AuthToken>> {
   if (request.method == http::Method::kPost) {
+    if (!request.body) {
+      throw http::HttpException(http::HttpException::kBadRequest);
+    }
     auto query =
         http::ParseQuery(co_await http::GetBody(std::move(*request.body)));
     auto it1 = query.find("email");

@@ -36,6 +36,7 @@ add_executable(
         muxer_test.cc
         thumbnail_generator_test.cc
         google_drive_test.cc
+        mega_test.cc
 )
 
 target_link_libraries(

@@ -1,8 +1,7 @@
 #include "coro/cloudstorage/test/fake_http_client.h"
 
+#include <coro/promise.h>
 #include <fmt/format.h>
-
-#include <iostream>
 
 namespace coro::cloudstorage::test {
 
@@ -55,18 +54,29 @@ HttpRequestStubbing HttpRequestStubbingBuilder::WillReturn(
       ResponseContent{.status = 200, .body = std::string(message)});
 }
 
+HttpRequestStubbing HttpRequestStubbingBuilder::WillNotReturn() && {
+  return HttpRequestStubbing{
+      .matcher = std::move(*this).CreateRequestMatcher(),
+      .request_f = [](http::Request<std::string> request) -> Task<Response> {
+        coro::Promise<void> promise;
+        co_await promise;
+        throw RuntimeError("unexpected return");
+      }};
+}
+
 HttpRequestStubbing HttpRequestStubbingBuilder::WillReturn(
     ResponseContent response) && {
   return HttpRequestStubbing{
       .matcher = std::move(*this).CreateRequestMatcher(),
-      .request_f = [response = std::move(response)](
-                       const http::Request<std::string>& request) mutable {
+      .request_f =
+          [response = std::move(response)](
+              http::Request<std::string> request) mutable -> Task<Response> {
         Response d{.status = response.status,
                    .headers = std::move(response.headers)};
         d.headers.emplace_back("Content-Length",
                                std::to_string(response.body.size()));
         d.body = http::CreateBody(std::move(response.body));
-        return d;
+        co_return d;
       }};
 }
 
@@ -74,11 +84,10 @@ HttpRequestStubbing HttpRequestStubbingBuilder::WillRespondToRangeRequestWith(
     std::string_view message) && {
   return HttpRequestStubbing{
       .matcher = std::move(*this).CreateRequestMatcher(),
-      .request_f =
-          [message = std::string(message)](
-              const http::Request<std::string>& request) {
-            return RespondToRangeRequestWith(request, message);
-          },
+      .request_f = [message = std::string(message)](
+                       http::Request<std::string> request) -> Task<Response> {
+        co_return RespondToRangeRequestWith(request, message);
+      },
       .pending = false};
 }
 
@@ -98,7 +107,7 @@ HttpRequestStubbingBuilder HttpRequest(Matcher<std::string> url_matcher) {
 FakeHttpClient::~FakeHttpClient() {
   for (const auto& stubbing : stubbings_) {
     if (stubbing.pending) {
-      std::cerr << "Unsatisfied http request stubbings.\n";
+      fmt::println(stderr, "Unsatisfied http request stubbings.");
       abort();
     }
   }
@@ -113,15 +122,19 @@ Task<Response> FakeHttpClient::Fetch(Request request, stdx::stop_token) const {
                                        .body = std::move(body)};
   for (auto it = stubbings_.begin(); it != stubbings_.end();) {
     if (it->matcher(request_s)) {
-      auto result = it->request_f(std::move(request_s));
       if (it->pending) {
-        it = stubbings_.erase(it);
+        auto f = std::move(it->request_f);
+        stubbings_.erase(it);
+        co_return co_await f(std::move(request_s));
+      } else {
+        co_return co_await it->request_f(std::move(request_s));
       }
-      co_return result;
     } else {
       it++;
     }
   }
+  fmt::println(stderr, "UNEXPECTED {} BODY = {}", request_s.url,
+               request_s.body.value_or(""));
   throw http::HttpException(
       500, fmt::format("unexpected request url = {}", request_s.url));
 }

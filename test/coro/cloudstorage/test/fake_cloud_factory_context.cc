@@ -12,6 +12,7 @@ namespace {
 using ::coro::cloudstorage::util::AuthData;
 using ::coro::cloudstorage::util::CloudFactoryContext;
 using ::coro::cloudstorage::util::CloudProviderAccount;
+using ::coro::cloudstorage::util::RandomNumberGenerator;
 using ::coro::cloudstorage::util::StrCat;
 using ::coro::http::CreateHttpServer;
 using ::coro::http::GetBody;
@@ -83,7 +84,8 @@ CloudFactoryContext CreateContext(const EventLoop* event_loop,
                "client_secret": "youtube_client_secret"
              }
            })js")),
-       .http = std::move(http)});
+       .http = std::move(http),
+       .random_number_generator = RandomNumberGenerator([] { return 0; })});
 }
 
 }  // namespace

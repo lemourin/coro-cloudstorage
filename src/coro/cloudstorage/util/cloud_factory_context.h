@@ -55,7 +55,6 @@ class CloudFactoryContext {
   coro::util::ThreadPool thumbnail_thread_pool_;
   util::ThumbnailGenerator thumbnail_generator_;
   util::Muxer muxer_;
-  std::default_random_engine random_engine_;
   util::RandomNumberGenerator random_number_generator_;
   util::CacheManager cache_;
   CloudFactory factory_;
