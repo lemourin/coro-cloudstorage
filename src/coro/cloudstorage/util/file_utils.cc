@@ -1,8 +1,8 @@
 #include "coro/cloudstorage/util/file_utils.h"
 
+#include <array>
 #include <cstdlib>
 #include <memory>
-#include <array>
 
 #include "coro/cloudstorage/util/string_utils.h"
 
@@ -71,7 +71,7 @@ std::string GetConfigDirectory() {
   std::string path;
   if (const char* xdg_config = getenv("XDG_CONFIG_HOME")) {  // NOLINT
     path = xdg_config;
-  } else if (const char* home = getenv("HOME")) {            // NOLINT
+  } else if (const char* home = getenv("HOME")) {  // NOLINT
     path = std::string(home) + "/.config/";
   }
   return path;
@@ -89,7 +89,7 @@ std::string GetCacheDirectory() {
   std::string path;
   if (const char* xdg_config = getenv("XDG_CACHE_HOME")) {  // NOLINT
     path = xdg_config;
-  } else if (const char* home = getenv("HOME")) {           // NOLINT
+  } else if (const char* home = getenv("HOME")) {  // NOLINT
 #ifdef __APPLE__
     path = std::string(home) + "/Library/Caches/";
 #else
@@ -127,11 +127,18 @@ std::unique_ptr<std::FILE, FileDeleter> CreateTmpFile() {
 #if defined(__ANDROID__)
     std::string name = gAndroidTempDirectory + "/tmp.XXXXXX";
     int fno = mkstemp(name.data());
-    if (name.empty()) {
+    if (fno == -1) {
       throw RuntimeError("couldn't create tmpfile");
     }
-    std::remove(name.c_str());
-    return fdopen(fno, "w+");
+    if (std::remove(name.c_str()) != 0) {
+      close(fno);
+      throw RuntimeError("couldn't create tmpfile");
+    }
+    std::FILE* file = fdopen(fno, "w+");
+    if (!file) {
+      throw RuntimeError("couldn't create tmpfile");
+    }
+    return file;
 #elif defined(_MSC_VER)
     std::FILE* file;
     if (tmpfile_s(&file) != 0) {
