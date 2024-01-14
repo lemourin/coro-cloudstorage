@@ -70,18 +70,20 @@ TEST(AccountManagerTest, RestoresAccounts) {
                         "usage": "2137"
                       }
                     })js"));
-    FakeCloudFactoryContext test_helper({.config_file = std::nullopt,
-                                         .cache_file = std::nullopt,
-                                         .config_file_path{config_file.path()},
-                                         .cache_file_path{cache_file.path()},
-                                         .http = std::move(http)});
+    FakeCloudFactoryContext test_helper(
+        {.config_file = std::nullopt,
+         .cache_file = std::nullopt,
+         .config_file_path = std::string(config_file.path()),
+         .cache_file_path = std::string(cache_file.path()),
+         .http = std::move(http)});
     ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
   }
   {
-    FakeCloudFactoryContext test_helper({.config_file = std::nullopt,
-                                         .cache_file = std::nullopt,
-                                         .config_file_path{config_file.path()},
-                                         .cache_file_path{cache_file.path()}});
+    FakeCloudFactoryContext test_helper(
+        {.config_file = std::nullopt,
+         .cache_file = std::nullopt,
+         .config_file_path = std::string(config_file.path()),
+         .cache_file_path = std::string(cache_file.path())});
     auto account = test_helper.GetAccount(CloudProviderAccount::Id{
         .type = "google", .username = "test@gmail.com"});
     auto root = account.GetRoot();
