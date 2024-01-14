@@ -4,19 +4,29 @@
 #include <string>
 #include <string_view>
 
+#include "coro/cloudstorage/util/file_utils.h"
+
 namespace coro::cloudstorage::test {
 
 extern const std::string_view kTestDataDirectory;
 extern const std::string_view kTestRunDirectory;
 
-class TestDataScope {
+class TemporaryFile {
  public:
-  TestDataScope();
-  TestDataScope(TestDataScope&&) = default;
-  TestDataScope(const TestDataScope&) = delete;
-  TestDataScope& operator=(TestDataScope&&) = default;
-  TestDataScope& operator=(const TestDataScope&) = delete;
-  ~TestDataScope();
+  TemporaryFile();
+  TemporaryFile(const TemporaryFile&) = delete;
+  TemporaryFile(TemporaryFile&&) = default;
+  TemporaryFile& operator=(const TemporaryFile&) = delete;
+  TemporaryFile& operator=(TemporaryFile&&) = delete;
+
+  ~TemporaryFile();
+
+  std::FILE* stream() const { return file_.get(); }
+  std::string_view path() const { return path_; }
+
+ private:
+  std::string path_;
+  std::unique_ptr<std::FILE, coro::cloudstorage::util::FileDeleter> file_;
 };
 
 std::string GetTestFileContent(std::string_view filename);

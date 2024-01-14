@@ -11,12 +11,7 @@ namespace {
 using ::coro::cloudstorage::util::AbstractCloudProvider;
 using ::coro::cloudstorage::util::CloudProviderAccount;
 
-class GoogleDriveTest : public ::testing::Test {
- private:
-  TestDataScope scope_;
-};
-
-TEST_F(GoogleDriveTest, ListDirectory) {
+TEST(GoogleDriveTest, ListDirectory) {
   FakeHttpClient http;
   http.Expect(HttpRequest("https://accounts.google.com/o/oauth2/token")
                   .WillReturn(R"js({

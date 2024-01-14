@@ -43,48 +43,6 @@ std::string EscapePath(std::string_view path) {
       re::regex("\\:"), R"(\\\\$&)");
 }
 
-class TemporaryFile {
- public:
-  TemporaryFile() {
-#ifdef _WIN32
-    std::string path(MAX_PATH, 0);
-    if (GetTempFileNameA(kTestRunDirectory.data(), "tmp", 0, path.data()) ==
-        0) {
-      throw RuntimeError("GetTempFileNameA error");
-    }
-    path.resize(strlen(path.c_str()));
-    path_ = std::move(path);
-    file_.reset(std::fopen(path_.c_str(), "wb+"));
-#else
-    std::string tmpl = StrCat(kTestRunDirectory, "/tmp.XXXXXX");
-    int fd = mkstemp(tmpl.data());
-    if (fd < 0) {
-      throw RuntimeError("mkstemp error");
-    }
-    path_ = std::move(tmpl);
-    file_.reset(fdopen(fd, "wb+"));
-#endif
-  }
-
-  TemporaryFile(const TemporaryFile&) = delete;
-  TemporaryFile(TemporaryFile&&) = default;
-  TemporaryFile& operator=(const TemporaryFile&) = delete;
-  TemporaryFile& operator=(TemporaryFile&&) = delete;
-
-  ~TemporaryFile() {
-    if (file_) {
-      std::remove(path_.c_str());
-    }
-  }
-
-  std::FILE* stream() const { return file_.get(); }
-  std::string_view path() const { return path_; }
-
- private:
-  std::string path_;
-  std::unique_ptr<std::FILE, FileDeleter> file_;
-};
-
 std::string GetFileContent(std::string_view path) {
   std::ifstream stream(std::string(path), std::fstream::binary);
   std::string data;
@@ -212,15 +170,32 @@ void WriteFileContent(std::FILE* file, std::string_view content) {
 }  // namespace
 
 const std::string_view kTestDataDirectory = TEST_DATA_DIRECTORY;
-const std::string_view kTestRunDirectory = BUILD_DIRECTORY "/test";
+const std::string_view kTestRunDirectory = BUILD_DIRECTORY;
 
-TestDataScope::TestDataScope() {
-  std::filesystem::remove_all(kTestRunDirectory);
-  std::filesystem::create_directory(kTestRunDirectory);
+TemporaryFile::TemporaryFile() {
+#ifdef _WIN32
+  std::string path(MAX_PATH, 0);
+  if (GetTempFileNameA(kTestRunDirectory.data(), "tmp", 0, path.data()) == 0) {
+    throw RuntimeError("GetTempFileNameA error");
+  }
+  path.resize(strlen(path.c_str()));
+  path_ = std::move(path);
+  file_.reset(std::fopen(path_.c_str(), "wb+"));
+#else
+  std::string tmpl = StrCat(kTestRunDirectory, "/tmp.XXXXXX");
+  int fd = mkstemp(tmpl.data());
+  if (fd < 0) {
+    throw RuntimeError("mkstemp error");
+  }
+  path_ = std::move(tmpl);
+  file_.reset(fdopen(fd, "wb+"));
+#endif
 }
 
-TestDataScope::~TestDataScope() {
-  std::filesystem::remove_all(kTestRunDirectory);
+TemporaryFile::~TemporaryFile() {
+  if (file_) {
+    std::remove(path_.c_str());
+  }
 }
 
 std::string GetTestFileContent(std::string_view filename) {

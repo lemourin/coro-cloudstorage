@@ -8,12 +8,7 @@
 namespace coro::cloudstorage::test {
 namespace {
 
-class MuxerTest : public ::testing::Test {
- private:
-  TestDataScope scope_;
-};
-
-TEST_F(MuxerTest, Mp4Test) {
+TEST(MuxerTest, Mp4Test) {
   FakeHttpClient http;
   http.Expect(HttpRequest("https://accounts.google.com/o/oauth2/token")
                   .WillReturn(R"js({
@@ -87,7 +82,7 @@ TEST_F(MuxerTest, Mp4Test) {
       response.body, GetTestFileContent("muxed-nonseekable.mp4"), "mov"));
 }
 
-TEST_F(MuxerTest, MuxerSeekableMp4Output) {
+TEST(MuxerTest, MuxerSeekableMp4Output) {
   FakeHttpClient http;
   http.Expect(HttpRequest("https://accounts.google.com/o/oauth2/token")
                   .WillReturn(R"js({
@@ -161,7 +156,7 @@ TEST_F(MuxerTest, MuxerSeekableMp4Output) {
                              GetTestFileContent("muxed-seekable.mp4"), "mov"));
 }
 
-TEST_F(MuxerTest, MuxerWebmTest) {
+TEST(Muxer, MuxerWebmTest) {
   FakeHttpClient http;
   http.Expect(HttpRequest("https://accounts.google.com/o/oauth2/token")
                   .WillReturn(R"js({
@@ -235,7 +230,7 @@ TEST_F(MuxerTest, MuxerWebmTest) {
       response.body, GetTestFileContent("muxed-nonseekable.webm"), "webm"));
 }
 
-TEST_F(MuxerTest, MuxerWebmSeekableOutput) {
+TEST(MuxerTest, MuxerWebmSeekableOutput) {
   FakeHttpClient http;
   http.Expect(HttpRequest("https://accounts.google.com/o/oauth2/token")
                   .WillReturn(R"js({

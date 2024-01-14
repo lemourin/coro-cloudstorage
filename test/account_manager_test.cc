@@ -13,18 +13,13 @@ using ::coro::cloudstorage::util::AbstractCloudProvider;
 using ::coro::cloudstorage::util::CloudProviderAccount;
 using ::testing::StrEq;
 
-class AccountManagerTest : public ::testing::Test {
- private:
-  TestDataScope scope_;
-};
-
-TEST_F(AccountManagerTest, Runs) {
+TEST(AccountManagerTest, Runs) {
   FakeCloudFactoryContext test_helper;
   auto response = test_helper.Fetch({.url = "/"});
   EXPECT_EQ(response.body, GetTestFileContent("empty_home_page.html"));
 }
 
-TEST_F(AccountManagerTest, CreateAccount) {
+TEST(AccountManagerTest, CreateAccount) {
   FakeHttpClient http;
   http.Expect(HttpRequest("https://accounts.google.com/o/oauth2/token")
                   .WithBody(http::FormDataToString(
@@ -55,7 +50,9 @@ TEST_F(AccountManagerTest, CreateAccount) {
             "/list/google/test%40gmail.com/");
 }
 
-TEST_F(AccountManagerTest, RestoresAccounts) {
+TEST(AccountManagerTest, RestoresAccounts) {
+  TemporaryFile config_file;
+  TemporaryFile cache_file;
   {
     FakeHttpClient http;
     http.Expect(HttpRequest("https://accounts.google.com/o/oauth2/token")
@@ -73,11 +70,18 @@ TEST_F(AccountManagerTest, RestoresAccounts) {
                         "usage": "2137"
                       }
                     })js"));
-    FakeCloudFactoryContext test_helper(std::move(http));
+    FakeCloudFactoryContext test_helper({.config_file = std::nullopt,
+                                         .cache_file = std::nullopt,
+                                         .config_file_path{config_file.path()},
+                                         .cache_file_path{cache_file.path()},
+                                         .http = std::move(http)});
     ASSERT_EQ(test_helper.Fetch({.url = "/auth/google?code=test"}).status, 302);
   }
   {
-    FakeCloudFactoryContext test_helper(FakeHttpClient{});
+    FakeCloudFactoryContext test_helper({.config_file = std::nullopt,
+                                         .cache_file = std::nullopt,
+                                         .config_file_path{config_file.path()},
+                                         .cache_file_path{cache_file.path()}});
     auto account = test_helper.GetAccount(CloudProviderAccount::Id{
         .type = "google", .username = "test@gmail.com"});
     auto root = account.GetRoot();

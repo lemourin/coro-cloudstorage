@@ -44,11 +44,12 @@ class AccountListener {
 };
 
 CloudFactoryContext CreateContext(const EventLoop* event_loop,
-                                  http::Http http) {
+                                  std::string config_path,
+                                  std::string cache_path, http::Http http) {
   return CloudFactoryContext(
       {.event_loop = event_loop,
-       .config_path = StrCat(kTestRunDirectory, "/config.sqlite"),
-       .cache_path = StrCat(kTestRunDirectory, "/cache.sqlite"),
+       .config_path = std::move(config_path),
+       .cache_path = std::move(cache_path),
        .auth_data =
            AuthData("http://localhost:12345", nlohmann::json::parse(R"js({
              "google": {
@@ -99,9 +100,10 @@ CloudProviderAccount TestCloudProviderAccount::GetAccount() const {
   throw CloudException(CloudException::Type::kNotFound);
 }
 
-FakeCloudFactoryContext::FakeCloudFactoryContext(FakeHttpClient http)
-    : thread_([this, http = std::move(http)]() mutable {
-        RunThread(std::move(http));
+FakeCloudFactoryContext::FakeCloudFactoryContext(
+    FakeCloudFactoryContextConfig config)
+    : thread_([this, config = std::move(config)]() mutable {
+        RunThread(std::move(config));
       }) {
   ready_.get_future().get();
 }
@@ -129,8 +131,8 @@ TestCloudProviderAccount FakeCloudFactoryContext::GetAccount(
   return {&state_->event_loop(), std::move(id), state_->accounts()};
 }
 
-void FakeCloudFactoryContext::RunThread(FakeHttpClient http) {
-  state_.emplace(std::move(http));
+void FakeCloudFactoryContext::RunThread(FakeCloudFactoryContextConfig config) {
+  state_.emplace(std::move(config));
   auto at_scope_exit = [&] { state_.reset(); };
   std::exception_ptr exception;
   RunTask([&]() -> Task<> {
@@ -154,8 +156,11 @@ void FakeCloudFactoryContext::RunThread(FakeHttpClient http) {
   }
 }
 
-FakeCloudFactoryContext::ThreadState::ThreadState(FakeHttpClient http)
-    : context_(CreateContext(&event_loop_, coro::http::Http(std::move(http)))) {
-}
+FakeCloudFactoryContext::ThreadState::ThreadState(
+    FakeCloudFactoryContextConfig config)
+    : config_(std::move(config)),
+      context_(CreateContext(&event_loop_, config_.config_file_path,
+                             config_.cache_file_path,
+                             coro::http::Http(std::move(config_.http)))) {}
 
 }  // namespace coro::cloudstorage::test

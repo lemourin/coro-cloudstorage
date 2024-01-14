@@ -11,12 +11,7 @@ namespace {
 
 using ::coro::cloudstorage::util::CloudProviderAccount;
 
-class ThumbnailGeneratorTest : public ::testing::Test {
- private:
-  TestDataScope scope_;
-};
-
-TEST_F(ThumbnailGeneratorTest, GetCloudThumbnailTest) {
+TEST(ThumbnailGeneratorTest, GetCloudThumbnailTest) {
   FakeHttpClient http;
   http.Expect(HttpRequest("https://accounts.google.com/o/oauth2/token")
                   .WillReturn(R"js({
@@ -61,7 +56,7 @@ TEST_F(ThumbnailGeneratorTest, GetCloudThumbnailTest) {
   EXPECT_THAT(response.body, "thumbnail");
 }
 
-TEST_F(ThumbnailGeneratorTest, ThumbnailGeneratorTest) {
+TEST(ThumbnailGeneratorTest, ThumbnailGeneratorTest) {
   FakeHttpClient http;
   http.Expect(HttpRequest("https://accounts.google.com/o/oauth2/token")
                   .WillReturn(R"js({
@@ -111,7 +106,7 @@ TEST_F(ThumbnailGeneratorTest, ThumbnailGeneratorTest) {
                              "png"));
 }
 
-TEST_F(ThumbnailGeneratorTest, ThumbnailGeneratorRespectsExifOrientation) {
+TEST(ThumbnailGeneratorTest, ThumbnailGeneratorRespectsExifOrientation) {
   FakeHttpClient http;
   http.Expect(HttpRequest("https://accounts.google.com/o/oauth2/token")
                   .WillReturn(R"js({

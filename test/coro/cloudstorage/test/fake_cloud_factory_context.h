@@ -4,6 +4,7 @@
 #include <coro/util/event_loop.h>
 
 #include "coro/cloudstorage/test/fake_http_client.h"
+#include "coro/cloudstorage/test/test_utils.h"
 #include "coro/cloudstorage/util/cloud_factory_context.h"
 #include "coro/cloudstorage/util/cloud_provider_account.h"
 
@@ -49,9 +50,20 @@ class TestCloudProviderAccount {
   std::span<const coro::cloudstorage::util::CloudProviderAccount> accounts_;
 };
 
+struct FakeCloudFactoryContextConfig {
+  std::optional<TemporaryFile> config_file = TemporaryFile();
+  std::optional<TemporaryFile> cache_file = TemporaryFile();
+  std::string config_file_path{config_file->path()};
+  std::string cache_file_path{cache_file->path()};
+  FakeHttpClient http;
+};
+
 class FakeCloudFactoryContext {
  public:
-  explicit FakeCloudFactoryContext(FakeHttpClient http = {});
+  explicit FakeCloudFactoryContext(FakeCloudFactoryContextConfig);
+  explicit FakeCloudFactoryContext(FakeHttpClient http = {})
+      : FakeCloudFactoryContext(
+            FakeCloudFactoryContextConfig{.http = std::move(http)}) {}
   FakeCloudFactoryContext(const FakeCloudFactoryContext&) = delete;
   FakeCloudFactoryContext(FakeCloudFactoryContext&&) = delete;
   FakeCloudFactoryContext& operator=(const FakeCloudFactoryContext&) = delete;
@@ -64,11 +76,11 @@ class FakeCloudFactoryContext {
       coro::cloudstorage::util::CloudProviderAccount::Id id);
 
  private:
-  void RunThread(FakeHttpClient http);
+  void RunThread(FakeCloudFactoryContextConfig);
 
   class ThreadState {
    public:
-    explicit ThreadState(FakeHttpClient http);
+    explicit ThreadState(FakeCloudFactoryContextConfig);
 
     coro::util::EventLoop& event_loop() { return event_loop_; }
     coro::http::Http& http() { return http_; }
@@ -81,6 +93,7 @@ class FakeCloudFactoryContext {
     }
 
    private:
+    FakeCloudFactoryContextConfig config_;
     coro::util::EventLoop event_loop_;
     coro::http::Http http_{coro::http::CurlHttp{&event_loop_}};
     coro::cloudstorage::util::CloudFactoryContext context_;

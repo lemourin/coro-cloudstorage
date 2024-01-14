@@ -11,12 +11,7 @@ namespace {
 using ::coro::cloudstorage::util::AbstractCloudProvider;
 using ::coro::cloudstorage::util::CloudProviderAccount;
 
-class MegaTest : public ::testing::Test {
- private:
-  TestDataScope scope_;
-};
-
-TEST_F(MegaTest, ListDirectory) {
+TEST(MegaTest, ListDirectory) {
   constexpr std::string_view kSessionId =
       "LN3KEM3MSrrzp8ValrFuL3dFa3A3a0pROFA0a77Ucyxi6RY2Fgv5BsnDqg";
 
