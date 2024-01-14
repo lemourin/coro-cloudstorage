@@ -194,7 +194,11 @@ TemporaryFile::TemporaryFile() {
 
 TemporaryFile::~TemporaryFile() {
   if (file_) {
-    std::remove(path_.c_str());
+    file_.reset();
+    if (std::remove(path_.c_str()) != 0) {
+      fmt::println(stderr, "Failed to remove file {}.", path_);
+      abort();
+    }
   }
 }
 
