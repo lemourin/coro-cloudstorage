@@ -11,27 +11,26 @@ namespace coro::cloudstorage::test {
 
 class TestCloudProviderAccount {
  private:
-  template <typename F>
-  auto WithAccount(F func) const {
-    return event_loop_->Do([this, func = std::move(func)]() mutable {
-      return std::move(func)(GetAccount());
-    });
+  template <typename F, typename... Args>
+  auto WithAccount(F method, Args... args) const {
+    return event_loop_->Do(
+        [this, ... args = std::move(args), method]() mutable {
+          return std::invoke(method, GetAccount().provider(),
+                             std::move(args)..., stdx::stop_token());
+        });
   }
 
  public:
   auto GetRoot() const {
     return WithAccount(
-        [](coro::cloudstorage::util::CloudProviderAccount account) {
-          return account.provider()->GetRoot(stdx::stop_token());
-        });
+        &coro::cloudstorage::util::AbstractCloudProvider::GetRoot);
   }
 
   template <typename... Ts>
   auto ListDirectoryPage(Ts... args) const {
-    return WithAccount([... args = std::move(args)](auto account) {
-      return account.provider()->ListDirectoryPage(std::move(args)...,
-                                                   stdx::stop_token());
-    });
+    return WithAccount(
+        &coro::cloudstorage::util::AbstractCloudProvider::ListDirectoryPage,
+        std::move(args)...);
   }
 
  private:
