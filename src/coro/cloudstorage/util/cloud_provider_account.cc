@@ -94,7 +94,7 @@ Task<VersionedDirectoryContent> CloudProviderAccount::ListDirectory(
   } else {
     RunTask(UpdateDirectoryListCache, account_key(), cache_manager_,
             current_time, updated, std::move(directory), cached->items,
-            std::move(stop_token));
+            stop_source_.get_token());
     co_return VersionedDirectoryContent{
         .content =
             [](auto items) -> Generator<AbstractCloudProvider::PageData> {
@@ -115,7 +115,7 @@ Task<VersionedItem> CloudProviderAccount::GetItemById(
   if (item) {
     RunTask([account_key = account_key(), provider = provider_,
              cache_manager = cache_manager_, current_time, id = std::move(id),
-             prev_item = item->item, stop_token = std::move(stop_token),
+             prev_item = item->item, stop_token = stop_source_.get_token(),
              updated]() mutable -> Task<> {
       try {
         auto item = co_await ::coro::cloudstorage::util ::GetItemById(
@@ -171,7 +171,7 @@ Task<VersionedThumbnail> CloudProviderAccount::GetItemThumbnailWithFallback(
                thumbnail_generator = thumbnail_generator_,
                cache_manager = cache_manager_, current_time,
                provider = provider_, item = std::move(item), quality, range,
-               stop_token = std::move(stop_token),
+               stop_token = stop_source_.get_token(),
                updated]() mutable -> Task<> {
         try {
           AbstractCloudProvider::Thumbnail thumbnail =
