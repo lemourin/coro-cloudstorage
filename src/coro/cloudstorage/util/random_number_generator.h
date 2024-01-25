@@ -35,8 +35,8 @@ class RandomNumberGenerator {
 
     result_type operator()() { return generator_(); }
 
-    constexpr static result_type min() { return 0; }
-    constexpr static result_type max() { return UINT_FAST32_MAX; }
+    constexpr static result_type(min)() { return 0; }
+    constexpr static result_type(max)() { return UINT_FAST32_MAX; }
 
    private:
     stdx::any_invocable<result_type()> generator_;
