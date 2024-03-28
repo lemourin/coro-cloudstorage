@@ -25,7 +25,6 @@ using ::coro::cloudstorage::util::ThumbnailQuality;
 using ::coro::cloudstorage::util::ToStringView;
 using ::nlohmann::json;
 
-using StreamDirectory = YouTube::StreamDirectory;
 using JsFunction = coro::cloudstorage::util::js::Function;
 
 namespace re = ::coro::util::re;
@@ -94,7 +93,7 @@ JsFunction GetFunction(std::string_view document,
           document.begin(), document.end(), match,
           re::regex{StrCat(
               R"((?:)", EscapeRegex(function_name),
-              R"(\s*=\s*function\s*)\(([^\)]*)\)\s*(\{(?!\};)[\s\S]+?\};))")})) {
+              R"(\s*=\s*function\s*)\(([^\)]*)\)\s*(\{[\s\S]+?return b.join\(\"\"\)\};))")})) {
     auto args = util::SplitString(match[1].str(), ',');
     for (auto& arg : args) {
       arg = http::TrimWhitespace(arg);
