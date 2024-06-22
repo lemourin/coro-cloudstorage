@@ -7,7 +7,7 @@
   "registries": [
     {
       "kind": "git",
-      "baseline": "17c163ccc87297339f16ef02164c8b0e50278669",
+      "baseline": "f03c069e6ea95af7d07939237e6d53633eae40cf",
       "repository": "https://github.com/lemourin/vcpkg-registry",
       "packages": [
         "coro-http",
