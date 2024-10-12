@@ -72,6 +72,12 @@ class Graph {
 
   int GetSinkHeight() const { return av_buffersink_get_h(sink()); }
 
+  int GetSinkColorSpace() const { return av_buffersink_get_colorspace(sink()); }
+
+  int GetSinkColorRange() const {
+    return av_buffersink_get_color_range(sink());
+  }
+
   AVPixelFormat GetSinkFormat() const {
     return AVPixelFormat(av_buffersink_get_format(sink()));
   }
@@ -109,25 +115,31 @@ class Graph {
 
 class GraphBuilder {
  public:
-  GraphBuilder(int width, int height, int format, AVRational time_base) {
+  GraphBuilder(int width, int height, int format, int color_space,
+               int color_range, AVRational time_base) {
     AddFilter("buffer",
               {{"width", std::to_string(width)},
                {"height", std::to_string(height)},
                {"pix_fmt", std::to_string(format)},
+               {"colorspace", std::to_string(color_space)},
+               {"range", std::to_string(color_range)},
                {"time_base", StrCat(time_base.num, '/', time_base.den)}});
   }
 
   GraphBuilder(const Graph& input)
       : GraphBuilder(input.GetSinkWidth(), input.GetSinkHeight(),
-                     input.GetSinkFormat(), input.GetSinkTimeBase()) {}
+                     input.GetSinkFormat(), input.GetSinkColorSpace(),
+                     input.GetSinkColorRange(), input.GetSinkTimeBase()) {}
 
   explicit GraphBuilder(const AVFrame* frame)
-      : GraphBuilder(frame->width, frame->height, frame->format, {1, 24}) {}
+      : GraphBuilder(frame->width, frame->height, frame->format,
+                     frame->colorspace, frame->color_range, {1, 24}) {}
 
   GraphBuilder(const AVFormatContext* format_context, int stream,
                const AVCodecContext* codec_context)
       : GraphBuilder(codec_context->width, codec_context->height,
-                     codec_context->pix_fmt,
+                     codec_context->pix_fmt, codec_context->colorspace,
+                     codec_context->color_range,
                      format_context->streams[stream]->time_base) {}
 
   GraphBuilder& AddFilter(
@@ -260,7 +272,8 @@ auto RotateFrame(std::unique_ptr<AVFrame, AVFrameDeleter> frame,
 auto ConvertFrame(const AVFrame* frame, AVPixelFormat format) {
   std::unique_ptr<SwsContext, SwsContextDeleter> sws_context(sws_getContext(
       frame->width, frame->height, AVPixelFormat(frame->format), frame->width,
-      frame->height, format, SWS_BICUBIC, nullptr, nullptr, nullptr));
+      frame->height, format, SWS_BICUBIC,
+      /*srcFilter=*/nullptr, /*dstFilter=*/nullptr, /*param=*/nullptr));
   if (!sws_context) {
     throw RuntimeError("sws_getContext returned null");
   }
@@ -274,9 +287,10 @@ auto ConvertFrame(const AVFrame* frame, AVPixelFormat format) {
   target_frame->format = format;
   target_frame->width = frame->width;
   target_frame->height = frame->height;
-  CheckAVError(av_image_alloc(target_frame->data, target_frame->linesize,
-                              frame->width, frame->height, format, 32),
-               "av_image_alloc");
+  CheckAVError(
+      av_image_alloc(target_frame->data, target_frame->linesize, frame->width,
+                     frame->height, format, /*align=*/32),
+      "av_image_alloc");
   CheckAVError(
       sws_scale(sws_context.get(), frame->data, frame->linesize, 0,
                 frame->height, target_frame->data, target_frame->linesize),
@@ -293,7 +307,7 @@ auto ConvertFrame(const AVFrame* frame, const AVCodec* codec) {
   }
   supported.emplace_back(AV_PIX_FMT_NONE);
   AVPixelFormat format = avcodec_find_best_pix_fmt_of_list(
-      supported.data(), AVPixelFormat(frame->format), false,
+      supported.data(), AVPixelFormat(frame->format), /*has_alpha=*/false,
       /*loss_ptr=*/nullptr);
   return ConvertFrame(frame, format);
 }

@@ -22,7 +22,7 @@ auto CreateMuxerIOContext(std::FILE* file) {
       buffer, kBufferSize, /*write_flag=*/1, file,
       /*read_packet=*/nullptr,
       /*write_packet=*/
-      [](void* opaque, uint8_t* buf, int buf_size) -> int {
+      [](void* opaque, const uint8_t* buf, int buf_size) -> int {
         return static_cast<int>(fwrite(buf, 1, static_cast<size_t>(buf_size),
                                        reinterpret_cast<std::FILE*>(opaque)));
       },
@@ -44,7 +44,7 @@ auto CreateMuxerIOContext(std::string* data) {
       buffer, kBufferSize, /*write_flag=*/1, data,
       /*read_packet=*/nullptr,
       /*write_packet=*/
-      [](void* opaque, uint8_t* buf, int buf_size) -> int {
+      [](void* opaque, const uint8_t* buf, int buf_size) -> int {
         auto* data = reinterpret_cast<std::string*>(opaque);
         data->insert(data->end(), buf, buf + buf_size);
         return buf_size;

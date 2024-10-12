@@ -72,15 +72,15 @@ bool AreVideosEquivImpl(std::string_view path1, std::string_view path2,
   std::string graph_str =
       format == "png" || format == "mjpeg"
           ? fmt::format(
-                "movie=filename={}:f={format}:dec_threads=1 [v1];"
-                "movie=filename={}:f={format}:dec_threads=1 [v2];"
+                "movie=filename={0}:f={format}:dec_threads=1 [v1];"
+                "movie=filename={1}:f={format}:dec_threads=1 [v2];"
                 "[v1][v2] msad [vout];"
                 "[vout] buffersink@output;",
                 EscapePath(path1), EscapePath(path2),
                 fmt::arg("format", format))
           : fmt::format(
-                "movie=filename={}:f={format}:dec_threads=1:s=dv+da [v1][a1];"
-                "movie=filename={}:f={format}:dec_threads=1:s=dv+da [v2][a2];"
+                "movie=filename={0}:f={format}:dec_threads=1:s=dv+da [v1][a1];"
+                "movie=filename={1}:f={format}:dec_threads=1:s=dv+da [v2][a2];"
                 "[v1][v2] msad [vout];"
                 "[vout] buffersink@output;"
                 "[a1] abuffersink@output1;"
