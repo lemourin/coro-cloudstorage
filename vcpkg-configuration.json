@@ -7,14 +7,10 @@
   "registries": [
     {
       "kind": "git",
-      "baseline": "f03c069e6ea95af7d07939237e6d53633eae40cf",
+      "baseline": "eb0e63a7645ea232fe5269363d66997a7ebec81a",
       "repository": "https://github.com/lemourin/vcpkg-registry",
       "packages": [
-        "coro-http",
-        "curl",
-        "ngtcp2",
-        "quictls",
-        "libevent"
+        "coro-http"
       ]
     }
   ]
