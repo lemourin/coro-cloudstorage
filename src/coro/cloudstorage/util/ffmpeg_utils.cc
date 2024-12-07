@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "coro/cloudstorage/util/string_utils.h"
 #include "coro/exception.h"
 
 namespace coro::cloudstorage::util {
@@ -22,7 +23,7 @@ std::string GetAVError(int err) {
 
 void CheckAVError(int code, std::string_view call) {
   if (code < 0) {
-    throw RuntimeError(std::string(call) + " (" + GetAVError(code) + ")");
+    throw RuntimeError(StrCat(call, " (", GetAVError(code), ")"));
   }
 }
 

@@ -299,10 +299,17 @@ auto ConvertFrame(const AVFrame* frame, AVPixelFormat format) {
 }
 
 auto ConvertFrame(const AVFrame* frame, const AVCodec* codec) {
+  const AVPixelFormat* pix_fmts = nullptr;
+  CheckAVError(avcodec_get_supported_config(
+                   /*avctx=*/nullptr, codec, AV_CODEC_CONFIG_PIX_FORMAT,
+                   /*flags=*/0, reinterpret_cast<const void**>(&pix_fmts),
+                   /*out_num_configs=*/nullptr),
+               "avcodec_get_supported_config");
   std::vector<AVPixelFormat> supported;
-  for (const auto* p = codec->pix_fmts; p && *p != -1; p++) {
-    if (sws_isSupportedOutput(*p)) {
-      supported.emplace_back(*p);
+  for (const AVPixelFormat* pix_fmt = pix_fmts;
+       pix_fmt && *pix_fmt != AV_PIX_FMT_NONE; pix_fmt++) {
+    if (sws_isSupportedOutput(*pix_fmt)) {
+      supported.push_back(*pix_fmt);
     }
   }
   supported.emplace_back(AV_PIX_FMT_NONE);
