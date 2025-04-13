@@ -174,8 +174,8 @@ Generator<std::string> OneDrive::GetFileContent(File file, http::Range range,
     auto redirect_request = Request{
         .url = coro::http::GetHeader(response.headers, "Location").value(),
         .headers = {http::ToRangeHeader(range)}};
-    response = co_await auth_manager_.Fetch(std::move(redirect_request),
-                                            std::move(stop_token));
+    response = co_await http_->Fetch(std::move(redirect_request),
+                                     std::move(stop_token));
   }
   FOR_CO_AWAIT(std::string & body, response.body) { co_yield std::move(body); }
 }
