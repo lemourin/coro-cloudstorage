@@ -32,11 +32,5 @@
     "nlohmann-json",
     "pugixml",
     "sqlite-orm"
-  ],
-  "overrides": [
-    {
-      "name": "curl",
-      "version": "8.8.0"
-    }
   ]
 }
